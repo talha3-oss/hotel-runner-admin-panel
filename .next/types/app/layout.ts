@@ -1,4 +1,4 @@
-// File: D:\hotel-runner\app\layout.tsx
+// File: D:\hotel-runner\hotel-runner-admin-panel\app\layout.tsx
 import * as entry from '../../../app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

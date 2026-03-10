@@ -4,21 +4,32 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
+import { adminLogin } from '../../../lib/api'
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  })
+  const [formData, setFormData] = useState({ email: '', password: '' })
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const router = useRouter()
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Mock authentication - in real app, validate credentials
-    if (formData.email && formData.password) {
-      localStorage.setItem('isAuthenticated', 'true')
-      router.push('/dashboard')
+    setError('')
+    setLoading(true)
+    try {
+      const result = await adminLogin(formData.email, formData.password)
+      if (result.success && result.token) {
+        localStorage.setItem('adminToken', result.token)
+        localStorage.setItem('adminUser', JSON.stringify(result.user))
+        router.push('/dashboard')
+      } else {
+        setError(result.message || 'Login failed. Please try again.')
+      }
+    } catch {
+      setError('Unable to connect to server. Please try again.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -34,6 +45,12 @@ export default function LoginPage() {
         {/* Login Form */}
         <div className="bg-white rounded-lg shadow-xl p-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">Login</h2>
+
+          {error && (
+            <div className="bg-red-50 border border-red-300 text-red-700 px-4 py-3 rounded-md text-sm">
+              {error}
+            </div>
+          )}
           
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
@@ -99,9 +116,10 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              disabled={loading}
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              LOGIN
+              {loading ? 'Logging in...' : 'LOGIN'}
             </button>
           </form>
 

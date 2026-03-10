@@ -3,11 +3,5 @@
   "/dashboard/page": "app/dashboard/page.js",
   "/dashboard/hotels/page": "app/dashboard/hotels/page.js",
   "/dashboard/locations/page": "app/dashboard/locations/page.js",
-  "/dashboard/rooms/page": "app/dashboard/rooms/page.js",
-  "/dashboard/bookings/page": "app/dashboard/bookings/page.js",
-  "/dashboard/customers/page": "app/dashboard/customers/page.js",
-  "/dashboard/payments/page": "app/dashboard/payments/page.js",
-  "/dashboard/analytics/page": "app/dashboard/analytics/page.js",
-  "/dashboard/invoices/page": "app/dashboard/invoices/page.js",
-  "/dashboard/settings/page": "app/dashboard/settings/page.js"
+  "/dashboard/bookings/page": "app/dashboard/bookings/page.js"
 }

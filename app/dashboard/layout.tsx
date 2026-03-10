@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '../../components/Sidebar'
 import Header from '../../components/Header'
+import { getAdminMe } from '../../lib/api'
 
 export default function DashboardLayout({
   children,
@@ -13,10 +14,20 @@ export default function DashboardLayout({
   const router = useRouter()
 
   useEffect(() => {
-    const isAuthenticated = localStorage.getItem('isAuthenticated')
-    if (!isAuthenticated) {
+    const token = localStorage.getItem('adminToken')
+    if (!token) {
       router.push('/auth/login')
+      return
     }
+    getAdminMe(token).then((result) => {
+      if (!result.success) {
+        localStorage.removeItem('adminToken')
+        localStorage.removeItem('adminUser')
+        router.push('/auth/login')
+      }
+    }).catch(() => {
+      router.push('/auth/login')
+    })
   }, [router])
 
   return (
