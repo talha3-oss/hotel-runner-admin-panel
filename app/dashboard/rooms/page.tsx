@@ -1,108 +1,254 @@
 'use client'
 
-import { useState } from 'react'
-import { 
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import {
   MagnifyingGlassIcon,
   PlusIcon,
   PencilIcon,
   TrashIcon,
-  EyeIcon
+  EyeIcon,
 } from '@heroicons/react/24/outline'
+import {
+  createAdminRoom,
+  deleteAdminRoom,
+  fetchAdminRooms,
+  fetchHotels,
+  Hotel,
+  Room,
+  RoomPayload,
+  RoomStatus,
+  updateAdminRoom,
+} from '../../../lib/api'
 
 const roomTypes = [
   { id: 1, name: 'Room Only', description: 'Basic room accommodation' },
   { id: 2, name: 'Breakfast Included', description: 'Room with complimentary breakfast' },
   { id: 3, name: 'Dinner Included', description: 'Room with dinner service' },
-  { id: 4, name: 'Bed & Breakfast', description: 'Room with bed and breakfast package' }
+  { id: 4, name: 'Bed & Breakfast', description: 'Room with bed and breakfast package' },
 ]
 
-const rooms = [
-  {
-    id: 'R001',
-    name: 'Deluxe Double Room',
-    type: 'Bed & Breakfast',
-    capacity: 2,
-    bedType: '1 Double Bed',
-    size: '25 sqm',
-    price: 175.00,
-    status: 'Available',
-    amenities: ['Free WiFi', 'Air Conditioning', 'Mini Bar', 'Room Service'],
-    images: ['https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400'],
-    description: 'Spacious double room with modern amenities and city view'
-  },
-  {
-    id: 'R002',
-    name: 'Executive Double Room',
-    type: 'Breakfast Included',
-    capacity: 2,
-    bedType: '1 Double Bed',
-    size: '30 sqm',
-    price: 215.00,
-    status: 'Available',
-    amenities: ['Free WiFi', 'Air Conditioning', 'Mini Bar', 'Room Service', 'Executive Lounge Access'],
-    images: ['https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400'],
-    description: 'Premium double room with executive privileges'
-  },
-  {
-    id: 'R003',
-    name: 'Junior Suite',
-    type: 'Dinner Included',
-    capacity: 2,
-    bedType: '1 King Bed',
-    size: '40 sqm',
-    price: 295.00,
-    status: 'Occupied',
-    amenities: ['Free WiFi', 'Air Conditioning', 'Mini Bar', 'Room Service', 'Separate Living Area'],
-    images: ['https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400'],
-    description: 'Spacious suite with separate living area'
-  },
-  {
-    id: 'R004',
-    name: 'King Suite',
-    type: 'Bed & Breakfast',
-    capacity: 2,
-    bedType: '1 King Bed',
-    size: '50 sqm',
-    price: 325.00,
-    status: 'Available',
-    amenities: ['Free WiFi', 'Air Conditioning', 'Mini Bar', 'Room Service', 'Separate Living Area', 'Kitchenette'],
-    images: ['https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400'],
-    description: 'Luxury suite with premium amenities'
-  },
-  {
-    id: 'R005',
-    name: 'Presidential Suite',
-    type: 'Room Only',
-    capacity: 4,
-    bedType: '1 King Bed + Sofa Bed',
-    size: '80 sqm',
-    price: 435.00,
-    status: 'Maintenance',
-    amenities: ['Free WiFi', 'Air Conditioning', 'Mini Bar', 'Room Service', 'Separate Living Area', 'Kitchenette', 'Balcony'],
-    images: ['https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400'],
-    description: 'Ultimate luxury suite with panoramic views'
-  }
-]
+type RoomFormData = {
+  hotelId: string
+  name: string
+  roomNumber: string
+  roomType: string
+  capacity: string
+  bedType: string
+  size: string
+  price: string
+  status: RoomStatus
+  description: string
+  amenities: string
+  imageUrl: string
+}
+
+const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400'
+
+const EMPTY_FORM: RoomFormData = {
+  hotelId: '',
+  name: '',
+  roomNumber: '',
+  roomType: roomTypes[0].name,
+  capacity: '',
+  bedType: '',
+  size: '',
+  price: '',
+  status: 'AVAILABLE',
+  description: '',
+  amenities: '',
+  imageUrl: '',
+}
+
+const statusLabels: Record<RoomStatus, string> = {
+  AVAILABLE: 'Available',
+  OCCUPIED: 'Occupied',
+  MAINTENANCE: 'Maintenance',
+  CLEANING: 'Cleaning',
+}
+
+const statusOptions: RoomStatus[] = ['AVAILABLE', 'OCCUPIED', 'MAINTENANCE', 'CLEANING']
+
+const parseCsvInput = (value: string): string[] =>
+  value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
 
 export default function RoomsPage() {
+  const [rooms, setRooms] = useState<Room[]>([])
+  const [hotels, setHotels] = useState<Hotel[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
-  const [showAddRoom, setShowAddRoom] = useState(false)
-  const [selectedRoom, setSelectedRoom] = useState<any>(null)
+  const [hotelFilter, setHotelFilter] = useState('all')
+  const [showRoomForm, setShowRoomForm] = useState(false)
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null)
   const [showRoomDetails, setShowRoomDetails] = useState(false)
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null)
+  const [formData, setFormData] = useState<RoomFormData>(EMPTY_FORM)
+  const [formLoading, setFormLoading] = useState(false)
+  const [formError, setFormError] = useState('')
 
-  const filteredRooms = rooms.filter(room => {
-    const matchesSearch = room.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         room.id.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || room.status.toLowerCase() === statusFilter
-    const matchesType = typeFilter === 'all' || room.type === typeFilter
-    return matchesSearch && matchesStatus && matchesType
-  })
+  const loadData = useCallback(async () => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) {
+      setError('Admin token not found. Please login again.')
+      setLoading(false)
+      return
+    }
 
-  const handleViewRoom = (room: any) => {
+    try {
+      setError('')
+      const [roomsResult, hotelsResult] = await Promise.all([fetchAdminRooms(token), fetchHotels(token)])
+
+      if (roomsResult.success) {
+        setRooms(roomsResult.rooms || [])
+      } else {
+        setError(roomsResult.message || 'Failed to load rooms.')
+      }
+
+      if (hotelsResult.success) {
+        setHotels(hotelsResult.hotels || [])
+      } else {
+        setError(hotelsResult.message || 'Failed to load hotels.')
+      }
+    } catch {
+      setError('Unable to connect to server.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  const filteredRooms = useMemo(() => {
+    return rooms.filter((room) => {
+      const matchesSearch =
+        room.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        room.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (room.hotelName || '').toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesStatus = statusFilter === 'all' || room.status.toLowerCase() === statusFilter
+      const matchesType = typeFilter === 'all' || room.roomType === typeFilter
+      const matchesHotel = hotelFilter === 'all' || room.hotelId === hotelFilter
+      return matchesSearch && matchesStatus && matchesType && matchesHotel
+    })
+  }, [rooms, searchTerm, statusFilter, typeFilter, hotelFilter])
+
+  const openAddModal = () => {
+    setEditingRoom(null)
+    setFormData({ ...EMPTY_FORM, hotelId: hotels[0]?.id || '' })
+    setFormError('')
+    setShowRoomForm(true)
+  }
+
+  const openEditModal = (room: Room) => {
+    setEditingRoom(room)
+    setFormError('')
+    setFormData({
+      hotelId: room.hotelId || '',
+      name: room.name,
+      roomNumber: room.roomNumber,
+      roomType: room.roomType,
+      capacity: String(room.capacity),
+      bedType: room.bedType,
+      size: room.size,
+      price: String(room.price),
+      status: room.status,
+      description: room.description || '',
+      amenities: room.amenities.join(', '),
+      imageUrl: room.images[0] || '',
+    })
+    setShowRoomForm(true)
+  }
+
+  const closeRoomForm = () => {
+    setShowRoomForm(false)
+    setEditingRoom(null)
+    setFormData(EMPTY_FORM)
+    setFormError('')
+  }
+
+  const handleViewRoom = (room: Room) => {
     setSelectedRoom(room)
     setShowRoomDetails(true)
+  }
+
+  const handleDeleteRoom = async (room: Room) => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) {
+      setError('Admin token not found. Please login again.')
+      return
+    }
+
+    const confirmed = window.confirm(`Delete room ${room.roomNumber}?`)
+    if (!confirmed) return
+
+    try {
+      const result = await deleteAdminRoom(token, room.id)
+      if (result.success) {
+        await loadData()
+      } else {
+        setError(result.message || 'Failed to delete room.')
+      }
+    } catch {
+      setError('Unable to connect to server.')
+    }
+  }
+
+  const handleFormSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+
+    const token = localStorage.getItem('adminToken')
+    if (!token) {
+      setFormError('Admin token not found. Please login again.')
+      return
+    }
+
+    const payload: RoomPayload = {
+      hotelId: formData.hotelId,
+      name: formData.name.trim(),
+      roomNumber: formData.roomNumber.trim(),
+      roomType: formData.roomType,
+      capacity: Number(formData.capacity),
+      bedType: formData.bedType.trim(),
+      size: formData.size.trim(),
+      price: Number(formData.price),
+      status: formData.status,
+      description: formData.description.trim(),
+      amenities: parseCsvInput(formData.amenities),
+      images: formData.imageUrl.trim() ? [formData.imageUrl.trim()] : [DEFAULT_IMAGE],
+    }
+
+    setFormLoading(true)
+    setFormError('')
+
+    try {
+      const result = editingRoom
+        ? await updateAdminRoom(token, editingRoom.id, payload)
+        : await createAdminRoom(token, payload)
+
+      if (result.success) {
+        closeRoomForm()
+        await loadData()
+      } else {
+        setFormError(result.message || 'Failed to save room.')
+      }
+    } catch {
+      setFormError('Unable to connect to server.')
+    } finally {
+      setFormLoading(false)
+    }
+  }
+
+  const statusBadgeClass = (status: RoomStatus) => {
+    if (status === 'AVAILABLE') return 'bg-green-100 text-green-800'
+    if (status === 'OCCUPIED') return 'bg-red-100 text-red-800'
+    if (status === 'MAINTENANCE') return 'bg-yellow-100 text-yellow-800'
+    return 'bg-blue-100 text-blue-800'
   }
 
   return (
@@ -111,12 +257,10 @@ export default function RoomsPage() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Rooms Management</h1>
-            <p className="mt-1 text-sm text-gray-600">
-              Manage hotel rooms, types, and availability
-            </p>
+            <p className="mt-1 text-sm text-gray-600">Manage hotel rooms, types, and availability</p>
           </div>
-          <button 
-            onClick={() => setShowAddRoom(true)}
+          <button
+            onClick={openAddModal}
             className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md flex items-center"
           >
             <PlusIcon className="h-5 w-5 mr-2" />
@@ -125,7 +269,6 @@ export default function RoomsPage() {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow mb-6">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
@@ -158,109 +301,144 @@ export default function RoomsPage() {
               onChange={(e) => setTypeFilter(e.target.value)}
             >
               <option value="all">All Types</option>
-              {roomTypes.map(type => (
-                <option key={type.id} value={type.name}>{type.name}</option>
+              {roomTypes.map((type) => (
+                <option key={type.id} value={type.name}>
+                  {type.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              value={hotelFilter}
+              onChange={(e) => setHotelFilter(e.target.value)}
+            >
+              <option value="all">All Hotels</option>
+              {hotels.map((hotel) => (
+                <option key={hotel.id} value={hotel.id}>
+                  {hotel.name}
+                </option>
               ))}
             </select>
           </div>
         </div>
       </div>
 
-      {/* Rooms Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredRooms.map((room) => (
-          <div key={room.id} className="bg-white rounded-lg shadow-md overflow-hidden">
-            <div className="relative">
-              <img
-                src={room.images[0]}
-                alt={room.name}
-                className="w-full h-48 object-cover"
-              />
-              <div className="absolute top-2 right-2">
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                  room.status === 'Available' 
-                    ? 'bg-green-100 text-green-800'
-                    : room.status === 'Occupied'
-                    ? 'bg-red-100 text-red-800'
-                    : room.status === 'Maintenance'
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : 'bg-blue-100 text-blue-800'
-                }`}>
-                  {room.status}
-                </span>
-              </div>
-            </div>
-            
-            <div className="p-4">
-              <div className="flex justify-between items-start mb-2">
-                <h3 className="text-lg font-semibold text-gray-900">{room.name}</h3>
-                <span className="text-lg font-bold text-primary-600">£{room.price}</span>
-              </div>
-              
-              <p className="text-sm text-gray-600 mb-2">{room.id}</p>
-              
-              <div className="space-y-1 text-sm text-gray-600 mb-3">
-                <p><span className="font-medium">Type:</span> {room.type}</p>
-                <p><span className="font-medium">Capacity:</span> {room.capacity} guests</p>
-                <p><span className="font-medium">Bed:</span> {room.bedType}</p>
-                <p><span className="font-medium">Size:</span> {room.size}</p>
-              </div>
-              
-              <div className="flex flex-wrap gap-1 mb-3">
-                {room.amenities.slice(0, 3).map((amenity, index) => (
-                  <span key={index} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                    {amenity}
+      {error && (
+        <div className="mb-6 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+
+      {loading && <div className="rounded-md bg-white p-6 text-sm text-gray-600 shadow">Loading rooms...</div>}
+
+      {!loading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredRooms.map((room) => (
+            <div key={room.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+              <div className="relative">
+                <img src={room.images[0] || DEFAULT_IMAGE} alt={room.name} className="w-full h-48 object-cover" />
+                <div className="absolute top-2 right-2">
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusBadgeClass(room.status)}`}>
+                    {statusLabels[room.status]}
                   </span>
-                ))}
-                {room.amenities.length > 3 && (
-                  <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                    +{room.amenities.length - 3} more
-                  </span>
-                )}
+                </div>
               </div>
-              
-              <div className="flex justify-between items-center">
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleViewRoom(room)}
-                    className="text-primary-600 hover:text-primary-800"
-                  >
-                    <EyeIcon className="h-5 w-5" />
-                  </button>
-                  <button className="text-blue-600 hover:text-blue-800">
-                    <PencilIcon className="h-5 w-5" />
-                  </button>
-                  <button className="text-red-600 hover:text-red-800">
-                    <TrashIcon className="h-5 w-5" />
-                  </button>
+
+              <div className="p-4">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="text-lg font-semibold text-gray-900">{room.name}</h3>
+                  <span className="text-lg font-bold text-primary-600">GBP {room.price}</span>
+                </div>
+
+                <p className="text-sm text-gray-600 mb-1">{room.roomNumber}</p>
+                <p className="text-sm text-gray-600 mb-2">Hotel: {room.hotelName || '-'}</p>
+
+                <div className="space-y-1 text-sm text-gray-600 mb-3">
+                  <p>
+                    <span className="font-medium">Type:</span> {room.roomType}
+                  </p>
+                  <p>
+                    <span className="font-medium">Capacity:</span> {room.capacity} guests
+                  </p>
+                  <p>
+                    <span className="font-medium">Bed:</span> {room.bedType}
+                  </p>
+                  <p>
+                    <span className="font-medium">Size:</span> {room.size}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {room.amenities.slice(0, 3).map((amenity, index) => (
+                    <span key={index} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                      {amenity}
+                    </span>
+                  ))}
+                  {room.amenities.length > 3 && (
+                    <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">+{room.amenities.length - 3} more</span>
+                  )}
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <div className="flex space-x-2">
+                    <button onClick={() => handleViewRoom(room)} className="text-primary-600 hover:text-primary-800">
+                      <EyeIcon className="h-5 w-5" />
+                    </button>
+                    <button onClick={() => openEditModal(room)} className="text-blue-600 hover:text-blue-800">
+                      <PencilIcon className="h-5 w-5" />
+                    </button>
+                    <button onClick={() => handleDeleteRoom(room)} className="text-red-600 hover:text-red-800">
+                      <TrashIcon className="h-5 w-5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+          {filteredRooms.length === 0 && (
+            <div className="col-span-full rounded-md bg-white p-6 text-sm text-gray-600 shadow">No rooms found with current filters.</div>
+          )}
+        </div>
+      )}
 
-      {/* Add Room Modal */}
-      {showAddRoom && (
+      {showRoomForm && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+          <div className="relative top-10 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-2/3 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Add New Room</h3>
-                <button
-                  onClick={() => setShowAddRoom(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ×
+                <h3 className="text-lg font-medium text-gray-900">{editingRoom ? 'Edit Room' : 'Add New Room'}</h3>
+                <button onClick={closeRoomForm} className="text-gray-400 hover:text-gray-600">
+                  x
                 </button>
               </div>
-              
-              <form className="space-y-4">
+
+              {formError && (
+                <div className="mb-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</div>
+              )}
+
+              <form className="space-y-4" onSubmit={handleFormSubmit}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Hotel</label>
+                    <select
+                      required
+                      value={formData.hotelId}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, hotelId: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option value="">Select Hotel</option>
+                      {hotels.map((hotel) => (
+                        <option key={hotel.id} value={hotel.id}>
+                          {hotel.name} ({hotel.location}, {hotel.country})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Room Name</label>
                     <input
                       type="text"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                       placeholder="Enter room name"
                     />
@@ -269,15 +447,24 @@ export default function RoomsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Room ID</label>
                     <input
                       type="text"
+                      required
+                      value={formData.roomNumber}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, roomNumber: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                       placeholder="Enter room ID"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Room Type</label>
-                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500">
-                      {roomTypes.map(type => (
-                        <option key={type.id} value={type.name}>{type.name}</option>
+                    <select
+                      value={formData.roomType}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, roomType: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      {roomTypes.map((type) => (
+                        <option key={type.id} value={type.name}>
+                          {type.name}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -285,6 +472,10 @@ export default function RoomsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Capacity</label>
                     <input
                       type="number"
+                      required
+                      min="1"
+                      value={formData.capacity}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, capacity: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                       placeholder="Number of guests"
                     />
@@ -293,6 +484,9 @@ export default function RoomsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Bed Type</label>
                     <input
                       type="text"
+                      required
+                      value={formData.bedType}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, bedType: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                       placeholder="e.g., 1 King Bed"
                     />
@@ -301,61 +495,90 @@ export default function RoomsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Size</label>
                     <input
                       type="text"
+                      required
+                      value={formData.size}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, size: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                       placeholder="e.g., 25 sqm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Price per Night (£)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Price per Night (GBP)</label>
                     <input
                       type="number"
                       step="0.01"
+                      required
+                      min="0"
+                      value={formData.price}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, price: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                       placeholder="0.00"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500">
-                      <option value="available">Available</option>
-                      <option value="occupied">Occupied</option>
-                      <option value="maintenance">Maintenance</option>
-                      <option value="cleaning">Cleaning</option>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value as RoomStatus }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      {statusOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {statusLabels[status]}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                   <textarea
                     rows={3}
+                    value={formData.description}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                     placeholder="Room description"
-                  ></textarea>
+                  />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Amenities</label>
                   <input
                     type="text"
+                    value={formData.amenities}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, amenities: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                     placeholder="Enter amenities separated by commas"
                   />
                 </div>
-                
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Image URL (optional)</label>
+                  <input
+                    type="url"
+                    value={formData.imageUrl}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, imageUrl: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="https://example.com/room.jpg"
+                  />
+                </div>
+
                 <div className="flex justify-end space-x-3 pt-4">
                   <button
                     type="button"
-                    onClick={() => setShowAddRoom(false)}
+                    onClick={closeRoomForm}
                     className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+                    disabled={formLoading}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+                    className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={formLoading}
                   >
-                    Add Room
+                    {formLoading ? 'Saving...' : editingRoom ? 'Update Room' : 'Add Room'}
                   </button>
                 </div>
               </form>
@@ -364,46 +587,62 @@ export default function RoomsPage() {
         </div>
       )}
 
-      {/* Room Details Modal */}
       {showRoomDetails && selectedRoom && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Room Details - {selectedRoom.name}</h3>
-                <button
-                  onClick={() => setShowRoomDetails(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ×
+                <button onClick={() => setShowRoomDetails(false)} className="text-gray-400 hover:text-gray-600">
+                  x
                 </button>
               </div>
-              
+
               <div className="space-y-4">
                 <img
-                  src={selectedRoom.images[0]}
+                  src={selectedRoom.images[0] || DEFAULT_IMAGE}
                   alt={selectedRoom.name}
                   className="w-full h-64 object-cover rounded-lg"
                 />
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <h4 className="font-medium text-gray-900 mb-2">Basic Information</h4>
                     <div className="space-y-1 text-sm">
-                      <p><span className="font-medium">Room ID:</span> {selectedRoom.id}</p>
-                      <p><span className="font-medium">Type:</span> {selectedRoom.type}</p>
-                      <p><span className="font-medium">Capacity:</span> {selectedRoom.capacity} guests</p>
-                      <p><span className="font-medium">Bed Type:</span> {selectedRoom.bedType}</p>
-                      <p><span className="font-medium">Size:</span> {selectedRoom.size}</p>
-                      <p><span className="font-medium">Price:</span> £{selectedRoom.price}/night</p>
-                      <p><span className="font-medium">Status:</span> {selectedRoom.status}</p>
+                      <p>
+                        <span className="font-medium">Room ID:</span> {selectedRoom.roomNumber}
+                      </p>
+                      <p>
+                        <span className="font-medium">Hotel:</span> {selectedRoom.hotelName || '-'}
+                      </p>
+                      <p>
+                        <span className="font-medium">Location:</span> {selectedRoom.locationName || '-'}, {selectedRoom.countryName || '-'}
+                      </p>
+                      <p>
+                        <span className="font-medium">Type:</span> {selectedRoom.roomType}
+                      </p>
+                      <p>
+                        <span className="font-medium">Capacity:</span> {selectedRoom.capacity} guests
+                      </p>
+                      <p>
+                        <span className="font-medium">Bed Type:</span> {selectedRoom.bedType}
+                      </p>
+                      <p>
+                        <span className="font-medium">Size:</span> {selectedRoom.size}
+                      </p>
+                      <p>
+                        <span className="font-medium">Price:</span> GBP {selectedRoom.price}/night
+                      </p>
+                      <p>
+                        <span className="font-medium">Status:</span> {statusLabels[selectedRoom.status]}
+                      </p>
                     </div>
                   </div>
-                  
+
                   <div>
                     <h4 className="font-medium text-gray-900 mb-2">Amenities</h4>
                     <div className="flex flex-wrap gap-2">
-                      {selectedRoom.amenities.map((amenity: string, index: number) => (
+                      {selectedRoom.amenities.map((amenity, index) => (
                         <span key={index} className="px-2 py-1 bg-primary-100 text-primary-800 text-xs rounded-full">
                           {amenity}
                         </span>
@@ -411,13 +650,13 @@ export default function RoomsPage() {
                     </div>
                   </div>
                 </div>
-                
+
                 <div>
                   <h4 className="font-medium text-gray-900 mb-2">Description</h4>
-                  <p className="text-sm text-gray-600">{selectedRoom.description}</p>
+                  <p className="text-sm text-gray-600">{selectedRoom.description || 'No description.'}</p>
                 </div>
               </div>
-              
+
               <div className="mt-6 flex justify-end space-x-3">
                 <button
                   onClick={() => setShowRoomDetails(false)}
@@ -425,7 +664,13 @@ export default function RoomsPage() {
                 >
                   Close
                 </button>
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                <button
+                  onClick={() => {
+                    setShowRoomDetails(false)
+                    openEditModal(selectedRoom)
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
                   Edit Room
                 </button>
               </div>
