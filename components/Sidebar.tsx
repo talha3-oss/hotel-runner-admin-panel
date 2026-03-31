@@ -13,6 +13,7 @@ import {
   CogIcon,
   MapPinIcon,
   DocumentTextIcon,
+  Squares2X2Icon,
   Bars3Icon,
   XMarkIcon
 } from '@heroicons/react/24/outline'
@@ -21,6 +22,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
   { name: 'Hotels', href: '/dashboard/hotels', icon: BuildingOfficeIcon },
   { name: 'Countries & Locations', href: '/dashboard/locations', icon: MapPinIcon },
+  { name: 'Homepage Content', href: '/dashboard/homepage', icon: Squares2X2Icon },
   { name: 'Rooms', href: '/dashboard/rooms', icon: HomeIcon },
   { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarDaysIcon },
   { name: 'Customers', href: '/dashboard/customers', icon: UserGroupIcon },

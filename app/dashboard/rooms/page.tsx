@@ -11,26 +11,25 @@ import {
 import {
   createAdminRoom,
   deleteAdminRoom,
+  fetchAdminRoomTypes,
   fetchAdminRooms,
   fetchHotels,
   Hotel,
   Room,
   RoomPayload,
   RoomStatus,
+  RoomTypeOption,
   updateAdminRoom,
 } from '../../../lib/api'
 
-const roomTypes = [
-  { id: 1, name: 'Room Only', description: 'Basic room accommodation' },
-  { id: 2, name: 'Breakfast Included', description: 'Room with complimentary breakfast' },
-  { id: 3, name: 'Dinner Included', description: 'Room with dinner service' },
-  { id: 4, name: 'Bed & Breakfast', description: 'Room with bed and breakfast package' },
-]
+const DEFAULT_ROOM_TYPES = ['Room Only', 'Breakfast Included', 'Dinner Included', 'Bed & Breakfast']
 
 type RoomFormData = {
   hotelId: string
   name: string
+  roomCount: string
   roomNumber: string
+  roomNumbers: string
   roomType: string
   capacity: string
   bedType: string
@@ -47,8 +46,10 @@ const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1631049307264-da0ec9d70
 const EMPTY_FORM: RoomFormData = {
   hotelId: '',
   name: '',
+  roomCount: '1',
   roomNumber: '',
-  roomType: roomTypes[0].name,
+  roomNumbers: '',
+  roomType: DEFAULT_ROOM_TYPES[0],
   capacity: '',
   bedType: '',
   size: '',
@@ -74,9 +75,16 @@ const parseCsvInput = (value: string): string[] =>
     .map((item) => item.trim())
     .filter(Boolean)
 
+const parseRoomNumbersInput = (value: string): string[] =>
+  value
+    .split(/[\n,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+
 export default function RoomsPage() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [hotels, setHotels] = useState<Hotel[]>([])
+  const [roomTypes, setRoomTypes] = useState<RoomTypeOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -101,7 +109,11 @@ export default function RoomsPage() {
 
     try {
       setError('')
-      const [roomsResult, hotelsResult] = await Promise.all([fetchAdminRooms(token), fetchHotels(token)])
+      const [roomsResult, hotelsResult, roomTypesResult] = await Promise.all([
+        fetchAdminRooms(token),
+        fetchHotels(token),
+        fetchAdminRoomTypes(token),
+      ])
 
       if (roomsResult.success) {
         setRooms(roomsResult.rooms || [])
@@ -113,6 +125,23 @@ export default function RoomsPage() {
         setHotels(hotelsResult.hotels || [])
       } else {
         setError(hotelsResult.message || 'Failed to load hotels.')
+      }
+
+      if (roomTypesResult.success) {
+        setRoomTypes(roomTypesResult.roomTypes || [])
+      } else if (roomsResult.success) {
+        const derivedTypes = Array.from(new Set<string>((roomsResult.rooms || []).map((room: Room) => room.roomType)))
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b))
+          .map((name) => ({
+            id: `derived:${name}`,
+            name,
+            description: null,
+            createdAt: null,
+            updatedAt: null,
+            derived: true,
+          }))
+        setRoomTypes(derivedTypes)
       }
     } catch {
       setError('Unable to connect to server.')
@@ -138,9 +167,27 @@ export default function RoomsPage() {
     })
   }, [rooms, searchTerm, statusFilter, typeFilter, hotelFilter])
 
+  const availableRoomTypes = useMemo(() => {
+    const names = new Set<string>(DEFAULT_ROOM_TYPES)
+
+    roomTypes.forEach((type) => {
+      if (type.name.trim()) names.add(type.name.trim())
+    })
+
+    rooms.forEach((room) => {
+      if (room.roomType.trim()) names.add(room.roomType.trim())
+    })
+
+    return Array.from(names).sort((a, b) => a.localeCompare(b))
+  }, [roomTypes, rooms])
+
   const openAddModal = () => {
     setEditingRoom(null)
-    setFormData({ ...EMPTY_FORM, hotelId: hotels[0]?.id || '' })
+    setFormData({
+      ...EMPTY_FORM,
+      hotelId: hotels[0]?.id || '',
+      roomType: EMPTY_FORM.roomType,
+    })
     setFormError('')
     setShowRoomForm(true)
   }
@@ -151,7 +198,9 @@ export default function RoomsPage() {
     setFormData({
       hotelId: room.hotelId || '',
       name: room.name,
+      roomCount: '1',
       roomNumber: room.roomNumber,
+      roomNumbers: room.roomNumber,
       roomType: room.roomType,
       capacity: String(room.capacity),
       bedType: room.bedType,
@@ -208,11 +257,25 @@ export default function RoomsPage() {
       return
     }
 
+    const roomCount = Number(formData.roomCount)
+    const roomNumbers = editingRoom ? [] : parseRoomNumbersInput(formData.roomNumbers)
+
+    if (!editingRoom) {
+      if (!Number.isInteger(roomCount) || roomCount <= 0) {
+        setFormError('Number of rooms must be at least 1.')
+        return
+      }
+
+      if (roomNumbers.length !== roomCount) {
+        setFormError(`Please provide exactly ${roomCount} room number${roomCount === 1 ? '' : 's'}.`)
+        return
+      }
+    }
+
     const payload: RoomPayload = {
       hotelId: formData.hotelId,
       name: formData.name.trim(),
-      roomNumber: formData.roomNumber.trim(),
-      roomType: formData.roomType,
+      roomType: formData.roomType.trim(),
       capacity: Number(formData.capacity),
       bedType: formData.bedType.trim(),
       size: formData.size.trim(),
@@ -221,6 +284,13 @@ export default function RoomsPage() {
       description: formData.description.trim(),
       amenities: parseCsvInput(formData.amenities),
       images: formData.imageUrl.trim() ? [formData.imageUrl.trim()] : [DEFAULT_IMAGE],
+    }
+
+    if (editingRoom) {
+      payload.roomNumber = formData.roomNumber.trim()
+    } else {
+      payload.roomCount = roomCount
+      payload.roomNumbers = roomNumbers
     }
 
     setFormLoading(true)
@@ -301,9 +371,9 @@ export default function RoomsPage() {
               onChange={(e) => setTypeFilter(e.target.value)}
             >
               <option value="all">All Types</option>
-              {roomTypes.map((type) => (
-                <option key={type.id} value={type.name}>
-                  {type.name}
+              {availableRoomTypes.map((typeName) => (
+                <option key={typeName} value={typeName}>
+                  {typeName}
                 </option>
               ))}
             </select>
@@ -444,29 +514,46 @@ export default function RoomsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Room ID</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.roomNumber}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, roomNumber: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      placeholder="Enter room ID"
-                    />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {editingRoom ? 'Room Number' : 'Number of Rooms'}
+                    </label>
+                    {editingRoom ? (
+                      <input
+                        type="text"
+                        required
+                        value={formData.roomNumber}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, roomNumber: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        placeholder="Enter room number"
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        value={formData.roomCount}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, roomCount: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        placeholder="How many rooms of this type?"
+                      />
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Room Type</label>
-                    <select
+                    <input
+                      type="text"
+                      required
                       value={formData.roomType}
                       onChange={(e) => setFormData((prev) => ({ ...prev, roomType: e.target.value }))}
+                      list="room-type-options"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    >
-                      {roomTypes.map((type) => (
-                        <option key={type.id} value={type.name}>
-                          {type.name}
-                        </option>
+                      placeholder="Enter room type"
+                    />
+                    <datalist id="room-type-options">
+                      {availableRoomTypes.map((typeName) => (
+                        <option key={typeName} value={typeName} />
                       ))}
-                    </select>
+                    </datalist>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Capacity</label>
@@ -530,6 +617,23 @@ export default function RoomsPage() {
                     </select>
                   </div>
                 </div>
+
+                {!editingRoom && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Room Numbers</label>
+                    <textarea
+                      required
+                      rows={4}
+                      value={formData.roomNumbers}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, roomNumbers: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      placeholder="Enter one room number per line or separate them with commas"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Add one unique room number for each physical room of this type in the selected hotel.
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
@@ -610,7 +714,7 @@ export default function RoomsPage() {
                     <h4 className="font-medium text-gray-900 mb-2">Basic Information</h4>
                     <div className="space-y-1 text-sm">
                       <p>
-                        <span className="font-medium">Room ID:</span> {selectedRoom.roomNumber}
+                        <span className="font-medium">Room Number:</span> {selectedRoom.roomNumber}
                       </p>
                       <p>
                         <span className="font-medium">Hotel:</span> {selectedRoom.hotelName || '-'}

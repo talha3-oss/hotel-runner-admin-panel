@@ -1,5 +1,11 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
+export function getApiAssetUrl(path?: string | null) {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
+}
+
 export async function adminLogin(email: string, password: string) {
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/auth/login`, {
     method: 'POST',
@@ -17,6 +23,15 @@ export async function getAdminMe(token: string) {
 }
 
 export type RoomStatus = 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'CLEANING'
+
+export interface RoomTypeOption {
+  id: string
+  name: string
+  description: string | null
+  createdAt: string | null
+  updatedAt: string | null
+  derived: boolean
+}
 
 export interface Room {
   id: string
@@ -42,7 +57,9 @@ export interface Room {
 export interface RoomPayload {
   hotelId: string
   name: string
-  roomNumber: string
+  roomNumber?: string
+  roomNumbers?: string[]
+  roomCount?: number
   roomType: string
   capacity: number
   bedType: string
@@ -58,6 +75,13 @@ export async function fetchAdminRooms(token: string, query: Record<string, strin
   const queryString = new URLSearchParams(query).toString()
   const url = `${API_BASE_URL}/api/v1/admin/rooms${queryString ? `?${queryString}` : ''}`
   const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}
+
+export async function fetchAdminRoomTypes(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms/types`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   return res.json()
@@ -270,5 +294,133 @@ export async function deleteHotel(token: string, id: string) {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   })
+  return res.json()
+}
+
+export type HomePageSectionType =
+  | 'HERO'
+  | 'TEXT'
+  | 'CARD'
+  | 'FEATURE'
+  | 'CTA'
+  | 'LOCATION'
+  | 'FOOTER'
+  | 'NEWSLETTER'
+  | 'CUSTOM'
+
+export type HomePageSectionStatus = 'ACTIVE' | 'INACTIVE'
+
+export interface HomePageSection {
+  id: string
+  name: string
+  sectionKey: string
+  groupKey: string
+  sectionType: HomePageSectionType
+  status: HomePageSectionStatus
+  sortOrder: number
+  badge: string | null
+  eyebrow: string | null
+  title: string | null
+  subtitle: string | null
+  description: string | null
+  buttonLabel: string | null
+  buttonLink: string | null
+  secondaryButtonLabel: string | null
+  secondaryButtonLink: string | null
+  image: string | null
+  imageAlt: string | null
+  content: unknown
+  createdAt: string
+  updatedAt: string
+}
+
+export interface HomePageSectionPayload {
+  name: string
+  sectionKey: string
+  groupKey: string
+  sectionType: HomePageSectionType
+  status: HomePageSectionStatus
+  sortOrder: number
+  badge?: string
+  eyebrow?: string
+  title?: string
+  subtitle?: string
+  description?: string
+  buttonLabel?: string
+  buttonLink?: string
+  secondaryButtonLabel?: string
+  secondaryButtonLink?: string
+  imageAlt?: string
+  content?: string
+  removeImage?: boolean
+  image?: File | null
+}
+
+const buildHomePageSectionFormData = (payload: Partial<HomePageSectionPayload>) => {
+  const formData = new FormData()
+
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value === undefined || value === null) return
+    if (value instanceof File) {
+      formData.append(key, value)
+      return
+    }
+    formData.append(key, String(value))
+  })
+
+  return formData
+}
+
+export async function fetchAdminHomePageSections(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/homepage/sections`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}
+
+export async function createAdminHomePageSection(token: string, payload: HomePageSectionPayload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/homepage/sections`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: buildHomePageSectionFormData(payload),
+  })
+  return res.json()
+}
+
+export async function updateAdminHomePageSection(
+  token: string,
+  id: string,
+  payload: Partial<HomePageSectionPayload>
+) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/homepage/sections/${id}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: buildHomePageSectionFormData(payload),
+  })
+  return res.json()
+}
+
+export async function deleteAdminHomePageSection(token: string, id: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/homepage/sections/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}
+
+export async function fetchPublicHomePageSections() {
+  const res = await fetch(`${API_BASE_URL}/api/v1/homepage/sections`)
+  return res.json()
+}
+
+export async function uploadHomepageSectionImage(file: File) {
+  const formData = new FormData()
+  formData.append('image', file)
+
+  const res = await fetch(`${API_BASE_URL}/upload-image-multer`, {
+    method: 'POST',
+    body: formData,
+  })
+
   return res.json()
 }
