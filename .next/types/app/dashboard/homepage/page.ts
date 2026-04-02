@@ -1,4 +1,4 @@
-// File: D:\hotel-runner\hotel-runner-admin-panel\app\dashboard\homepage\page.tsx
+// File: /Users/raoimraniqbal/Documents/GitHub/hotel-runner/hotel-runner-admin-panel/app/dashboard/homepage/page.tsx
 import * as entry from '../../../../../app/dashboard/homepage/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
