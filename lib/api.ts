@@ -157,6 +157,13 @@ export interface Hotel {
   rating?: number | null
   amenities: string[]
   image?: string | null
+  shortDescription?: string | null
+  description?: string | null
+  heroImage?: string | null
+  galleryImages: string[]
+  nearbyPlaces?: unknown
+  bookingExtras?: unknown
+  bookingDefaults?: unknown
   locationId: string
   location: string
   country: string
@@ -256,6 +263,13 @@ export async function createHotel(
     rating?: number
     amenities?: string[]
     image?: string
+    shortDescription?: string
+    description?: string
+    heroImage?: string
+    galleryImages?: string[]
+    nearbyPlaces?: unknown
+    bookingExtras?: unknown
+    bookingDefaults?: unknown
   }
 ) {
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/properties/hotels`, {
@@ -279,6 +293,13 @@ export async function updateHotel(
     rating?: number
     amenities?: string[]
     image?: string
+    shortDescription?: string
+    description?: string
+    heroImage?: string
+    galleryImages?: string[]
+    nearbyPlaces?: unknown
+    bookingExtras?: unknown
+    bookingDefaults?: unknown
   }
 ) {
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/properties/hotels/${id}`, {
