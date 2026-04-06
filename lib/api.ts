@@ -1,9 +1,43 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
+const isLocalHost = (hostname: string) =>
+  hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+
+const normalizeAssetPath = (value: string) => encodeURI(value.trim().replace(/\\/g, '/'))
+
 export function getApiAssetUrl(path?: string | null) {
   if (!path) return ''
-  if (path.startsWith('http://') || path.startsWith('https://')) return path
-  return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
+
+  const normalizedPath = normalizeAssetPath(path)
+
+  try {
+    const directUrl = new URL(normalizedPath)
+
+    if (
+      typeof window !== 'undefined' &&
+      window.location.protocol === 'https:' &&
+      directUrl.protocol === 'http:' &&
+      !isLocalHost(directUrl.hostname)
+    ) {
+      directUrl.protocol = 'https:'
+    }
+
+    return directUrl.toString()
+  } catch {
+    const baseUrl = new URL(API_BASE_URL)
+    const assetUrl = new URL(normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`, baseUrl)
+
+    if (
+      typeof window !== 'undefined' &&
+      window.location.protocol === 'https:' &&
+      assetUrl.protocol === 'http:' &&
+      !isLocalHost(assetUrl.hostname)
+    ) {
+      assetUrl.protocol = 'https:'
+    }
+
+    return assetUrl.toString()
+  }
 }
 
 export async function adminLogin(email: string, password: string) {
