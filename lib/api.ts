@@ -198,6 +198,7 @@ export interface Hotel {
   nearbyPlaces?: unknown
   bookingExtras?: unknown
   bookingDefaults?: unknown
+  detailContent?: unknown
   locationId: string
   location: string
   country: string

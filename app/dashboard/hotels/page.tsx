@@ -41,6 +41,17 @@ type HotelForm = {
   nearbyPlacesJson: string
   bookingExtrasJson: string
   bookingDefaultsJson: string
+  saleText: string
+  aboutTitle: string
+  roomsTitle: string
+  roomsDescription: string
+  diningTitle: string
+  diningSubtitle: string
+  diningDescription: string
+  businessTitle: string
+  businessSubtitle: string
+  businessDescription: string
+  accessibilityText: string
 }
 
 const EMPTY_HOTEL: HotelForm = {
@@ -61,6 +72,17 @@ const EMPTY_HOTEL: HotelForm = {
   nearbyPlacesJson: '',
   bookingExtrasJson: '',
   bookingDefaultsJson: '',
+  saleText: '',
+  aboutTitle: '',
+  roomsTitle: '',
+  roomsDescription: '',
+  diningTitle: '',
+  diningSubtitle: '',
+  diningDescription: '',
+  businessTitle: '',
+  businessSubtitle: '',
+  businessDescription: '',
+  accessibilityText: '',
 }
 
 const parseCsv = (value: string) =>
@@ -92,6 +114,11 @@ const stringifyJsonForInput = (value: unknown) => {
 }
 
 const getHotelImage = (hotel: Hotel) => getApiAssetUrl(hotel.image || hotel.heroImage || hotel.galleryImages[0])
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
 
 export default function HotelsPage() {
   const [searchTerm, setSearchTerm] = useState('')
@@ -165,6 +192,7 @@ export default function HotelsPage() {
   }
 
   const openEditHotel = (hotel: Hotel) => {
+    const detailContent = asRecord(hotel.detailContent)
     setHotelForm({
       id: hotel.id,
       name: hotel.name,
@@ -183,6 +211,17 @@ export default function HotelsPage() {
       nearbyPlacesJson: stringifyJsonForInput(hotel.nearbyPlaces),
       bookingExtrasJson: stringifyJsonForInput(hotel.bookingExtras),
       bookingDefaultsJson: stringifyJsonForInput(hotel.bookingDefaults),
+      saleText: typeof detailContent?.saleText === 'string' ? detailContent.saleText : '',
+      aboutTitle: typeof detailContent?.aboutTitle === 'string' ? detailContent.aboutTitle : '',
+      roomsTitle: typeof detailContent?.roomsTitle === 'string' ? detailContent.roomsTitle : '',
+      roomsDescription: typeof detailContent?.roomsDescription === 'string' ? detailContent.roomsDescription : '',
+      diningTitle: typeof detailContent?.diningTitle === 'string' ? detailContent.diningTitle : '',
+      diningSubtitle: typeof detailContent?.diningSubtitle === 'string' ? detailContent.diningSubtitle : '',
+      diningDescription: typeof detailContent?.diningDescription === 'string' ? detailContent.diningDescription : '',
+      businessTitle: typeof detailContent?.businessTitle === 'string' ? detailContent.businessTitle : '',
+      businessSubtitle: typeof detailContent?.businessSubtitle === 'string' ? detailContent.businessSubtitle : '',
+      businessDescription: typeof detailContent?.businessDescription === 'string' ? detailContent.businessDescription : '',
+      accessibilityText: typeof detailContent?.accessibilityText === 'string' ? detailContent.accessibilityText : '',
     })
     setFormError('')
     setShowHotelModal(true)
@@ -217,6 +256,19 @@ export default function HotelsPage() {
         nearbyPlaces,
         bookingExtras,
         bookingDefaults,
+        detailContent: {
+          saleText: hotelForm.saleText.trim() || null,
+          aboutTitle: hotelForm.aboutTitle.trim() || null,
+          roomsTitle: hotelForm.roomsTitle.trim() || null,
+          roomsDescription: hotelForm.roomsDescription.trim() || null,
+          diningTitle: hotelForm.diningTitle.trim() || null,
+          diningSubtitle: hotelForm.diningSubtitle.trim() || null,
+          diningDescription: hotelForm.diningDescription.trim() || null,
+          businessTitle: hotelForm.businessTitle.trim() || null,
+          businessSubtitle: hotelForm.businessSubtitle.trim() || null,
+          businessDescription: hotelForm.businessDescription.trim() || null,
+          accessibilityText: hotelForm.accessibilityText.trim() || null,
+        },
       }
 
       const result = hotelForm.id ? await updateHotel(token, hotelForm.id, payload) : await createHotel(token, payload)
@@ -442,6 +494,7 @@ export default function HotelsPage() {
                       <p><span className="font-medium">Nearby Places:</span> {selectedHotel.nearbyPlaces ? 'Configured' : 'Not set'}</p>
                       <p><span className="font-medium">Booking Extras:</span> {selectedHotel.bookingExtras ? 'Configured' : 'Not set'}</p>
                       <p><span className="font-medium">Booking Defaults:</span> {selectedHotel.bookingDefaults ? 'Configured' : 'Not set'}</p>
+                      <p><span className="font-medium">Hotel Detail Content:</span> {selectedHotel.detailContent ? 'Configured' : 'Not set'}</p>
                     </div>
                   </div>
                 </div>
@@ -501,6 +554,17 @@ export default function HotelsPage() {
                   <textarea className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2 min-h-[120px] font-mono text-xs" placeholder='Nearby places JSON, e.g. [{"name":"Old Town","distance":"1.5 km"}]' value={hotelForm.nearbyPlacesJson} onChange={(e) => setHotelForm((prev) => ({ ...prev, nearbyPlacesJson: e.target.value }))} />
                   <textarea className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2 min-h-[120px] font-mono text-xs" placeholder='Booking extras JSON, e.g. [{"id":"breakfast","name":"Breakfast","description":"...","price":14,"priceType":"per adult per morning","image":"/img.png"}]' value={hotelForm.bookingExtrasJson} onChange={(e) => setHotelForm((prev) => ({ ...prev, bookingExtrasJson: e.target.value }))} />
                   <textarea className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2 min-h-[120px] font-mono text-xs" placeholder='Booking defaults JSON, e.g. {"arrivalDate":"14/01/2026","nights":1,"adults":1}' value={hotelForm.bookingDefaultsJson} onChange={(e) => setHotelForm((prev) => ({ ...prev, bookingDefaultsJson: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2" placeholder="Hero sale text" value={hotelForm.saleText} onChange={(e) => setHotelForm((prev) => ({ ...prev, saleText: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2" placeholder="About section title" value={hotelForm.aboutTitle} onChange={(e) => setHotelForm((prev) => ({ ...prev, aboutTitle: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Rooms section title" value={hotelForm.roomsTitle} onChange={(e) => setHotelForm((prev) => ({ ...prev, roomsTitle: e.target.value }))} />
+                  <textarea className="w-full px-3 py-2 border border-gray-300 rounded-md min-h-[110px]" placeholder="Rooms section description" value={hotelForm.roomsDescription} onChange={(e) => setHotelForm((prev) => ({ ...prev, roomsDescription: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Dining title" value={hotelForm.diningTitle} onChange={(e) => setHotelForm((prev) => ({ ...prev, diningTitle: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Dining subtitle" value={hotelForm.diningSubtitle} onChange={(e) => setHotelForm((prev) => ({ ...prev, diningSubtitle: e.target.value }))} />
+                  <textarea className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2 min-h-[110px]" placeholder="Dining description" value={hotelForm.diningDescription} onChange={(e) => setHotelForm((prev) => ({ ...prev, diningDescription: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Business section title" value={hotelForm.businessTitle} onChange={(e) => setHotelForm((prev) => ({ ...prev, businessTitle: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Business section subtitle" value={hotelForm.businessSubtitle} onChange={(e) => setHotelForm((prev) => ({ ...prev, businessSubtitle: e.target.value }))} />
+                  <textarea className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2 min-h-[110px]" placeholder="Business section description" value={hotelForm.businessDescription} onChange={(e) => setHotelForm((prev) => ({ ...prev, businessDescription: e.target.value }))} />
+                  <textarea className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2 min-h-[110px]" placeholder="Accessibility section text" value={hotelForm.accessibilityText} onChange={(e) => setHotelForm((prev) => ({ ...prev, accessibilityText: e.target.value }))} />
                 </div>
 
                 {formError && <p className="text-sm text-red-600">{formError}</p>}
