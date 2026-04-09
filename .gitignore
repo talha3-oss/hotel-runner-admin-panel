@@ -1,3 +1,10 @@
 node_modules
 temp_auto_push.bat
-temp_interactive_push.bat
+temp_interactive_push.ba
+temp_push.bat
+temp_push.sh
+temp_push_interactive.bat
+temp_push_interactive.sh
+temp_push_interactive_auto.bat
+temp_push_interactive_auto.sh                                           
+.next
