@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   MagnifyingGlassIcon,
   PlusIcon,
@@ -10,6 +10,7 @@ import {
   BuildingOfficeIcon,
   MapPinIcon,
   StarIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline'
 import {
   createHotel,
@@ -20,6 +21,7 @@ import {
   Hotel,
   HotelStatus,
   LocationOption,
+  uploadRoomImage,
   updateHotel,
 } from '../../../lib/api'
 
@@ -134,6 +136,12 @@ export default function HotelsPage() {
   const [hotelForm, setHotelForm] = useState<HotelForm>(EMPTY_HOTEL)
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [primaryImageFile, setPrimaryImageFile] = useState<File | null>(null)
+  const [heroImageFile, setHeroImageFile] = useState<File | null>(null)
+  const [galleryImageFiles, setGalleryImageFiles] = useState<File[]>([])
+  const [primaryImagePreview, setPrimaryImagePreview] = useState('')
+  const [heroImagePreview, setHeroImagePreview] = useState('')
+  const [galleryImagePreviews, setGalleryImagePreviews] = useState<string[]>([])
 
   const loadData = useCallback(async () => {
     const token = localStorage.getItem('adminToken')
@@ -166,6 +174,16 @@ export default function HotelsPage() {
     loadData()
   }, [loadData])
 
+  useEffect(() => {
+    return () => {
+      if (primaryImagePreview.startsWith('blob:')) URL.revokeObjectURL(primaryImagePreview)
+      if (heroImagePreview.startsWith('blob:')) URL.revokeObjectURL(heroImagePreview)
+      galleryImagePreviews.forEach((preview) => {
+        if (preview.startsWith('blob:')) URL.revokeObjectURL(preview)
+      })
+    }
+  }, [primaryImagePreview, heroImagePreview, galleryImagePreviews])
+
   const filteredHotels = useMemo(() => {
     return hotels.filter((hotel) => {
       const matchesSearch =
@@ -188,6 +206,12 @@ export default function HotelsPage() {
   const openAddHotel = () => {
     setHotelForm({ ...EMPTY_HOTEL, locationId: locations[0]?.id || '' })
     setFormError('')
+    setPrimaryImageFile(null)
+    setHeroImageFile(null)
+    setGalleryImageFiles([])
+    setPrimaryImagePreview('')
+    setHeroImagePreview('')
+    setGalleryImagePreviews([])
     setShowHotelModal(true)
   }
 
@@ -224,7 +248,50 @@ export default function HotelsPage() {
       accessibilityText: typeof detailContent?.accessibilityText === 'string' ? detailContent.accessibilityText : '',
     })
     setFormError('')
+    setPrimaryImageFile(null)
+    setHeroImageFile(null)
+    setGalleryImageFiles([])
+    setPrimaryImagePreview(hotel.image ? getApiAssetUrl(hotel.image) : '')
+    setHeroImagePreview(hotel.heroImage ? getApiAssetUrl(hotel.heroImage) : '')
+    setGalleryImagePreviews(hotel.galleryImages.map((image) => getApiAssetUrl(image)).filter(Boolean))
     setShowHotelModal(true)
+  }
+
+  const handleSingleImageChange = (
+    event: ChangeEvent<HTMLInputElement>,
+    currentPreview: string,
+    setFile: (file: File | null) => void,
+    setPreview: (preview: string) => void,
+    fallbackUrl = ''
+  ) => {
+    const file = event.target.files?.[0] || null
+    setFile(file)
+
+    if (currentPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(currentPreview)
+    }
+
+    if (file) {
+      setPreview(URL.createObjectURL(file))
+      return
+    }
+
+    setPreview(fallbackUrl)
+  }
+
+  const handleGalleryImagesChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || [])
+    galleryImagePreviews.forEach((preview) => {
+      if (preview.startsWith('blob:')) URL.revokeObjectURL(preview)
+    })
+
+    setGalleryImageFiles(files)
+    if (files.length > 0) {
+      setGalleryImagePreviews(files.map((file) => URL.createObjectURL(file)))
+      return
+    }
+
+    setGalleryImagePreviews(parseCsv(hotelForm.galleryImages).map((image) => getApiAssetUrl(image)).filter(Boolean))
   }
 
   const submitHotel = async (e: FormEvent<HTMLFormElement>) => {
@@ -238,6 +305,43 @@ export default function HotelsPage() {
       const nearbyPlaces = parseJsonInput(hotelForm.nearbyPlacesJson, 'Nearby places')
       const bookingExtras = parseJsonInput(hotelForm.bookingExtrasJson, 'Booking extras')
       const bookingDefaults = parseJsonInput(hotelForm.bookingDefaultsJson, 'Booking defaults')
+      let primaryImagePath = hotelForm.image.trim()
+      let heroImagePath = hotelForm.heroImage.trim()
+      let galleryImagePaths = parseCsv(hotelForm.galleryImages)
+
+      if (primaryImageFile) {
+        const uploadResult = await uploadRoomImage(primaryImageFile)
+        const uploadedImagePath = uploadResult.data?.fileUrl
+        if (!uploadResult.success || !uploadedImagePath) {
+          setFormError(uploadResult.message || 'Failed to upload primary image.')
+          return
+        }
+        primaryImagePath = uploadedImagePath
+      }
+
+      if (heroImageFile) {
+        const uploadResult = await uploadRoomImage(heroImageFile)
+        const uploadedImagePath = uploadResult.data?.fileUrl
+        if (!uploadResult.success || !uploadedImagePath) {
+          setFormError(uploadResult.message || 'Failed to upload hero image.')
+          return
+        }
+        heroImagePath = uploadedImagePath
+      }
+
+      if (galleryImageFiles.length > 0) {
+        const uploadedGalleryImages: string[] = []
+        for (const file of galleryImageFiles) {
+          const uploadResult = await uploadRoomImage(file)
+          const uploadedImagePath = uploadResult.data?.fileUrl
+          if (!uploadResult.success || !uploadedImagePath) {
+            setFormError(uploadResult.message || 'Failed to upload one of the gallery images.')
+            return
+          }
+          uploadedGalleryImages.push(uploadedImagePath)
+        }
+        galleryImagePaths = uploadedGalleryImages
+      }
 
       const payload = {
         name: hotelForm.name.trim(),
@@ -248,9 +352,9 @@ export default function HotelsPage() {
         status: hotelForm.status,
         rating: hotelForm.rating ? Number(hotelForm.rating) : undefined,
         amenities: parseCsv(hotelForm.amenities),
-        image: hotelForm.image.trim(),
-        heroImage: hotelForm.heroImage.trim(),
-        galleryImages: parseCsv(hotelForm.galleryImages),
+        image: primaryImagePath,
+        heroImage: heroImagePath,
+        galleryImages: galleryImagePaths,
         shortDescription: hotelForm.shortDescription.trim(),
         description: hotelForm.description.trim(),
         nearbyPlaces,
@@ -279,6 +383,12 @@ export default function HotelsPage() {
       }
 
       setShowHotelModal(false)
+      setPrimaryImageFile(null)
+      setHeroImageFile(null)
+      setGalleryImageFiles([])
+      setPrimaryImagePreview('')
+      setHeroImagePreview('')
+      setGalleryImagePreviews([])
       await loadData()
     } catch {
       setFormError('Unable to connect to server.')
@@ -546,9 +656,89 @@ export default function HotelsPage() {
                   </select>
                   <input className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Rating" value={hotelForm.rating} onChange={(e) => setHotelForm((prev) => ({ ...prev, rating: e.target.value }))} />
                   <input className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2" placeholder="Amenities (comma separated)" value={hotelForm.amenities} onChange={(e) => setHotelForm((prev) => ({ ...prev, amenities: e.target.value }))} />
-                  <input className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2" placeholder="Primary image URL" value={hotelForm.image} onChange={(e) => setHotelForm((prev) => ({ ...prev, image: e.target.value }))} />
-                  <input className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2" placeholder="Hero image URL" value={hotelForm.heroImage} onChange={(e) => setHotelForm((prev) => ({ ...prev, heroImage: e.target.value }))} />
-                  <input className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2" placeholder="Gallery image URLs (comma separated)" value={hotelForm.galleryImages} onChange={(e) => setHotelForm((prev) => ({ ...prev, galleryImages: e.target.value }))} />
+                  <div className="md:col-span-2 grid gap-4 lg:grid-cols-[220px,1fr]">
+                    <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+                      <p className="mb-3 text-sm font-medium text-gray-700">Primary Image</p>
+                      {primaryImagePreview ? (
+                        <img src={primaryImagePreview} alt={hotelForm.name || 'Primary preview'} className="h-36 w-full rounded-md object-cover" />
+                      ) : (
+                        <div className="flex h-36 items-center justify-center rounded-md bg-white text-gray-300">
+                          <PhotoIcon className="h-10 w-10" />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Upload Primary Image
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="mt-1 block w-full text-sm text-gray-600"
+                          onChange={(event) =>
+                            handleSingleImageChange(
+                              event,
+                              primaryImagePreview,
+                              setPrimaryImageFile,
+                              setPrimaryImagePreview,
+                              hotelForm.image ? getApiAssetUrl(hotelForm.image) : ''
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="md:col-span-2 grid gap-4 lg:grid-cols-[220px,1fr]">
+                    <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+                      <p className="mb-3 text-sm font-medium text-gray-700">Hero Image</p>
+                      {heroImagePreview ? (
+                        <img src={heroImagePreview} alt={hotelForm.name || 'Hero preview'} className="h-36 w-full rounded-md object-cover" />
+                      ) : (
+                        <div className="flex h-36 items-center justify-center rounded-md bg-white text-gray-300">
+                          <PhotoIcon className="h-10 w-10" />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Upload Hero Image
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="mt-1 block w-full text-sm text-gray-600"
+                          onChange={(event) =>
+                            handleSingleImageChange(
+                              event,
+                              heroImagePreview,
+                              setHeroImageFile,
+                              setHeroImagePreview,
+                              hotelForm.heroImage ? getApiAssetUrl(hotelForm.heroImage) : ''
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="md:col-span-2 grid gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Upload Gallery Images
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="mt-1 block w-full text-sm text-gray-600"
+                          onChange={handleGalleryImagesChange}
+                        />
+                      </label>
+                    </div>
+                    {galleryImagePreviews.length > 0 && (
+                      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                        {galleryImagePreviews.map((preview, index) => (
+                          <img key={`${preview}-${index}`} src={preview} alt={`Gallery preview ${index + 1}`} className="h-24 w-full rounded-md object-cover" />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <input className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2" placeholder="Short description for cards and booking header" value={hotelForm.shortDescription} onChange={(e) => setHotelForm((prev) => ({ ...prev, shortDescription: e.target.value }))} />
                   <textarea className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2 min-h-[140px]" placeholder="Full hotel description for booking modal and hotel detail page" value={hotelForm.description} onChange={(e) => setHotelForm((prev) => ({ ...prev, description: e.target.value }))} />
                   <textarea className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2 min-h-[120px] font-mono text-xs" placeholder='Nearby places JSON, e.g. [{"name":"Old Town","distance":"1.5 km"}]' value={hotelForm.nearbyPlacesJson} onChange={(e) => setHotelForm((prev) => ({ ...prev, nearbyPlacesJson: e.target.value }))} />
