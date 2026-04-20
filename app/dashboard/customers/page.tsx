@@ -21,7 +21,7 @@ const customers = [
     country: 'United Kingdom',
     registrationDate: '2024-01-10',
     totalBookings: 5,
-    totalSpent: '£2,450.00',
+    totalSpent: 'JOD 2,450.00',
     status: 'Active',
     lastBooking: '2024-01-15',
     preferences: ['Non-smoking', 'High floor', 'Late checkout'],
@@ -36,7 +36,7 @@ const customers = [
     country: 'United Kingdom',
     registrationDate: '2023-11-22',
     totalBookings: 8,
-    totalSpent: '£4,120.00',
+    totalSpent: 'JOD 4,120.00',
     status: 'VIP',
     lastBooking: '2024-01-20',
     preferences: ['Ocean view', 'Breakfast included', 'Spa access'],
@@ -51,7 +51,7 @@ const customers = [
     country: 'Ireland',
     registrationDate: '2024-01-05',
     totalBookings: 2,
-    totalSpent: '£890.00',
+    totalSpent: 'JOD 890.00',
     status: 'Active',
     lastBooking: '2024-01-25',
     preferences: ['Quiet room', 'Business center access'],
@@ -66,7 +66,7 @@ const customers = [
     country: 'Ireland',
     registrationDate: '2023-09-15',
     totalBookings: 12,
-    totalSpent: '£6,780.00',
+    totalSpent: 'JOD 6,780.00',
     status: 'VIP',
     lastBooking: '2024-01-18',
     preferences: ['Pet-friendly', 'Ground floor', 'Early check-in'],
@@ -82,7 +82,7 @@ const bookingHistory = {
       room: 'Deluxe Double Room',
       checkIn: '2024-01-15',
       checkOut: '2024-01-18',
-      amount: '£525.00',
+      amount: 'JOD 525.00',
       status: 'Completed'
     },
     {
@@ -91,7 +91,7 @@ const bookingHistory = {
       room: 'Executive Suite',
       checkIn: '2023-12-20',
       checkOut: '2023-12-23',
-      amount: '£789.00',
+      amount: 'JOD 789.00',
       status: 'Completed'
     }
   ]
@@ -158,12 +158,12 @@ export default function CustomersPage() {
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center">
             <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-green-600 font-bold text-sm">£</span>
+              <span className="text-green-600 font-bold text-sm">JD</span>
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Revenue</p>
               <p className="text-2xl font-bold text-gray-900">
-                £{customers.reduce((sum, c) => sum + parseFloat(c.totalSpent.replace('£', '').replace(',', '')), 0).toLocaleString()}
+                JOD {customers.reduce((sum, c) => sum + parseFloat(c.totalSpent.replace('JOD', '').replace(',', '').trim()), 0).toLocaleString()}
               </p>
             </div>
           </div>

@@ -105,6 +105,18 @@ export interface RoomPayload {
   images?: string[]
 }
 
+export interface UploadImageResult {
+  success: boolean
+  message?: string
+  data?: {
+    filename: string
+    originalName: string
+    fileUrl: string
+    size: number
+    mimetype: string
+  }
+}
+
 export async function fetchAdminRooms(token: string, query: Record<string, string> = {}) {
   const queryString = new URLSearchParams(query).toString()
   const url = `${API_BASE_URL}/api/v1/admin/rooms${queryString ? `?${queryString}` : ''}`
@@ -150,6 +162,18 @@ export async function deleteAdminRoom(token: string, roomId: string) {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   })
+  return res.json()
+}
+
+export async function uploadRoomImage(file: File): Promise<UploadImageResult> {
+  const formData = new FormData()
+  formData.append('image', file)
+
+  const res = await fetch(`${API_BASE_URL}/upload-image-multer`, {
+    method: 'POST',
+    body: formData,
+  })
+
   return res.json()
 }
 

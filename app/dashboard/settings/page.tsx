@@ -16,7 +16,7 @@ export default function SettingsPage() {
     general: {
       hotelName: 'Luxotel Hotels',
       timezone: 'Europe/London',
-      currency: 'GBP',
+      currency: 'JOD',
       language: 'English',
       dateFormat: 'DD/MM/YYYY'
     },
@@ -147,7 +147,7 @@ export default function SettingsPage() {
                           general: { ...settings.general, currency: e.target.value }
                         })}
                       >
-                        <option value="GBP">GBP (£)</option>
+                        <option value="JOD">JOD (JD)</option>
                         <option value="EUR">EUR (€)</option>
                         <option value="USD">USD ($)</option>
                       </select>

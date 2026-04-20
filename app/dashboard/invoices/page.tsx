@@ -152,12 +152,12 @@ export default function InvoicesPage() {
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center">
             <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-green-600 font-bold text-sm">£</span>
+              <span className="text-green-600 font-bold text-sm">JD</span>
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Value</p>
               <p className="text-2xl font-bold text-gray-900">
-                £{invoices.reduce((sum, inv) => sum + inv.total, 0).toLocaleString()}
+                JOD {invoices.reduce((sum, inv) => sum + inv.total, 0).toLocaleString()}
               </p>
             </div>
           </div>
@@ -272,7 +272,7 @@ export default function InvoicesPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-bold text-gray-900">£{invoice.total.toFixed(2)}</div>
+                    <div className="text-sm font-bold text-gray-900">JOD {invoice.total.toFixed(2)}</div>
                     <div className="text-sm text-gray-500">inc. tax</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -409,15 +409,15 @@ export default function InvoicesPage() {
                       <tr className="border-b border-gray-100">
                         <td className="py-2">{selectedInvoice.room}</td>
                         <td className="text-center py-2">{selectedInvoice.nights}</td>
-                        <td className="text-right py-2">£{selectedInvoice.roomRate.toFixed(2)}</td>
-                        <td className="text-right py-2">£{selectedInvoice.subtotal.toFixed(2)}</td>
+                        <td className="text-right py-2">JOD {selectedInvoice.roomRate.toFixed(2)}</td>
+                        <td className="text-right py-2">JOD {selectedInvoice.subtotal.toFixed(2)}</td>
                       </tr>
                       {selectedInvoice.extras.map((extra: any, index: number) => (
                         <tr key={index} className="border-b border-gray-100">
                           <td className="py-2">{extra.name}</td>
                           <td className="text-center py-2">{extra.quantity}</td>
-                          <td className="text-right py-2">£{extra.rate.toFixed(2)}</td>
-                          <td className="text-right py-2">£{extra.total.toFixed(2)}</td>
+                          <td className="text-right py-2">JOD {extra.rate.toFixed(2)}</td>
+                          <td className="text-right py-2">JOD {extra.total.toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -430,16 +430,16 @@ export default function InvoicesPage() {
                     <div className="flex justify-between py-2 border-b border-gray-200">
                       <span className="text-gray-700">Subtotal:</span>
                       <span className="text-gray-900">
-                        £{(selectedInvoice.subtotal + selectedInvoice.extras.reduce((sum: number, extra: any) => sum + extra.total, 0)).toFixed(2)}
+                        JOD {(selectedInvoice.subtotal + selectedInvoice.extras.reduce((sum: number, extra: any) => sum + extra.total, 0)).toFixed(2)}
                       </span>
                     </div>
                     <div className="flex justify-between py-2 border-b border-gray-200">
                       <span className="text-gray-700">Tax (10%):</span>
-                      <span className="text-gray-900">£{selectedInvoice.tax.toFixed(2)}</span>
+                      <span className="text-gray-900">JOD {selectedInvoice.tax.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between py-2 border-b-2 border-gray-300 font-bold text-lg">
                       <span className="text-gray-900">Total:</span>
-                      <span className="text-gray-900">£{selectedInvoice.total.toFixed(2)}</span>
+                      <span className="text-gray-900">JOD {selectedInvoice.total.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>

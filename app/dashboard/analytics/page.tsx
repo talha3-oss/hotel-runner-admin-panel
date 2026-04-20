@@ -79,7 +79,7 @@ export default function AnalyticsPage() {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Revenue</p>
               <p className="text-2xl font-bold text-gray-900">
-                £{analyticsData.overview.totalRevenue.toLocaleString()}
+                JOD {analyticsData.overview.totalRevenue.toLocaleString()}
               </p>
               <div className="flex items-center text-sm text-green-600">
                 <ArrowUpIcon className="h-4 w-4 mr-1" />
@@ -158,12 +158,12 @@ export default function AnalyticsPage() {
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center">
             <div className="h-8 w-8 bg-indigo-100 rounded-full flex items-center justify-center">
-              <span className="text-indigo-600 font-bold text-sm">£</span>
+              <span className="text-indigo-600 font-bold text-sm">JD</span>
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Avg Room Rate</p>
               <p className="text-2xl font-bold text-gray-900">
-                £{analyticsData.overview.averageRoomRate}
+                JOD {analyticsData.overview.averageRoomRate}
               </p>
               <div className="flex items-center text-sm text-green-600">
                 <ArrowUpIcon className="h-4 w-4 mr-1" />
@@ -195,7 +195,7 @@ export default function AnalyticsPage() {
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-semibold text-gray-900">
-                    £{month.revenue.toLocaleString()}
+                    JOD {month.revenue.toLocaleString()}
                   </div>
                   <div className="text-xs text-gray-500">
                     {month.bookings} bookings
@@ -232,7 +232,7 @@ export default function AnalyticsPage() {
                     {segment.percentage}%
                   </div>
                   <div className="text-xs text-gray-500">
-                    £{segment.revenue.toLocaleString()}
+                    JOD {segment.revenue.toLocaleString()}
                   </div>
                 </div>
               </div>
@@ -278,7 +278,7 @@ export default function AnalyticsPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-semibold text-gray-900">
-                      £{room.revenue.toLocaleString()}
+                      JOD {room.revenue.toLocaleString()}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -294,7 +294,7 @@ export default function AnalyticsPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">
-                      £{(room.revenue / room.bookings).toFixed(2)}
+                      JOD {(room.revenue / room.bookings).toFixed(2)}
                     </div>
                   </td>
                 </tr>

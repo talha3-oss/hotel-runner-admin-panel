@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   MagnifyingGlassIcon,
   PlusIcon,
@@ -8,6 +8,7 @@ import {
   TrashIcon,
   MapPinIcon,
   BuildingOfficeIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline'
 import {
   CountryTree,
@@ -20,12 +21,14 @@ import {
   fetchCountriesTree,
   fetchHotels,
   fetchLocations,
+  getApiAssetUrl,
   Hotel,
   HotelStatus,
   LocationOption,
   updateCountry,
   updateHotel,
   updateLocation,
+  uploadRoomImage,
 } from '../../../lib/api'
 
 type CountryForm = {
@@ -90,6 +93,8 @@ export default function LocationsPage() {
   const [hotelForm, setHotelForm] = useState<HotelForm>(EMPTY_HOTEL)
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [selectedHotelImageFile, setSelectedHotelImageFile] = useState<File | null>(null)
+  const [hotelImagePreview, setHotelImagePreview] = useState('')
 
   const loadData = useCallback(async () => {
     const token = localStorage.getItem('adminToken')
@@ -124,6 +129,14 @@ export default function LocationsPage() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  useEffect(() => {
+    return () => {
+      if (hotelImagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(hotelImagePreview)
+      }
+    }
+  }, [hotelImagePreview])
 
   const filteredCountries = useMemo(() => {
     const query = searchTerm.toLowerCase()
@@ -184,6 +197,8 @@ export default function LocationsPage() {
   const openAddHotel = () => {
     setHotelForm({ ...EMPTY_HOTEL, locationId: locations[0]?.id || '' })
     setFormError('')
+    setSelectedHotelImageFile(null)
+    setHotelImagePreview('')
     setShowHotelModal(true)
   }
 
@@ -201,7 +216,26 @@ export default function LocationsPage() {
       image: hotel.image || '',
     })
     setFormError('')
+    setSelectedHotelImageFile(null)
+    setHotelImagePreview(hotel.image ? getApiAssetUrl(hotel.image) : '')
     setShowHotelModal(true)
+  }
+
+  const handleHotelImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null
+
+    setSelectedHotelImageFile(file)
+    setHotelImagePreview((currentPreview) => {
+      if (currentPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(currentPreview)
+      }
+
+      if (file) {
+        return URL.createObjectURL(file)
+      }
+
+      return hotelForm.image ? getApiAssetUrl(hotelForm.image) : ''
+    })
   }
 
   const submitCountry = async (e: FormEvent<HTMLFormElement>) => {
@@ -270,6 +304,20 @@ export default function LocationsPage() {
     setSaving(true)
     setFormError('')
     try {
+      let imagePath = hotelForm.image.trim()
+
+      if (selectedHotelImageFile) {
+        const uploadResult = await uploadRoomImage(selectedHotelImageFile)
+        const uploadedImagePath = uploadResult.data?.fileUrl
+
+        if (!uploadResult.success || !uploadedImagePath) {
+          setFormError(uploadResult.message || 'Failed to upload hotel image.')
+          return
+        }
+
+        imagePath = uploadedImagePath
+      }
+
       const payload = {
         name: hotelForm.name.trim(),
         locationId: hotelForm.locationId,
@@ -279,7 +327,7 @@ export default function LocationsPage() {
         status: hotelForm.status,
         rating: hotelForm.rating ? Number(hotelForm.rating) : undefined,
         amenities: parseCsv(hotelForm.amenities),
-        image: hotelForm.image.trim(),
+        image: imagePath,
       }
       const result = hotelForm.id
         ? await updateHotel(token, hotelForm.id, payload)
@@ -291,6 +339,8 @@ export default function LocationsPage() {
       }
 
       setShowHotelModal(false)
+      setSelectedHotelImageFile(null)
+      setHotelImagePreview('')
       await loadData()
     } catch {
       setFormError('Unable to connect to server.')
@@ -603,7 +653,33 @@ export default function LocationsPage() {
                   </select>
                   <input className="w-full px-3 py-2 border rounded-md" placeholder="Rating" value={hotelForm.rating} onChange={(e) => setHotelForm((p) => ({ ...p, rating: e.target.value }))} />
                   <input className="w-full px-3 py-2 border rounded-md md:col-span-2" placeholder="Amenities (comma separated)" value={hotelForm.amenities} onChange={(e) => setHotelForm((p) => ({ ...p, amenities: e.target.value }))} />
-                  <input className="w-full px-3 py-2 border rounded-md md:col-span-2" placeholder="Image URL" value={hotelForm.image} onChange={(e) => setHotelForm((p) => ({ ...p, image: e.target.value }))} />
+                  <div className="md:col-span-2 grid gap-4 lg:grid-cols-[220px,1fr]">
+                    <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+                      <p className="mb-3 text-sm font-medium text-gray-700">Hotel Image</p>
+                      {hotelImagePreview ? (
+                        <img src={hotelImagePreview} alt={hotelForm.name || 'Hotel preview'} className="h-36 w-full rounded-md object-cover" />
+                      ) : (
+                        <div className="flex h-36 items-center justify-center rounded-md bg-white text-gray-300">
+                          <PhotoIcon className="h-10 w-10" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Upload Image
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleHotelImageChange}
+                          className="mt-1 block w-full px-3 py-2 border rounded-md"
+                        />
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        Select a real image file and it will be uploaded to the server when you save this hotel.
+                      </p>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex justify-end space-x-3 pt-2">
                   <button type="button" onClick={() => setShowHotelModal(false)} className="px-4 py-2 bg-gray-300 rounded-md">Cancel</button>

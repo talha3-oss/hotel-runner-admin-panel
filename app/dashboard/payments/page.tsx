@@ -16,58 +16,58 @@ const payments = [
     id: 'PAY001',
     bookingId: 'BK001',
     customer: 'John Smith',
-    amount: '£525.00',
+    amount: 'JOD 525.00',
     method: 'Credit Card',
     provider: 'Stripe',
     status: 'Completed',
     date: '2024-01-15',
     transactionId: 'txn_1234567890',
     cardLast4: '4242',
-    currency: 'GBP'
+    currency: 'JOD'
   },
   {
     id: 'PAY002',
     bookingId: 'BK002',
     customer: 'Sarah Johnson',
-    amount: '£789.00',
+    amount: 'JOD 789.00',
     method: 'Pay at Hotel',
     provider: 'Cash/Card',
     status: 'Pending',
     date: '2024-01-20',
     transactionId: null,
     cardLast4: null,
-    currency: 'GBP'
+    currency: 'JOD'
   },
   {
     id: 'PAY003',
     bookingId: 'BK003',
     customer: 'Mike Wilson',
-    amount: '£456.00',
+    amount: 'JOD 456.00',
     method: 'MontyPay',
     provider: 'MontyPay',
     status: 'Completed',
     date: '2024-01-25',
     transactionId: 'mty_9876543210',
     cardLast4: '1234',
-    currency: 'GBP'
+    currency: 'JOD'
   },
   {
     id: 'PAY004',
     bookingId: 'BK004',
     customer: 'Emma Davis',
-    amount: '£1,200.00',
+    amount: 'JOD 1,200.00',
     method: 'Credit Card',
     provider: 'Stripe',
     status: 'Failed',
     date: '2024-01-28',
     transactionId: 'txn_failed_001',
     cardLast4: '5678',
-    currency: 'GBP'
+    currency: 'JOD'
   }
 ]
 
 const paymentStats = {
-  totalRevenue: payments.reduce((sum, p) => sum + parseFloat(p.amount.replace('£', '').replace(',', '')), 0),
+  totalRevenue: payments.reduce((sum, p) => sum + parseFloat(p.amount.replace('JOD', '').replace(',', '').trim()), 0),
   completedPayments: payments.filter(p => p.status === 'Completed').length,
   pendingPayments: payments.filter(p => p.status === 'Pending').length,
   failedPayments: payments.filter(p => p.status === 'Failed').length
@@ -138,7 +138,7 @@ export default function PaymentsPage() {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Revenue</p>
               <p className="text-2xl font-bold text-gray-900">
-                £{paymentStats.totalRevenue.toLocaleString()}
+                JOD {paymentStats.totalRevenue.toLocaleString()}
               </p>
             </div>
           </div>

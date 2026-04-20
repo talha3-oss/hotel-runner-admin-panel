@@ -1,12 +1,13 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   MagnifyingGlassIcon,
   PlusIcon,
   PencilIcon,
   TrashIcon,
   EyeIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline'
 import {
   createAdminRoom,
@@ -14,11 +15,13 @@ import {
   fetchAdminRoomTypes,
   fetchAdminRooms,
   fetchHotels,
+  getApiAssetUrl,
   Hotel,
   Room,
   RoomPayload,
   RoomStatus,
   RoomTypeOption,
+  uploadRoomImage,
   updateAdminRoom,
 } from '../../../lib/api'
 
@@ -38,7 +41,6 @@ type RoomFormData = {
   status: RoomStatus
   description: string
   amenities: string
-  imageUrl: string
 }
 
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400'
@@ -57,7 +59,6 @@ const EMPTY_FORM: RoomFormData = {
   status: 'AVAILABLE',
   description: '',
   amenities: '',
-  imageUrl: '',
 }
 
 const statusLabels: Record<RoomStatus, string> = {
@@ -98,6 +99,8 @@ export default function RoomsPage() {
   const [formData, setFormData] = useState<RoomFormData>(EMPTY_FORM)
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState('')
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState('')
 
   const loadData = useCallback(async () => {
     const token = localStorage.getItem('adminToken')
@@ -154,6 +157,14 @@ export default function RoomsPage() {
     loadData()
   }, [loadData])
 
+  useEffect(() => {
+    return () => {
+      if (imagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreview)
+      }
+    }
+  }, [imagePreview])
+
   const filteredRooms = useMemo(() => {
     return rooms.filter((room) => {
       const matchesSearch =
@@ -189,6 +200,8 @@ export default function RoomsPage() {
       roomType: EMPTY_FORM.roomType,
     })
     setFormError('')
+    setSelectedImageFile(null)
+    setImagePreview('')
     setShowRoomForm(true)
   }
 
@@ -209,8 +222,9 @@ export default function RoomsPage() {
       status: room.status,
       description: room.description || '',
       amenities: room.amenities.join(', '),
-      imageUrl: room.images[0] || '',
     })
+    setSelectedImageFile(null)
+    setImagePreview(room.images[0] ? getApiAssetUrl(room.images[0]) : '')
     setShowRoomForm(true)
   }
 
@@ -219,6 +233,29 @@ export default function RoomsPage() {
     setEditingRoom(null)
     setFormData(EMPTY_FORM)
     setFormError('')
+    setSelectedImageFile(null)
+    setImagePreview('')
+  }
+
+  const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null
+
+    setSelectedImageFile(file)
+    setImagePreview((currentPreview) => {
+      if (currentPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(currentPreview)
+      }
+
+      if (file) {
+        return URL.createObjectURL(file)
+      }
+
+      if (editingRoom?.images[0]) {
+        return getApiAssetUrl(editingRoom.images[0])
+      }
+
+      return ''
+    })
   }
 
   const handleViewRoom = (room: Room) => {
@@ -283,7 +320,7 @@ export default function RoomsPage() {
       status: formData.status,
       description: formData.description.trim(),
       amenities: parseCsvInput(formData.amenities),
-      images: formData.imageUrl.trim() ? [formData.imageUrl.trim()] : [DEFAULT_IMAGE],
+      images: editingRoom?.images?.length ? editingRoom.images : [DEFAULT_IMAGE],
     }
 
     if (editingRoom) {
@@ -297,6 +334,18 @@ export default function RoomsPage() {
     setFormError('')
 
     try {
+      if (selectedImageFile) {
+        const uploadResult = await uploadRoomImage(selectedImageFile)
+        const uploadedImagePath = uploadResult.data?.fileUrl
+
+        if (!uploadResult.success || !uploadedImagePath) {
+          setFormError(uploadResult.message || 'Failed to upload room image.')
+          return
+        }
+
+        payload.images = [uploadedImagePath]
+      }
+
       const result = editingRoom
         ? await updateAdminRoom(token, editingRoom.id, payload)
         : await createAdminRoom(token, payload)
@@ -404,7 +453,11 @@ export default function RoomsPage() {
           {filteredRooms.map((room) => (
             <div key={room.id} className="bg-white rounded-lg shadow-md overflow-hidden">
               <div className="relative">
-                <img src={room.images[0] || DEFAULT_IMAGE} alt={room.name} className="w-full h-48 object-cover" />
+                <img
+                  src={room.images[0] ? getApiAssetUrl(room.images[0]) : DEFAULT_IMAGE}
+                  alt={room.name}
+                  className="w-full h-48 object-cover"
+                />
                 <div className="absolute top-2 right-2">
                   <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusBadgeClass(room.status)}`}>
                     {statusLabels[room.status]}
@@ -415,7 +468,7 @@ export default function RoomsPage() {
               <div className="p-4">
                 <div className="flex justify-between items-start mb-2">
                   <h3 className="text-lg font-semibold text-gray-900">{room.name}</h3>
-                  <span className="text-lg font-bold text-primary-600">GBP {room.price}</span>
+                  <span className="text-lg font-bold text-primary-600">JOD {room.price}</span>
                 </div>
 
                 <p className="text-sm text-gray-600 mb-1">{room.roomNumber}</p>
@@ -590,7 +643,7 @@ export default function RoomsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Price per Night (GBP)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Price per Night (JOD)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -657,15 +710,30 @@ export default function RoomsPage() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Image URL (optional)</label>
-                  <input
-                    type="url"
-                    value={formData.imageUrl}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, imageUrl: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    placeholder="https://example.com/room.jpg"
-                  />
+                <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
+                  <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+                    <p className="mb-3 text-sm font-medium text-gray-700">Room Image</p>
+                    {imagePreview ? (
+                      <img src={imagePreview} alt={formData.name || 'Room preview'} className="h-36 w-full rounded-md object-cover" />
+                    ) : (
+                      <div className="flex h-36 items-center justify-center rounded-md bg-white text-gray-300">
+                        <PhotoIcon className="h-10 w-10" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Upload Image (optional)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <p className="mt-2 text-xs text-gray-500">
+                      Select a real image file and it will be uploaded to the server when you save this room.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex justify-end space-x-3 pt-4">
@@ -704,7 +772,7 @@ export default function RoomsPage() {
 
               <div className="space-y-4">
                 <img
-                  src={selectedRoom.images[0] || DEFAULT_IMAGE}
+                  src={selectedRoom.images[0] ? getApiAssetUrl(selectedRoom.images[0]) : DEFAULT_IMAGE}
                   alt={selectedRoom.name}
                   className="w-full h-64 object-cover rounded-lg"
                 />
@@ -735,7 +803,7 @@ export default function RoomsPage() {
                         <span className="font-medium">Size:</span> {selectedRoom.size}
                       </p>
                       <p>
-                        <span className="font-medium">Price:</span> GBP {selectedRoom.price}/night
+                        <span className="font-medium">Price:</span> JOD {selectedRoom.price}/night
                       </p>
                       <p>
                         <span className="font-medium">Status:</span> {statusLabels[selectedRoom.status]}

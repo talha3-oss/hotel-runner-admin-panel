@@ -26,7 +26,7 @@ const stats = [
   },
   {
     name: 'Total Revenue',
-    value: '£45,678',
+    value: 'JOD 45,678',
     change: '+15%',
     changeType: 'increase',
     icon: CurrencyDollarIcon,
@@ -49,7 +49,7 @@ const recentBookings = [
     checkIn: '2024-01-15',
     checkOut: '2024-01-18',
     status: 'Confirmed',
-    amount: '£525.00'
+    amount: 'JOD 525.00'
   },
   {
     id: 'BK002',
@@ -59,7 +59,7 @@ const recentBookings = [
     checkIn: '2024-01-20',
     checkOut: '2024-01-23',
     status: 'Pending',
-    amount: '£789.00'
+    amount: 'JOD 789.00'
   },
   {
     id: 'BK003',
@@ -69,7 +69,7 @@ const recentBookings = [
     checkIn: '2024-01-25',
     checkOut: '2024-01-27',
     status: 'Confirmed',
-    amount: '£456.00'
+    amount: 'JOD 456.00'
   },
 ]
 
