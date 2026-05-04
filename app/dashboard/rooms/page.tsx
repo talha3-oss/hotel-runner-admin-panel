@@ -36,7 +36,7 @@ const RATE_PLANS_META = [
 
 const RATE_PLAN_TYPES = RATE_PLANS_META.map((p) => p.key)
 
-const RATE_PLAN_MARKUP = 0.11 // Public rate ≈ Luxotel rate × 1.11
+const RATE_PLAN_MARKUP = 0.15 // Public rate ≈ Luxotel rate × 1.15
 
 type RoomFormData = {
   hotelId: string
@@ -700,7 +700,7 @@ export default function RoomsPage() {
                           ? `JOD ${(Number(formData.price) * (1 + RATE_PLAN_MARKUP)).toFixed(2)}`
                           : '—'}
                       </div>
-                      <p className="mt-1 text-xs text-gray-400">Auto-calculated: Luxotel rate × 1.11. Shown as "Public Rate" on the booking page.</p>
+                      <p className="mt-1 text-xs text-gray-400">Auto-calculated: Luxotel rate × 1.15. Shown as "Public Rate" on the booking page.</p>
                     </div>
                   </div>
 
