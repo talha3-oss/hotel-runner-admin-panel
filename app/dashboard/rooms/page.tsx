@@ -25,7 +25,18 @@ import {
   updateAdminRoom,
 } from '../../../lib/api'
 
-const DEFAULT_ROOM_TYPES = ['Room Only', 'Breakfast Included', 'Dinner Included', 'Bed & Breakfast']
+const RATE_PLANS_META = [
+  { code: 'PNRO', key: 'Pay Now - Room Only',             label: 'Pay Now - Room Only' },
+  { code: 'FXRO', key: 'Flexible Rate - Room Only',       label: 'Flexible Rate - Room Only' },
+  { code: 'PNBB', key: 'Pay Now - Bed & Breakfast',       label: 'Pay Now - Bed & Breakfast' },
+  { code: 'FXBB', key: 'Flexible Rate - Bed & Breakfast', label: 'Flexible Rate - Bed & Breakfast' },
+  { code: 'PNHB', key: 'Pay Now - Half-Board',            label: 'Pay Now - Half-Board' },
+  { code: 'FXHB', key: 'Flexible Rate - Half-Board',      label: 'Flexible Rate - Half-Board' },
+]
+
+const RATE_PLAN_TYPES = RATE_PLANS_META.map((p) => p.key)
+
+const RATE_PLAN_MARKUP = 0.11 // Public rate ≈ Luxotel rate × 1.11
 
 type RoomFormData = {
   hotelId: string
@@ -51,7 +62,7 @@ const EMPTY_FORM: RoomFormData = {
   roomCount: '1',
   roomNumber: '',
   roomNumbers: '',
-  roomType: DEFAULT_ROOM_TYPES[0],
+  roomType: RATE_PLAN_TYPES[0],
   capacity: '',
   bedType: '',
   size: '',
@@ -179,7 +190,7 @@ export default function RoomsPage() {
   }, [rooms, searchTerm, statusFilter, typeFilter, hotelFilter])
 
   const availableRoomTypes = useMemo(() => {
-    const names = new Set<string>(DEFAULT_ROOM_TYPES)
+    const names = new Set<string>(RATE_PLAN_TYPES)
 
     roomTypes.forEach((type) => {
       if (type.name.trim()) names.add(type.name.trim())
@@ -189,7 +200,10 @@ export default function RoomsPage() {
       if (room.roomType.trim()) names.add(room.roomType.trim())
     })
 
-    return Array.from(names).sort((a, b) => a.localeCompare(b))
+    // Always keep the 6 canonical types first, then any extras
+    const canonical = RATE_PLAN_TYPES
+    const extras = Array.from(names).filter((n) => !RATE_PLAN_TYPES.includes(n)).sort()
+    return [...canonical, ...extras]
   }, [roomTypes, rooms])
 
   const openAddModal = () => {
@@ -592,21 +606,20 @@ export default function RoomsPage() {
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Room Type</label>
-                    <input
-                      type="text"
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Rate Plan Type</label>
+                    <select
                       required
                       value={formData.roomType}
                       onChange={(e) => setFormData((prev) => ({ ...prev, roomType: e.target.value }))}
-                      list="room-type-options"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      placeholder="Enter room type"
-                    />
-                    <datalist id="room-type-options">
+                    >
                       {availableRoomTypes.map((typeName) => (
-                        <option key={typeName} value={typeName} />
+                        <option key={typeName} value={typeName}>{typeName}</option>
                       ))}
-                    </datalist>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-400">
+                      Each physical room name can exist under multiple rate plans — add separately per plan.
+                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Capacity</label>
@@ -643,19 +656,6 @@ export default function RoomsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Price per Night (JOD)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      min="0"
-                      value={formData.price}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, price: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                     <select
                       value={formData.status}
@@ -668,6 +668,72 @@ export default function RoomsPage() {
                         </option>
                       ))}
                     </select>
+                  </div>
+                </div>
+
+                {/* Pricing Section */}
+                <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                  <h4 className="text-sm font-semibold text-orange-800 mb-3">Pricing — {formData.roomType || 'Select a rate plan above'}</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Click on Luxhotels Rate (JOD) <span className="text-orange-600">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        min="0"
+                        value={formData.price}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, price: e.target.value }))}
+                        className="w-full px-3 py-2 border border-orange-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white font-bold text-orange-700"
+                        placeholder="0.00"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">Direct booking rate — shown as the "Click on Luxhotels" price.</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Public Rate (JOD) — estimated
+                      </label>
+                      <div className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-100 text-gray-600 font-medium">
+                        {formData.price && Number(formData.price) > 0
+                          ? `JOD ${(Number(formData.price) * (1 + RATE_PLAN_MARKUP)).toFixed(2)}`
+                          : '—'}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-400">Auto-calculated: Luxotel rate × 1.11. Shown as "Public Rate" on the booking page.</p>
+                    </div>
+                  </div>
+
+                  {/* Rate plan reference table */}
+                  <div className="mt-4 border-t border-orange-200 pt-3">
+                    <p className="text-xs font-semibold text-orange-700 mb-2 uppercase tracking-wide">Rate Plan Reference</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-gray-600 border-collapse">
+                        <thead>
+                          <tr className="bg-orange-100">
+                            <th className="text-center px-2 py-1.5 border border-orange-200 font-bold text-orange-800 w-16">Code</th>
+                            <th className="text-left px-2 py-1.5 border border-orange-200 font-semibold">Rate Plan</th>
+                            <th className="px-2 py-1.5 border border-orange-200 font-semibold text-center">Public</th>
+                            <th className="px-2 py-1.5 border border-orange-200 font-semibold text-center text-orange-700">Luxotel</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {RATE_PLANS_META.map((plan) => {
+                            const isSelected = formData.roomType === plan.key
+                            const lux = isSelected && formData.price ? Number(formData.price) : null
+                            const pub = lux ? (lux * (1 + RATE_PLAN_MARKUP)).toFixed(2) : '—'
+                            return (
+                              <tr key={plan.key} className={isSelected ? 'bg-orange-50 font-bold' : 'hover:bg-gray-50'}>
+                                <td className="px-2 py-1.5 border border-orange-100 text-center font-mono font-bold text-orange-700 tracking-wider">{plan.code}</td>
+                                <td className="px-2 py-1.5 border border-orange-100">{plan.label}</td>
+                                <td className="px-2 py-1.5 border border-orange-100 text-center">{isSelected && lux ? `JOD ${pub}` : '—'}</td>
+                                <td className="px-2 py-1.5 border border-orange-100 text-center text-orange-700">{isSelected && lux ? `JOD ${lux.toFixed(2)}` : '—'}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
 
