@@ -15,7 +15,8 @@ import {
   DocumentTextIcon,
   Squares2X2Icon,
   Bars3Icon,
-  XMarkIcon
+  XMarkIcon,
+  TagIcon,
 } from '@heroicons/react/24/outline'
 
 const navigation = [
@@ -24,6 +25,7 @@ const navigation = [
   { name: 'Countries & Locations', href: '/dashboard/locations', icon: MapPinIcon },
   { name: 'Homepage Content', href: '/dashboard/homepage', icon: Squares2X2Icon },
   { name: 'Rooms', href: '/dashboard/rooms', icon: HomeIcon },
+  { name: 'Rate Plans', href: '/dashboard/rate-plans', icon: TagIcon },
   { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarDaysIcon },
   { name: 'Customers', href: '/dashboard/customers', icon: UserGroupIcon },
   { name: 'Payments', href: '/dashboard/payments', icon: CreditCardIcon },

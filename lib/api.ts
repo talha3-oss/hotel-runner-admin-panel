@@ -61,6 +61,7 @@ export type RoomStatus = 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'CLEANING'
 export interface RoomTypeOption {
   id: string
   name: string
+  key?: string
   description: string | null
   createdAt: string | null
   updatedAt: string | null
@@ -128,6 +129,32 @@ export async function fetchAdminRooms(token: string, query: Record<string, strin
 
 export async function fetchAdminRoomTypes(token: string) {
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms/types`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}
+
+export async function createAdminRoomType(token: string, payload: { name: string; description?: string }) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms/types`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  })
+  return res.json()
+}
+
+export async function updateAdminRoomType(token: string, id: string, payload: { name?: string; description?: string }) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms/types/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  })
+  return res.json()
+}
+
+export async function deleteAdminRoomType(token: string, id: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms/types/${id}`, {
+    method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   })
   return res.json()

@@ -12,13 +12,12 @@ import {
 import {
   createAdminRoom,
   deleteAdminRoom,
-  fetchAdminRoomTypes,
   fetchAdminRooms,
+  fetchAdminRoomTypes,
   fetchHotels,
   getApiAssetUrl,
   Hotel,
   Room,
-  RoomPayload,
   RoomStatus,
   RoomTypeOption,
   uploadRoomImage,
@@ -36,7 +35,23 @@ const RATE_PLANS_META = [
 
 const RATE_PLAN_TYPES = RATE_PLANS_META.map((p) => p.key)
 
-const RATE_PLAN_MARKUP = 0.15 // Public rate ≈ Luxotel rate × 1.15
+type GroupedRoom = {
+  key: string
+  roomNumber: string
+  hotelId: string
+  hotelName: string
+  name: string
+  capacity: number
+  bedType: string
+  size: string
+  status: RoomStatus
+  description: string
+  amenities: string[]
+  images: string[]
+  locationName?: string
+  countryName?: string
+  plans: Array<{ id: string; roomType: string; price: number }>
+}
 
 type RoomFormData = {
   hotelId: string
@@ -44,6 +59,9 @@ type RoomFormData = {
   roomCount: string
   roomNumber: string
   roomNumbers: string
+  selectedRatePlans: string[]
+  ratePlanPrices: Record<string, string>
+  markup: string
   roomType: string
   capacity: string
   bedType: string
@@ -62,6 +80,9 @@ const EMPTY_FORM: RoomFormData = {
   roomCount: '1',
   roomNumber: '',
   roomNumbers: '',
+  selectedRatePlans: [RATE_PLAN_TYPES[0]],
+  ratePlanPrices: { [RATE_PLAN_TYPES[0]]: '' },
+  markup: '15',
   roomType: RATE_PLAN_TYPES[0],
   capacity: '',
   bedType: '',
@@ -93,20 +114,30 @@ const parseRoomNumbersInput = (value: string): string[] =>
     .map((item) => item.trim())
     .filter(Boolean)
 
+type RatePlanMeta = { code: string; key: string; label: string }
+
+// Derive a short code from any plan name e.g. "All Inclusive Board" → "AIB"
+function deriveCode(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('')
+    .slice(0, 6) || name.slice(0, 4).toUpperCase()
+}
+
 export default function RoomsPage() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [hotels, setHotels] = useState<Hotel[]>([])
-  const [roomTypes, setRoomTypes] = useState<RoomTypeOption[]>([])
+  const [allRatePlans, setAllRatePlans] = useState<RatePlanMeta[]>(RATE_PLANS_META)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [typeFilter, setTypeFilter] = useState('all')
   const [hotelFilter, setHotelFilter] = useState('all')
   const [showRoomForm, setShowRoomForm] = useState(false)
-  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null)
+  const [selectedGroup, setSelectedGroup] = useState<GroupedRoom | null>(null)
   const [showRoomDetails, setShowRoomDetails] = useState(false)
-  const [editingRoom, setEditingRoom] = useState<Room | null>(null)
+  const [editingGroup, setEditingGroup] = useState<GroupedRoom | null>(null)
   const [formData, setFormData] = useState<RoomFormData>(EMPTY_FORM)
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState('')
@@ -123,7 +154,7 @@ export default function RoomsPage() {
 
     try {
       setError('')
-      const [roomsResult, hotelsResult, roomTypesResult] = await Promise.all([
+      const [roomsResult, hotelsResult, typesResult] = await Promise.all([
         fetchAdminRooms(token),
         fetchHotels(token),
         fetchAdminRoomTypes(token),
@@ -141,22 +172,14 @@ export default function RoomsPage() {
         setError(hotelsResult.message || 'Failed to load hotels.')
       }
 
-      if (roomTypesResult.success) {
-        setRoomTypes(roomTypesResult.roomTypes || [])
-      } else if (roomsResult.success) {
-        const derivedTypes = Array.from(new Set<string>((roomsResult.rooms || []).map((room: Room) => room.roomType)))
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b))
-          .map((name) => ({
-            id: `derived:${name}`,
-            name,
-            description: null,
-            createdAt: null,
-            updatedAt: null,
-            derived: true,
-          }))
-        setRoomTypes(derivedTypes)
+      if (typesResult.success) {
+        const knownKeys = new Set(RATE_PLANS_META.map((p) => p.key))
+        const customPlans: RatePlanMeta[] = (typesResult.roomTypes as RoomTypeOption[])
+          .filter((t) => !t.derived && !knownKeys.has(t.name))
+          .map((t) => ({ code: deriveCode(t.name), key: t.name, label: t.name }))
+        setAllRatePlans([...RATE_PLANS_META, ...customPlans])
       }
+
     } catch {
       setError('Unable to connect to server.')
     } finally {
@@ -183,35 +206,48 @@ export default function RoomsPage() {
         room.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (room.hotelName || '').toLowerCase().includes(searchTerm.toLowerCase())
       const matchesStatus = statusFilter === 'all' || room.status.toLowerCase() === statusFilter
-      const matchesType = typeFilter === 'all' || room.roomType === typeFilter
       const matchesHotel = hotelFilter === 'all' || room.hotelId === hotelFilter
-      return matchesSearch && matchesStatus && matchesType && matchesHotel
+      return matchesSearch && matchesStatus && matchesHotel
     })
-  }, [rooms, searchTerm, statusFilter, typeFilter, hotelFilter])
+  }, [rooms, searchTerm, statusFilter, hotelFilter])
 
-  const availableRoomTypes = useMemo(() => {
-    const names = new Set<string>(RATE_PLAN_TYPES)
-
-    roomTypes.forEach((type) => {
-      if (type.name.trim()) names.add(type.name.trim())
-    })
-
-    rooms.forEach((room) => {
-      if (room.roomType.trim()) names.add(room.roomType.trim())
-    })
-
-    // Always keep the 6 canonical types first, then any extras
-    const canonical = RATE_PLAN_TYPES
-    const extras = Array.from(names).filter((n) => !RATE_PLAN_TYPES.includes(n)).sort()
-    return [...canonical, ...extras]
-  }, [roomTypes, rooms])
+  // Group flat room rows by physical room (hotelId + roomNumber)
+  const groupedFilteredRooms = useMemo(() => {
+    const map = new Map<string, GroupedRoom>()
+    for (const room of filteredRooms) {
+      const key = `${room.hotelId}-${room.roomNumber}`
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          roomNumber: room.roomNumber,
+          hotelId: room.hotelId || '',
+          hotelName: room.hotelName || '',
+          name: room.name,
+          capacity: room.capacity,
+          bedType: room.bedType,
+          size: room.size,
+          status: room.status,
+          description: room.description || '',
+          amenities: room.amenities,
+          images: room.images,
+          locationName: room.locationName,
+          countryName: room.countryName,
+          plans: [],
+        })
+      }
+      map.get(key)!.plans.push({ id: room.id, roomType: room.roomType, price: room.price })
+    }
+    return Array.from(map.values())
+  }, [filteredRooms])
 
   const openAddModal = () => {
-    setEditingRoom(null)
+    setEditingGroup(null)
     setFormData({
       ...EMPTY_FORM,
       hotelId: hotels[0]?.id || '',
-      roomType: EMPTY_FORM.roomType,
+      selectedRatePlans: [RATE_PLAN_TYPES[0]],
+      ratePlanPrices: { [RATE_PLAN_TYPES[0]]: '' },
+      markup: '15',
     })
     setFormError('')
     setSelectedImageFile(null)
@@ -219,32 +255,41 @@ export default function RoomsPage() {
     setShowRoomForm(true)
   }
 
-  const openEditModal = (room: Room) => {
-    setEditingRoom(room)
+  const openEditModal = (group: GroupedRoom) => {
+    setEditingGroup(group)
     setFormError('')
+    const planPrices: Record<string, string> = {}
+    const selectedPlans: string[] = []
+    for (const plan of group.plans) {
+      planPrices[plan.roomType] = String(plan.price)
+      selectedPlans.push(plan.roomType)
+    }
     setFormData({
-      hotelId: room.hotelId || '',
-      name: room.name,
+      hotelId: group.hotelId,
+      name: group.name,
       roomCount: '1',
-      roomNumber: room.roomNumber,
-      roomNumbers: room.roomNumber,
-      roomType: room.roomType,
-      capacity: String(room.capacity),
-      bedType: room.bedType,
-      size: room.size,
-      price: String(room.price),
-      status: room.status,
-      description: room.description || '',
-      amenities: room.amenities.join(', '),
+      roomNumber: group.roomNumber,
+      roomNumbers: group.roomNumber,
+      selectedRatePlans: selectedPlans,
+      ratePlanPrices: planPrices,
+      markup: '15',
+      roomType: group.plans[0]?.roomType || RATE_PLAN_TYPES[0],
+      capacity: String(group.capacity),
+      bedType: group.bedType,
+      size: group.size,
+      price: String(group.plans[0]?.price || ''),
+      status: group.status,
+      description: group.description,
+      amenities: group.amenities.join(', '),
     })
     setSelectedImageFile(null)
-    setImagePreview(room.images[0] ? getApiAssetUrl(room.images[0]) : '')
+    setImagePreview(group.images[0] ? getApiAssetUrl(group.images[0]) : '')
     setShowRoomForm(true)
   }
 
   const closeRoomForm = () => {
     setShowRoomForm(false)
-    setEditingRoom(null)
+    setEditingGroup(null)
     setFormData(EMPTY_FORM)
     setFormError('')
     setSelectedImageFile(null)
@@ -264,35 +309,42 @@ export default function RoomsPage() {
         return URL.createObjectURL(file)
       }
 
-      if (editingRoom?.images[0]) {
-        return getApiAssetUrl(editingRoom.images[0])
+      if (editingGroup?.images[0]) {
+        return getApiAssetUrl(editingGroup.images[0])
       }
 
       return ''
     })
   }
 
-  const handleViewRoom = (room: Room) => {
-    setSelectedRoom(room)
+  const handleViewGroup = (group: GroupedRoom) => {
+    setSelectedGroup(group)
     setShowRoomDetails(true)
   }
 
-  const handleDeleteRoom = async (room: Room) => {
+  const handleDeleteGroup = async (group: GroupedRoom) => {
     const token = localStorage.getItem('adminToken')
     if (!token) {
       setError('Admin token not found. Please login again.')
       return
     }
 
-    const confirmed = window.confirm(`Delete room ${room.roomNumber}?`)
+    const planCount = group.plans.length
+    const confirmed = window.confirm(
+      `Delete room ${group.roomNumber} and all its ${planCount} rate plan${planCount === 1 ? '' : 's'}?`
+    )
     if (!confirmed) return
 
     try {
-      const result = await deleteAdminRoom(token, room.id)
-      if (result.success) {
-        await loadData()
+      const errors: string[] = []
+      for (const plan of group.plans) {
+        const result = await deleteAdminRoom(token, plan.id)
+        if (!result.success) errors.push(`${plan.roomType}: ${result.message || 'Failed'}`)
+      }
+      if (errors.length > 0) {
+        setError(errors.join('\n'))
       } else {
-        setError(result.message || 'Failed to delete room.')
+        await loadData()
       }
     } catch {
       setError('Unable to connect to server.')
@@ -308,67 +360,170 @@ export default function RoomsPage() {
       return
     }
 
+    // ── EDIT MODE ───────────────────────────────────────────────────────────
+    if (editingGroup) {
+      if (formData.selectedRatePlans.length === 0) {
+        setFormError('Select at least one rate plan.')
+        return
+      }
+
+      for (const plan of formData.selectedRatePlans) {
+        const planPrice = formData.ratePlanPrices[plan]
+        if (!planPrice || isNaN(Number(planPrice)) || Number(planPrice) < 0) {
+          setFormError(`Enter a valid price for "${plan}".`)
+          return
+        }
+      }
+
+      setFormLoading(true)
+      setFormError('')
+
+      try {
+        let images: string[] = editingGroup.images?.length ? editingGroup.images : [DEFAULT_IMAGE]
+        if (selectedImageFile) {
+          const uploadResult = await uploadRoomImage(selectedImageFile)
+          const uploadedImagePath = uploadResult.data?.fileUrl
+          if (!uploadResult.success || !uploadedImagePath) {
+            setFormError(uploadResult.message || 'Failed to upload room image.')
+            return
+          }
+          images = [uploadedImagePath]
+        }
+
+        const commonFields = {
+          hotelId: formData.hotelId,
+          name: formData.name.trim(),
+          capacity: Number(formData.capacity),
+          bedType: formData.bedType.trim(),
+          size: formData.size.trim(),
+          status: formData.status,
+          description: formData.description.trim(),
+          amenities: parseCsvInput(formData.amenities),
+          images,
+        }
+
+        const errors: string[] = []
+        const existingByType = new Map(editingGroup.plans.map((p) => [p.roomType, p.id]))
+        const newSelectedSet = new Set(formData.selectedRatePlans)
+
+        // Update plans that still exist in the new selection
+        for (const plan of editingGroup.plans) {
+          if (newSelectedSet.has(plan.roomType)) {
+            const result = await updateAdminRoom(token, plan.id, {
+              ...commonFields,
+              roomType: plan.roomType,
+              price: Number(formData.ratePlanPrices[plan.roomType]),
+              roomNumber: formData.roomNumber.trim(),
+            })
+            if (!result.success) errors.push(`${plan.roomType}: ${result.message || 'Failed to update'}`)
+          }
+        }
+
+        // Delete plans that were unchecked
+        for (const plan of editingGroup.plans) {
+          if (!newSelectedSet.has(plan.roomType)) {
+            const result = await deleteAdminRoom(token, plan.id)
+            if (!result.success) errors.push(`Delete ${plan.roomType}: ${result.message || 'Failed'}`)
+          }
+        }
+
+        // Create newly checked plans that didn't exist before
+        for (const planType of formData.selectedRatePlans) {
+          if (!existingByType.has(planType)) {
+            const result = await createAdminRoom(token, {
+              ...commonFields,
+              roomType: planType,
+              price: Number(formData.ratePlanPrices[planType]),
+              roomCount: 1,
+              roomNumbers: [formData.roomNumber.trim()],
+            })
+            if (!result.success) errors.push(`${planType}: ${result.message || 'Failed to create'}`)
+          }
+        }
+
+        if (errors.length > 0) {
+          setFormError(errors.join('\n'))
+        } else {
+          closeRoomForm()
+          await loadData()
+        }
+      } catch {
+        setFormError('Unable to connect to server.')
+      } finally {
+        setFormLoading(false)
+      }
+      return
+    }
+
+    // ── ADD MODE ─────────────────────────────────────────────────────────────
+    if (formData.selectedRatePlans.length === 0) {
+      setFormError('Select at least one rate plan.')
+      return
+    }
+
+    for (const plan of formData.selectedRatePlans) {
+      const planPrice = formData.ratePlanPrices[plan]
+      if (!planPrice || isNaN(Number(planPrice)) || Number(planPrice) < 0) {
+        setFormError(`Enter a valid price for "${plan}".`)
+        return
+      }
+    }
+
     const roomCount = Number(formData.roomCount)
-    const roomNumbers = editingRoom ? [] : parseRoomNumbersInput(formData.roomNumbers)
+    const roomNumbers = parseRoomNumbersInput(formData.roomNumbers)
 
-    if (!editingRoom) {
-      if (!Number.isInteger(roomCount) || roomCount <= 0) {
-        setFormError('Number of rooms must be at least 1.')
-        return
-      }
-
-      if (roomNumbers.length !== roomCount) {
-        setFormError(`Please provide exactly ${roomCount} room number${roomCount === 1 ? '' : 's'}.`)
-        return
-      }
+    if (!Number.isInteger(roomCount) || roomCount <= 0) {
+      setFormError('Number of rooms must be at least 1.')
+      return
     }
 
-    const payload: RoomPayload = {
-      hotelId: formData.hotelId,
-      name: formData.name.trim(),
-      roomType: formData.roomType.trim(),
-      capacity: Number(formData.capacity),
-      bedType: formData.bedType.trim(),
-      size: formData.size.trim(),
-      price: Number(formData.price),
-      status: formData.status,
-      description: formData.description.trim(),
-      amenities: parseCsvInput(formData.amenities),
-      images: editingRoom?.images?.length ? editingRoom.images : [DEFAULT_IMAGE],
-    }
-
-    if (editingRoom) {
-      payload.roomNumber = formData.roomNumber.trim()
-    } else {
-      payload.roomCount = roomCount
-      payload.roomNumbers = roomNumbers
+    if (roomNumbers.length !== roomCount) {
+      setFormError(`Please provide exactly ${roomCount} room number${roomCount === 1 ? '' : 's'}.`)
+      return
     }
 
     setFormLoading(true)
     setFormError('')
 
     try {
+      let images: string[] = [DEFAULT_IMAGE]
       if (selectedImageFile) {
         const uploadResult = await uploadRoomImage(selectedImageFile)
         const uploadedImagePath = uploadResult.data?.fileUrl
-
         if (!uploadResult.success || !uploadedImagePath) {
           setFormError(uploadResult.message || 'Failed to upload room image.')
           return
         }
-
-        payload.images = [uploadedImagePath]
+        images = [uploadedImagePath]
       }
 
-      const result = editingRoom
-        ? await updateAdminRoom(token, editingRoom.id, payload)
-        : await createAdminRoom(token, payload)
+      const errors: string[] = []
+      for (const plan of formData.selectedRatePlans) {
+        const result = await createAdminRoom(token, {
+          hotelId: formData.hotelId,
+          name: formData.name.trim(),
+          roomType: plan,
+          capacity: Number(formData.capacity),
+          bedType: formData.bedType.trim(),
+          size: formData.size.trim(),
+          price: Number(formData.ratePlanPrices[plan]),
+          status: formData.status,
+          description: formData.description.trim(),
+          amenities: parseCsvInput(formData.amenities),
+          images,
+          roomCount,
+          roomNumbers,
+        })
+        if (!result.success) {
+          errors.push(`${plan}: ${result.message || 'Failed'}`)
+        }
+      }
 
-      if (result.success) {
+      if (errors.length > 0) {
+        setFormError(errors.join('\n'))
+      } else {
         closeRoomForm()
         await loadData()
-      } else {
-        setFormError(result.message || 'Failed to save room.')
       }
     } catch {
       setFormError('Unable to connect to server.')
@@ -430,18 +585,6 @@ export default function RoomsPage() {
             </select>
             <select
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <option value="all">All Types</option>
-              {availableRoomTypes.map((typeName) => (
-                <option key={typeName} value={typeName}>
-                  {typeName}
-                </option>
-              ))}
-            </select>
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               value={hotelFilter}
               onChange={(e) => setHotelFilter(e.target.value)}
             >
@@ -457,80 +600,87 @@ export default function RoomsPage() {
       </div>
 
       {error && (
-        <div className="mb-6 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="mb-6 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 whitespace-pre-line">{error}</div>
       )}
 
       {loading && <div className="rounded-md bg-white p-6 text-sm text-gray-600 shadow">Loading rooms...</div>}
 
       {!loading && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredRooms.map((room) => (
-            <div key={room.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+          {groupedFilteredRooms.map((group) => (
+            <div key={group.key} className="bg-white rounded-lg shadow-md overflow-hidden">
               <div className="relative">
                 <img
-                  src={room.images[0] ? getApiAssetUrl(room.images[0]) : DEFAULT_IMAGE}
-                  alt={room.name}
+                  src={group.images[0] ? getApiAssetUrl(group.images[0]) : DEFAULT_IMAGE}
+                  alt={group.name}
                   className="w-full h-48 object-cover"
                 />
                 <div className="absolute top-2 right-2">
-                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusBadgeClass(room.status)}`}>
-                    {statusLabels[room.status]}
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusBadgeClass(group.status)}`}>
+                    {statusLabels[group.status]}
                   </span>
                 </div>
               </div>
 
               <div className="p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="text-lg font-semibold text-gray-900">{room.name}</h3>
-                  <span className="text-lg font-bold text-primary-600">JOD {room.price}</span>
+                <div className="flex justify-between items-start mb-1">
+                  <h3 className="text-lg font-semibold text-gray-900">{group.name}</h3>
+                  <span className="text-sm font-medium text-gray-500">#{group.roomNumber}</span>
                 </div>
 
-                <p className="text-sm text-gray-600 mb-1">{room.roomNumber}</p>
-                <p className="text-sm text-gray-600 mb-2">Hotel: {room.hotelName || '-'}</p>
+                <p className="text-sm text-gray-600 mb-3">Hotel: {group.hotelName || '-'}</p>
 
-                <div className="space-y-1 text-sm text-gray-600 mb-3">
-                  <p>
-                    <span className="font-medium">Type:</span> {room.roomType}
-                  </p>
-                  <p>
-                    <span className="font-medium">Capacity:</span> {room.capacity} guests
-                  </p>
-                  <p>
-                    <span className="font-medium">Bed:</span> {room.bedType}
-                  </p>
-                  <p>
-                    <span className="font-medium">Size:</span> {room.size}
-                  </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600 mb-3">
+                  <span><span className="font-medium">Capacity:</span> {group.capacity} guests</span>
+                  <span><span className="font-medium">Bed:</span> {group.bedType}</span>
+                  <span><span className="font-medium">Size:</span> {group.size}</span>
+                </div>
+
+                {/* Rate plan badges */}
+                <div className="mb-3">
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Rate Plans</p>
+                  <div className="flex flex-wrap gap-1">
+                    {group.plans.map((plan) => {
+                      const meta = RATE_PLANS_META.find((m) => m.key === plan.roomType)
+                      return (
+                        <span
+                          key={plan.roomType}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-orange-50 border border-orange-200 text-xs rounded-full"
+                        >
+                          <span className="font-bold text-orange-800">{meta?.code ?? plan.roomType}</span>
+                          <span className="text-orange-600 font-medium">JOD {plan.price}</span>
+                        </span>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-1 mb-3">
-                  {room.amenities.slice(0, 3).map((amenity, index) => (
+                  {group.amenities.slice(0, 3).map((amenity, index) => (
                     <span key={index} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
                       {amenity}
                     </span>
                   ))}
-                  {room.amenities.length > 3 && (
-                    <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">+{room.amenities.length - 3} more</span>
+                  {group.amenities.length > 3 && (
+                    <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">+{group.amenities.length - 3} more</span>
                   )}
                 </div>
 
-                <div className="flex justify-between items-center">
-                  <div className="flex space-x-2">
-                    <button onClick={() => handleViewRoom(room)} className="text-primary-600 hover:text-primary-800">
-                      <EyeIcon className="h-5 w-5" />
-                    </button>
-                    <button onClick={() => openEditModal(room)} className="text-blue-600 hover:text-blue-800">
-                      <PencilIcon className="h-5 w-5" />
-                    </button>
-                    <button onClick={() => handleDeleteRoom(room)} className="text-red-600 hover:text-red-800">
-                      <TrashIcon className="h-5 w-5" />
-                    </button>
-                  </div>
+                <div className="flex space-x-2">
+                  <button onClick={() => handleViewGroup(group)} className="text-primary-600 hover:text-primary-800">
+                    <EyeIcon className="h-5 w-5" />
+                  </button>
+                  <button onClick={() => openEditModal(group)} className="text-blue-600 hover:text-blue-800">
+                    <PencilIcon className="h-5 w-5" />
+                  </button>
+                  <button onClick={() => handleDeleteGroup(group)} className="text-red-600 hover:text-red-800">
+                    <TrashIcon className="h-5 w-5" />
+                  </button>
                 </div>
               </div>
             </div>
           ))}
-          {filteredRooms.length === 0 && (
+          {groupedFilteredRooms.length === 0 && (
             <div className="col-span-full rounded-md bg-white p-6 text-sm text-gray-600 shadow">No rooms found with current filters.</div>
           )}
         </div>
@@ -541,14 +691,14 @@ export default function RoomsPage() {
           <div className="relative top-10 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-2/3 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-gray-900">{editingRoom ? 'Edit Room' : 'Add New Room'}</h3>
+                <h3 className="text-lg font-medium text-gray-900">{editingGroup ? 'Edit Room' : 'Add New Room'}</h3>
                 <button onClick={closeRoomForm} className="text-gray-400 hover:text-gray-600">
                   x
                 </button>
               </div>
 
               {formError && (
-                <div className="mb-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</div>
+                <div className="mb-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 whitespace-pre-line">{formError}</div>
               )}
 
               <form className="space-y-4" onSubmit={handleFormSubmit}>
@@ -582,9 +732,9 @@ export default function RoomsPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {editingRoom ? 'Room Number' : 'Number of Rooms'}
+                      {editingGroup ? 'Room Number' : 'Number of Rooms'}
                     </label>
-                    {editingRoom ? (
+                    {editingGroup ? (
                       <input
                         type="text"
                         required
@@ -604,22 +754,6 @@ export default function RoomsPage() {
                         placeholder="How many rooms of this type?"
                       />
                     )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Rate Plan Type</label>
-                    <select
-                      required
-                      value={formData.roomType}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, roomType: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    >
-                      {availableRoomTypes.map((typeName) => (
-                        <option key={typeName} value={typeName}>{typeName}</option>
-                      ))}
-                    </select>
-                    <p className="mt-1 text-xs text-gray-400">
-                      Each physical room name can exist under multiple rate plans — add separately per plan.
-                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Capacity</label>
@@ -673,71 +807,112 @@ export default function RoomsPage() {
 
                 {/* Pricing Section */}
                 <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
-                  <h4 className="text-sm font-semibold text-orange-800 mb-3">Pricing — {formData.roomType || 'Select a rate plan above'}</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Click on Luxhotels Rate (JOD) <span className="text-orange-600">*</span>
-                      </label>
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h4 className="text-sm font-semibold text-orange-800">Rate Plans & Pricing</h4>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-600 font-medium">Markup %</label>
                       <input
                         type="number"
-                        step="0.01"
-                        required
                         min="0"
-                        value={formData.price}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, price: e.target.value }))}
-                        className="w-full px-3 py-2 border border-orange-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white font-bold text-orange-700"
-                        placeholder="0.00"
+                        max="100"
+                        step="0.1"
+                        value={formData.markup}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, markup: e.target.value }))}
+                        className="w-16 px-2 py-1 text-sm border border-orange-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 font-bold text-orange-700"
                       />
-                      <p className="mt-1 text-xs text-gray-500">Direct booking rate — shown as the "Click on Luxhotels" price.</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Public Rate (JOD) — estimated
-                      </label>
-                      <div className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-100 text-gray-600 font-medium">
-                        {formData.price && Number(formData.price) > 0
-                          ? `JOD ${(Number(formData.price) * (1 + RATE_PLAN_MARKUP)).toFixed(2)}`
-                          : '—'}
-                      </div>
-                      <p className="mt-1 text-xs text-gray-400">Auto-calculated: Luxotel rate × 1.15. Shown as "Public Rate" on the booking page.</p>
+                      <span className="text-xs text-gray-500">% above Luxotels rate</span>
                     </div>
                   </div>
 
-                  {/* Rate plan reference table */}
-                  <div className="mt-4 border-t border-orange-200 pt-3">
-                    <p className="text-xs font-semibold text-orange-700 mb-2 uppercase tracking-wide">Rate Plan Reference</p>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-gray-600 border-collapse">
-                        <thead>
-                          <tr className="bg-orange-100">
-                            <th className="text-center px-2 py-1.5 border border-orange-200 font-bold text-orange-800 w-16">Code</th>
-                            <th className="text-left px-2 py-1.5 border border-orange-200 font-semibold">Rate Plan</th>
-                            <th className="px-2 py-1.5 border border-orange-200 font-semibold text-center">Public</th>
-                            <th className="px-2 py-1.5 border border-orange-200 font-semibold text-center text-orange-700">Luxotel</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {RATE_PLANS_META.map((plan) => {
-                            const isSelected = formData.roomType === plan.key
-                            const lux = isSelected && formData.price ? Number(formData.price) : null
-                            const pub = lux ? (lux * (1 + RATE_PLAN_MARKUP)).toFixed(2) : '—'
-                            return (
-                              <tr key={plan.key} className={isSelected ? 'bg-orange-50 font-bold' : 'hover:bg-gray-50'}>
-                                <td className="px-2 py-1.5 border border-orange-100 text-center font-mono font-bold text-orange-700 tracking-wider">{plan.code}</td>
-                                <td className="px-2 py-1.5 border border-orange-100">{plan.label}</td>
-                                <td className="px-2 py-1.5 border border-orange-100 text-center">{isSelected && lux ? `JOD ${pub}` : '—'}</td>
-                                <td className="px-2 py-1.5 border border-orange-100 text-center text-orange-700">{isSelected && lux ? `JOD ${lux.toFixed(2)}` : '—'}</td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-orange-100 text-xs">
+                          <th className="px-2 py-2 w-8" />
+                          <th className="px-2 py-2 text-center font-bold text-orange-800 w-14">Code</th>
+                          <th className="px-2 py-2 text-left font-semibold text-gray-700">Rate Plan</th>
+                          <th className="px-2 py-2 text-center font-semibold text-orange-700 w-36">Luxotels Rate (JOD)</th>
+                          <th className="px-2 py-2 text-center font-semibold text-gray-600 w-32">Public Rate</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allRatePlans.map((plan) => {
+                          const isSelected = formData.selectedRatePlans.includes(plan.key)
+                          const luxPrice = formData.ratePlanPrices[plan.key] || ''
+                          const markupFactor = 1 + Number(formData.markup || 15) / 100
+                          const publicRate =
+                            luxPrice && Number(luxPrice) > 0
+                              ? (Number(luxPrice) * markupFactor).toFixed(2)
+                              : null
+                          return (
+                            <tr key={plan.key} className={isSelected ? 'bg-orange-50' : 'hover:bg-gray-50'}>
+                              <td className="px-2 py-2 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        selectedRatePlans: [...prev.selectedRatePlans, plan.key],
+                                        ratePlanPrices: { ...prev.ratePlanPrices, [plan.key]: '' },
+                                      }))
+                                    } else {
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        selectedRatePlans: prev.selectedRatePlans.filter((p) => p !== plan.key),
+                                      }))
+                                    }
+                                  }}
+                                  className="w-4 h-4 accent-orange-600 cursor-pointer"
+                                />
+                              </td>
+                              <td className="px-2 py-2 text-center font-mono font-bold text-orange-700 text-xs tracking-wider">
+                                {plan.code}
+                              </td>
+                              <td className="px-2 py-2 text-gray-800">{plan.label}</td>
+                              <td className="px-2 py-2">
+                                {isSelected ? (
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    required
+                                    value={luxPrice}
+                                    onChange={(e) =>
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        ratePlanPrices: { ...prev.ratePlanPrices, [plan.key]: e.target.value },
+                                      }))
+                                    }
+                                    className="w-full px-2 py-1 text-sm border border-orange-300 rounded-md bg-white font-bold text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                                    placeholder="0.00"
+                                  />
+                                ) : (
+                                  <span className="text-gray-300 text-xs pl-2">—</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-2 text-center text-sm text-gray-600">
+                                {isSelected && publicRate ? `JOD ${publicRate}` : <span className="text-gray-300 text-xs">—</span>}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                    {editingGroup ? (
+                      <p className="mt-2 text-xs text-gray-400">
+                        Check plans to add them, uncheck to remove them. Existing plans will be updated with new prices.
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-xs text-gray-400">
+                        Check all rate plans for this room. Each checked plan creates a separate entry in the database.
+                      </p>
+                    )}
                   </div>
                 </div>
 
-                {!editingRoom && (
+                {!editingGroup && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Room Numbers</label>
                     <textarea
@@ -816,7 +991,7 @@ export default function RoomsPage() {
                     className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed"
                     disabled={formLoading}
                   >
-                    {formLoading ? 'Saving...' : editingRoom ? 'Update Room' : 'Add Room'}
+                    {formLoading ? 'Saving...' : editingGroup ? 'Update Room' : 'Add Room'}
                   </button>
                 </div>
               </form>
@@ -825,12 +1000,12 @@ export default function RoomsPage() {
         </div>
       )}
 
-      {showRoomDetails && selectedRoom && (
+      {showRoomDetails && selectedGroup && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Room Details - {selectedRoom.name}</h3>
+                <h3 className="text-lg font-medium text-gray-900">Room Details — {selectedGroup.name}</h3>
                 <button onClick={() => setShowRoomDetails(false)} className="text-gray-400 hover:text-gray-600">
                   x
                 </button>
@@ -838,8 +1013,8 @@ export default function RoomsPage() {
 
               <div className="space-y-4">
                 <img
-                  src={selectedRoom.images[0] ? getApiAssetUrl(selectedRoom.images[0]) : DEFAULT_IMAGE}
-                  alt={selectedRoom.name}
+                  src={selectedGroup.images[0] ? getApiAssetUrl(selectedGroup.images[0]) : DEFAULT_IMAGE}
+                  alt={selectedGroup.name}
                   className="w-full h-64 object-cover rounded-lg"
                 />
 
@@ -847,40 +1022,39 @@ export default function RoomsPage() {
                   <div>
                     <h4 className="font-medium text-gray-900 mb-2">Basic Information</h4>
                     <div className="space-y-1 text-sm">
+                      <p><span className="font-medium">Room Number:</span> {selectedGroup.roomNumber}</p>
+                      <p><span className="font-medium">Hotel:</span> {selectedGroup.hotelName || '-'}</p>
                       <p>
-                        <span className="font-medium">Room Number:</span> {selectedRoom.roomNumber}
+                        <span className="font-medium">Location:</span>{' '}
+                        {selectedGroup.locationName || '-'}, {selectedGroup.countryName || '-'}
                       </p>
-                      <p>
-                        <span className="font-medium">Hotel:</span> {selectedRoom.hotelName || '-'}
-                      </p>
-                      <p>
-                        <span className="font-medium">Location:</span> {selectedRoom.locationName || '-'}, {selectedRoom.countryName || '-'}
-                      </p>
-                      <p>
-                        <span className="font-medium">Type:</span> {selectedRoom.roomType}
-                      </p>
-                      <p>
-                        <span className="font-medium">Capacity:</span> {selectedRoom.capacity} guests
-                      </p>
-                      <p>
-                        <span className="font-medium">Bed Type:</span> {selectedRoom.bedType}
-                      </p>
-                      <p>
-                        <span className="font-medium">Size:</span> {selectedRoom.size}
-                      </p>
-                      <p>
-                        <span className="font-medium">Price:</span> JOD {selectedRoom.price}/night
-                      </p>
-                      <p>
-                        <span className="font-medium">Status:</span> {statusLabels[selectedRoom.status]}
-                      </p>
+                      <p><span className="font-medium">Capacity:</span> {selectedGroup.capacity} guests</p>
+                      <p><span className="font-medium">Bed Type:</span> {selectedGroup.bedType}</p>
+                      <p><span className="font-medium">Size:</span> {selectedGroup.size}</p>
+                      <p><span className="font-medium">Status:</span> {statusLabels[selectedGroup.status]}</p>
                     </div>
                   </div>
 
                   <div>
-                    <h4 className="font-medium text-gray-900 mb-2">Amenities</h4>
+                    <h4 className="font-medium text-gray-900 mb-2">Rate Plans</h4>
+                    <div className="space-y-1">
+                      {selectedGroup.plans.map((plan) => {
+                        const meta = RATE_PLANS_META.find((m) => m.key === plan.roomType)
+                        return (
+                          <div key={plan.roomType} className="flex items-center justify-between rounded-md bg-orange-50 px-3 py-2 text-sm">
+                            <span className="font-medium text-gray-700">
+                              <span className="font-mono text-xs font-bold text-orange-700 mr-2">{meta?.code}</span>
+                              {meta?.label ?? plan.roomType}
+                            </span>
+                            <span className="font-bold text-orange-700">JOD {plan.price}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    <h4 className="font-medium text-gray-900 mt-4 mb-2">Amenities</h4>
                     <div className="flex flex-wrap gap-2">
-                      {selectedRoom.amenities.map((amenity, index) => (
+                      {selectedGroup.amenities.map((amenity, index) => (
                         <span key={index} className="px-2 py-1 bg-primary-100 text-primary-800 text-xs rounded-full">
                           {amenity}
                         </span>
@@ -891,7 +1065,7 @@ export default function RoomsPage() {
 
                 <div>
                   <h4 className="font-medium text-gray-900 mb-2">Description</h4>
-                  <p className="text-sm text-gray-600">{selectedRoom.description || 'No description.'}</p>
+                  <p className="text-sm text-gray-600">{selectedGroup.description || 'No description.'}</p>
                 </div>
               </div>
 
@@ -905,7 +1079,7 @@ export default function RoomsPage() {
                 <button
                   onClick={() => {
                     setShowRoomDetails(false)
-                    openEditModal(selectedRoom)
+                    openEditModal(selectedGroup)
                   }}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
