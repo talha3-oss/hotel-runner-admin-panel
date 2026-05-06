@@ -10,18 +10,9 @@ import {
   RoomTypeOption,
 } from '../../../lib/api'
 
-// The 6 canonical rate plan keys — shown with a "Built-in" badge
-const BUILTIN_KEYS = new Set([
-  'pay-now-room-only',
-  'flexible-rate-room-only',
-  'pay-now-bed-breakfast',
-  'flexible-rate-bed-breakfast',
-  'pay-now-half-board',
-  'flexible-rate-half-board',
-])
 
-type FormData = { name: string; description: string }
-const EMPTY_FORM: FormData = { name: '', description: '' }
+type FormData = { name: string; code: string; description: string }
+const EMPTY_FORM: FormData = { name: '', code: '', description: '' }
 
 export default function RatePlansPage() {
   const [plans, setPlans] = useState<RoomTypeOption[]>([])
@@ -30,6 +21,7 @@ export default function RatePlansPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingPlan, setEditingPlan] = useState<RoomTypeOption | null>(null)
   const [formData, setFormData] = useState<FormData>(EMPTY_FORM)
+  const [codeManuallyEdited, setCodeManuallyEdited] = useState(false)
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState('')
 
@@ -41,7 +33,7 @@ export default function RatePlansPage() {
       setError('')
       const result = await fetchAdminRoomTypes(token)
       if (result.success) {
-        setPlans(result.roomTypes || [])
+        setPlans((result.roomTypes || []).filter((p: RoomTypeOption) => !p.derived))
       } else {
         setError(result.message || 'Failed to load rate plans.')
       }
@@ -57,13 +49,15 @@ export default function RatePlansPage() {
   const openAddModal = () => {
     setEditingPlan(null)
     setFormData(EMPTY_FORM)
+    setCodeManuallyEdited(false)
     setFormError('')
     setShowModal(true)
   }
 
   const openEditModal = (plan: RoomTypeOption) => {
     setEditingPlan(plan)
-    setFormData({ name: plan.name, description: plan.description || '' })
+    setFormData({ name: plan.name, code: (plan.key || '').toUpperCase(), description: plan.description || '' })
+    setCodeManuallyEdited(true)
     setFormError('')
     setShowModal(true)
   }
@@ -72,6 +66,7 @@ export default function RatePlansPage() {
     setShowModal(false)
     setEditingPlan(null)
     setFormData(EMPTY_FORM)
+    setCodeManuallyEdited(false)
     setFormError('')
   }
 
@@ -83,11 +78,15 @@ export default function RatePlansPage() {
     const name = formData.name.trim()
     if (!name) { setFormError('Name is required.'); return }
 
+    const codeRaw = formData.code.trim()
+    const code = codeRaw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)
+    if (!code) { setFormError('Code is required.'); return }
+
     setFormLoading(true)
     setFormError('')
 
     try {
-      const payload = { name, description: formData.description.trim() || undefined }
+      const payload = { name, key: code, description: formData.description.trim() || undefined }
       const result = editingPlan
         ? await updateAdminRoomType(token, editingPlan.id, payload)
         : await createAdminRoomType(token, payload)
@@ -124,15 +123,16 @@ export default function RatePlansPage() {
     }
   }
 
-  // Auto-preview the key that the backend will generate
-  const previewKey = formData.name
+  // Auto-derive a short uppercase code from the name initials e.g. "Pay Now - Room Only" → "PNRO"
+  const autoCode = formData.name
     .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .split(/[\s\-&]+/)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('')
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 6)
 
-  const isBuiltin = (plan: RoomTypeOption) =>
-    plan.key ? BUILTIN_KEYS.has(plan.key) : false
+  const isBuiltin = (plan: RoomTypeOption) => Boolean(plan.derived)
 
   return (
     <div>
@@ -190,7 +190,7 @@ export default function RatePlansPage() {
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{plan.name}</td>
                     <td className="px-6 py-4">
                       <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                        {plan.key || '—'}
+                        {plan.key ? plan.key.toUpperCase() : '—'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
@@ -269,20 +269,38 @@ export default function RatePlansPage() {
                   type="text"
                   required
                   value={formData.name}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) => {
+                    const name = e.target.value
+                    setFormData((prev) => ({
+                      ...prev,
+                      name,
+                      code: codeManuallyEdited
+                        ? prev.code
+                        : name.trim().split(/[\s\-&]+/).map((w) => w[0]?.toUpperCase() ?? '').join('').replace(/[^A-Z0-9]/g, '').slice(0, 6),
+                    }))
+                  }}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="e.g. Pay Now - All Inclusive"
                 />
               </div>
 
-              {previewKey && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">Auto-generated key</label>
-                  <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    {previewKey}
-                  </span>
-                </div>
-              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Code <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.code}
+                  onChange={(e) => {
+                    setCodeManuallyEdited(true)
+                    setFormData((prev) => ({ ...prev, code: e.target.value }))
+                  }}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder={autoCode || 'e.g. PNRO'}
+                />
+                <p className="mt-1 text-xs text-gray-400">Short uppercase code shown in the rooms table (e.g. PNRO, FXBB). Max 10 characters.</p>
+              </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>

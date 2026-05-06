@@ -17,6 +17,7 @@ import {
   Bars3Icon,
   XMarkIcon,
   TagIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline'
 
 const navigation = [
@@ -26,6 +27,7 @@ const navigation = [
   { name: 'Homepage Content', href: '/dashboard/homepage', icon: Squares2X2Icon },
   { name: 'Rooms', href: '/dashboard/rooms', icon: HomeIcon },
   { name: 'Rate Plans', href: '/dashboard/rate-plans', icon: TagIcon },
+  { name: 'Extras', href: '/dashboard/extras', icon: SparklesIcon },
   { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarDaysIcon },
   { name: 'Customers', href: '/dashboard/customers', icon: UserGroupIcon },
   { name: 'Payments', href: '/dashboard/payments', icon: CreditCardIcon },

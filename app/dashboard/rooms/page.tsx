@@ -24,16 +24,6 @@ import {
   updateAdminRoom,
 } from '../../../lib/api'
 
-const RATE_PLANS_META = [
-  { code: 'PNRO', key: 'Pay Now - Room Only',             label: 'Pay Now - Room Only' },
-  { code: 'FXRO', key: 'Flexible Rate - Room Only',       label: 'Flexible Rate - Room Only' },
-  { code: 'PNBB', key: 'Pay Now - Bed & Breakfast',       label: 'Pay Now - Bed & Breakfast' },
-  { code: 'FXBB', key: 'Flexible Rate - Bed & Breakfast', label: 'Flexible Rate - Bed & Breakfast' },
-  { code: 'PNHB', key: 'Pay Now - Half-Board',            label: 'Pay Now - Half-Board' },
-  { code: 'FXHB', key: 'Flexible Rate - Half-Board',      label: 'Flexible Rate - Half-Board' },
-]
-
-const RATE_PLAN_TYPES = RATE_PLANS_META.map((p) => p.key)
 
 type GroupedRoom = {
   key: string
@@ -80,10 +70,10 @@ const EMPTY_FORM: RoomFormData = {
   roomCount: '1',
   roomNumber: '',
   roomNumbers: '',
-  selectedRatePlans: [RATE_PLAN_TYPES[0]],
-  ratePlanPrices: { [RATE_PLAN_TYPES[0]]: '' },
+  selectedRatePlans: [],
+  ratePlanPrices: {},
   markup: '15',
-  roomType: RATE_PLAN_TYPES[0],
+  roomType: '',
   capacity: '',
   bedType: '',
   size: '',
@@ -128,7 +118,7 @@ function deriveCode(name: string): string {
 export default function RoomsPage() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [hotels, setHotels] = useState<Hotel[]>([])
-  const [allRatePlans, setAllRatePlans] = useState<RatePlanMeta[]>(RATE_PLANS_META)
+  const [allRatePlans, setAllRatePlans] = useState<RatePlanMeta[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -173,11 +163,17 @@ export default function RoomsPage() {
       }
 
       if (typesResult.success) {
-        const knownKeys = new Set(RATE_PLANS_META.map((p) => p.key))
-        const customPlans: RatePlanMeta[] = (typesResult.roomTypes as RoomTypeOption[])
-          .filter((t) => !t.derived && !knownKeys.has(t.name))
-          .map((t) => ({ code: deriveCode(t.name), key: t.name, label: t.name }))
-        setAllRatePlans([...RATE_PLANS_META, ...customPlans])
+        const seen = new Set<string>()
+        const allPlans: RatePlanMeta[] = (typesResult.roomTypes as RoomTypeOption[])
+          .filter((t) => !t.derived)
+          .filter((t) => {
+            const nameLower = t.name.trim().toLowerCase()
+            if (seen.has(nameLower)) return false
+            seen.add(nameLower)
+            return true
+          })
+          .map((t) => ({ code: (t.key || deriveCode(t.name)).toUpperCase(), key: t.name, label: t.name }))
+        setAllRatePlans(allPlans)
       }
 
     } catch {
@@ -245,9 +241,6 @@ export default function RoomsPage() {
     setFormData({
       ...EMPTY_FORM,
       hotelId: hotels[0]?.id || '',
-      selectedRatePlans: [RATE_PLAN_TYPES[0]],
-      ratePlanPrices: { [RATE_PLAN_TYPES[0]]: '' },
-      markup: '15',
     })
     setFormError('')
     setSelectedImageFile(null)
@@ -273,7 +266,7 @@ export default function RoomsPage() {
       selectedRatePlans: selectedPlans,
       ratePlanPrices: planPrices,
       markup: '15',
-      roomType: group.plans[0]?.roomType || RATE_PLAN_TYPES[0],
+      roomType: group.plans[0]?.roomType || '',
       capacity: String(group.capacity),
       bedType: group.bedType,
       size: group.size,
@@ -641,7 +634,7 @@ export default function RoomsPage() {
                   <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Rate Plans</p>
                   <div className="flex flex-wrap gap-1">
                     {group.plans.map((plan) => {
-                      const meta = RATE_PLANS_META.find((m) => m.key === plan.roomType)
+                      const meta = allRatePlans.find((m) => m.key === plan.roomType)
                       return (
                         <span
                           key={plan.roomType}
@@ -820,7 +813,7 @@ export default function RoomsPage() {
                         onChange={(e) => setFormData((prev) => ({ ...prev, markup: e.target.value }))}
                         className="w-16 px-2 py-1 text-sm border border-orange-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 font-bold text-orange-700"
                       />
-                      <span className="text-xs text-gray-500">% above Luxotels rate</span>
+                      <span className="text-xs text-gray-500">% above Luxotel rate</span>
                     </div>
                   </div>
 
@@ -1039,11 +1032,11 @@ export default function RoomsPage() {
                     <h4 className="font-medium text-gray-900 mb-2">Rate Plans</h4>
                     <div className="space-y-1">
                       {selectedGroup.plans.map((plan) => {
-                        const meta = RATE_PLANS_META.find((m) => m.key === plan.roomType)
+                        const meta = allRatePlans.find((m) => m.key === plan.roomType)
                         return (
                           <div key={plan.roomType} className="flex items-center justify-between rounded-md bg-orange-50 px-3 py-2 text-sm">
                             <span className="font-medium text-gray-700">
-                              <span className="font-mono text-xs font-bold text-orange-700 mr-2">{meta?.code}</span>
+                              <span className="font-mono text-xs font-bold text-orange-700 mr-2">{meta?.code ?? plan.roomType}</span>
                               {meta?.label ?? plan.roomType}
                             </span>
                             <span className="font-bold text-orange-700">JOD {plan.price}</span>

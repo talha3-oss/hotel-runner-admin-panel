@@ -122,19 +122,21 @@ export async function fetchAdminRooms(token: string, query: Record<string, strin
   const queryString = new URLSearchParams(query).toString()
   const url = `${API_BASE_URL}/api/v1/admin/rooms${queryString ? `?${queryString}` : ''}`
   const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+    cache: 'no-store',
   })
   return res.json()
 }
 
 export async function fetchAdminRoomTypes(token: string) {
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms/types`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+    cache: 'no-store',
   })
   return res.json()
 }
 
-export async function createAdminRoomType(token: string, payload: { name: string; description?: string }) {
+export async function createAdminRoomType(token: string, payload: { name: string; key?: string; description?: string }) {
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms/types`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -143,7 +145,7 @@ export async function createAdminRoomType(token: string, payload: { name: string
   return res.json()
 }
 
-export async function updateAdminRoomType(token: string, id: string, payload: { name?: string; description?: string }) {
+export async function updateAdminRoomType(token: string, id: string, payload: { name?: string; key?: string; description?: string }) {
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms/types/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -332,7 +334,8 @@ export async function fetchHotels(token: string, search = '') {
   const query = new URLSearchParams()
   if (search.trim()) query.set('search', search.trim())
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/properties/hotels?${query.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+    cache: 'no-store',
   })
   return res.json()
 }
