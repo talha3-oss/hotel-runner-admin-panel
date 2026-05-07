@@ -1,121 +1,83 @@
 'use client'
 
-import { useState } from 'react'
-import { 
+import { useCallback, useEffect, useState } from 'react'
+import {
   MagnifyingGlassIcon,
   EyeIcon,
-  PencilIcon,
   TrashIcon,
   UserIcon,
   EnvelopeIcon,
-  PhoneIcon
+  PhoneIcon,
 } from '@heroicons/react/24/outline'
-
-const customers = [
-  {
-    id: 'CUST001',
-    firstName: 'John',
-    lastName: 'Smith',
-    email: 'john.smith@email.com',
-    phone: '+44 7700 900123',
-    country: 'United Kingdom',
-    registrationDate: '2024-01-10',
-    totalBookings: 5,
-    totalSpent: 'JOD 2,450.00',
-    status: 'Active',
-    lastBooking: '2024-01-15',
-    preferences: ['Non-smoking', 'High floor', 'Late checkout'],
-    loyaltyPoints: 1250
-  },
-  {
-    id: 'CUST002',
-    firstName: 'Sarah',
-    lastName: 'Johnson',
-    email: 'sarah.j@email.com',
-    phone: '+44 7700 900456',
-    country: 'United Kingdom',
-    registrationDate: '2023-11-22',
-    totalBookings: 8,
-    totalSpent: 'JOD 4,120.00',
-    status: 'VIP',
-    lastBooking: '2024-01-20',
-    preferences: ['Ocean view', 'Breakfast included', 'Spa access'],
-    loyaltyPoints: 2060
-  },
-  {
-    id: 'CUST003',
-    firstName: 'Mike',
-    lastName: 'Wilson',
-    email: 'mike.wilson@email.com',
-    phone: '+44 7700 900789',
-    country: 'Ireland',
-    registrationDate: '2024-01-05',
-    totalBookings: 2,
-    totalSpent: 'JOD 890.00',
-    status: 'Active',
-    lastBooking: '2024-01-25',
-    preferences: ['Quiet room', 'Business center access'],
-    loyaltyPoints: 445
-  },
-  {
-    id: 'CUST004',
-    firstName: 'Emma',
-    lastName: 'Davis',
-    email: 'emma.davis@email.com',
-    phone: '+353 87 123 4567',
-    country: 'Ireland',
-    registrationDate: '2023-09-15',
-    totalBookings: 12,
-    totalSpent: 'JOD 6,780.00',
-    status: 'VIP',
-    lastBooking: '2024-01-18',
-    preferences: ['Pet-friendly', 'Ground floor', 'Early check-in'],
-    loyaltyPoints: 3390
-  }
-]
-
-const bookingHistory = {
-  'CUST001': [
-    {
-      id: 'BK001',
-      hotel: 'Clayton Hotel London',
-      room: 'Deluxe Double Room',
-      checkIn: '2024-01-15',
-      checkOut: '2024-01-18',
-      amount: 'JOD 525.00',
-      status: 'Completed'
-    },
-    {
-      id: 'BK015',
-      hotel: 'Clayton Hotel London',
-      room: 'Executive Suite',
-      checkIn: '2023-12-20',
-      checkOut: '2023-12-23',
-      amount: 'JOD 789.00',
-      status: 'Completed'
-    }
-  ]
-}
+import { fetchAllUsers, deleteAdminUser, AdminUser } from '../../../lib/api'
 
 export default function CustomersPage() {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [selectedCustomer, setSelectedCustomer] = useState<any>(null)
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [showDetails, setShowDetails] = useState(false)
 
-  const filteredCustomers = customers.filter(customer => {
-    const matchesSearch = 
-      customer.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.id.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || customer.status.toLowerCase() === statusFilter
-    return matchesSearch && matchesStatus
-  })
+  const loadUsers = useCallback(async (q = '') => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) { setError('Admin token not found.'); setLoading(false); return }
+    setError('')
+    try {
+      const result = await fetchAllUsers(token, q ? { search: q } : {})
+      if (result.success) {
+        setUsers(result.users || [])
+        setTotal(result.total || 0)
+      } else {
+        setError(result.message || 'Failed to load users.')
+      }
+    } catch {
+      setError('Unable to connect to server.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  const handleViewDetails = (customer: any) => {
-    setSelectedCustomer(customer)
-    setShowDetails(true)
+  useEffect(() => { loadUsers() }, [loadUsers])
+
+  const handleSearch = (value: string) => {
+    setSearch(value)
+    setLoading(true)
+    loadUsers(value)
+  }
+
+  const handleDelete = async (user: AdminUser) => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    if (!window.confirm(`Delete account for ${user.email}? This cannot be undone.`)) return
+    try {
+      const result = await deleteAdminUser(token, user.id)
+      if (result.success) {
+        setUsers((prev) => prev.filter((u) => u.id !== user.id))
+        setTotal((prev) => prev - 1)
+        if (selectedUser?.id === user.id) setShowDetails(false)
+      } else {
+        alert(result.message || 'Failed to delete user.')
+      }
+    } catch {
+      alert('Unable to connect to server.')
+    }
+  }
+
+  const displayName = (user: AdminUser) =>
+    user.fullName || [user.firstName, user.lastName].filter(Boolean).join(' ') || '—'
+
+  const initials = (user: AdminUser) => {
+    const name = displayName(user)
+    if (name === '—') return user.email[0].toUpperCase()
+    return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+  }
+
+  const formatDate = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    } catch { return iso }
   }
 
   return (
@@ -124,339 +86,216 @@ export default function CustomersPage() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Customer Management</h1>
-            <p className="mt-1 text-sm text-gray-600">
-              Manage customer accounts and booking history
+            <p className="mt-1 text-sm text-gray-600">Registered website users</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-lg shadow flex items-center gap-4">
+          <UserIcon className="h-8 w-8 text-primary-600" />
+          <div>
+            <p className="text-sm font-medium text-gray-600">Total Customers</p>
+            <p className="text-2xl font-bold text-gray-900">{total}</p>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow flex items-center gap-4">
+          <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
+            <span className="text-green-600 font-bold text-xs">ACT</span>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-600">Active</p>
+            <p className="text-2xl font-bold text-gray-900">
+              {users.filter((u) => u.status === 'ACTIVE').length}
+            </p>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow flex items-center gap-4">
+          <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
+            <span className="text-blue-600 font-bold text-xs">NEW</span>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-600">This Month</p>
+            <p className="text-2xl font-bold text-gray-900">
+              {users.filter((u) => {
+                const d = new Date(u.createdAt)
+                const now = new Date()
+                return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+              }).length}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <UserIcon className="h-8 w-8 text-primary-600" />
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Customers</p>
-              <p className="text-2xl font-bold text-gray-900">{customers.length}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="h-8 w-8 bg-yellow-100 rounded-full flex items-center justify-center">
-              <span className="text-yellow-600 font-bold text-sm">VIP</span>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">VIP Customers</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {customers.filter(c => c.status === 'VIP').length}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-green-600 font-bold text-sm">JD</span>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-              <p className="text-2xl font-bold text-gray-900">
-                JOD {customers.reduce((sum, c) => sum + parseFloat(c.totalSpent.replace('JOD', '').replace(',', '').trim()), 0).toLocaleString()}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
-              <span className="text-blue-600 font-bold text-sm">★</span>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Avg. Loyalty Points</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {Math.round(customers.reduce((sum, c) => sum + c.loyaltyPoints, 0) / customers.length)}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters */}
+      {/* Search */}
       <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search customers by name, email, or ID..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-          <div>
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="vip">VIP</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
+        <div className="relative max-w-md">
+          <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-2.5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search by name or email..."
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
         </div>
       </div>
 
-      {/* Customers Table */}
+      {error && (
+        <div className="mb-6 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {/* Table */}
       <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Customer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Contact
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Booking Stats
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Loyalty Points
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredCustomers.map((customer) => (
-                <tr key={customer.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 bg-primary-100 rounded-full flex items-center justify-center">
-                        <UserIcon className="h-6 w-6 text-primary-600" />
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">
-                          {customer.firstName} {customer.lastName}
-                        </div>
-                        <div className="text-sm text-gray-500">{customer.id}</div>
-                        <div className="text-sm text-gray-500">Joined: {customer.registrationDate}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="space-y-1">
-                      <div className="flex items-center text-sm text-gray-900">
-                        <EnvelopeIcon className="h-4 w-4 mr-2 text-gray-400" />
-                        {customer.email}
-                      </div>
-                      <div className="flex items-center text-sm text-gray-900">
-                        <PhoneIcon className="h-4 w-4 mr-2 text-gray-400" />
-                        {customer.phone}
-                      </div>
-                      <div className="text-sm text-gray-500">{customer.country}</div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm text-gray-900">
-                        {customer.totalBookings} bookings
-                      </div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {customer.totalSpent}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Last: {customer.lastBooking}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      customer.status === 'VIP' 
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : customer.status === 'Active'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {customer.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {customer.loyaltyPoints.toLocaleString()} pts
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleViewDetails(customer)}
-                        className="text-primary-600 hover:text-primary-900"
-                      >
-                        <EyeIcon className="h-5 w-5" />
-                      </button>
-                      <button className="text-blue-600 hover:text-blue-900">
-                        <PencilIcon className="h-5 w-5" />
-                      </button>
-                      <button className="text-red-600 hover:text-red-900">
-                        <TrashIcon className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </td>
+        {loading ? (
+          <div className="p-8 text-center text-sm text-gray-500">Loading customers...</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {users.map((user) => (
+                  <tr key={user.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 bg-primary-100 rounded-full flex items-center justify-center shrink-0">
+                          <span className="text-primary-700 text-xs font-bold">{initials(user)}</span>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">{displayName(user)}</div>
+                          <div className="text-xs text-gray-400 font-mono">{user.id.slice(0, 8)}…</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1.5 text-sm text-gray-700 mb-0.5">
+                        <EnvelopeIcon className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                        {user.email}
+                      </div>
+                      {user.phoneNumber && (
+                        <div className="flex items-center gap-1.5 text-sm text-gray-500">
+                          <PhoneIcon className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                          {user.phoneNumber}
+                        </div>
+                      )}
+                      {user.country && <div className="text-xs text-gray-400 mt-0.5">{user.country}</div>}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        user.status === 'ACTIVE'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {user.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
+                      {formatDate(user.createdAt)}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => { setSelectedUser(user); setShowDetails(true) }}
+                          className="text-primary-600 hover:text-primary-900"
+                          title="View"
+                        >
+                          <EyeIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(user)}
+                          className="text-red-500 hover:text-red-700"
+                          title="Delete"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {users.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">
+                      {search ? 'No customers match your search.' : 'No customers have registered yet.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Customer Details Modal */}
-      {showDetails && selectedCustomer && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-2/3 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-medium text-gray-900">
-                  Customer Details - {selectedCustomer.firstName} {selectedCustomer.lastName}
-                </h3>
-                <button
-                  onClick={() => setShowDetails(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ×
-                </button>
-              </div>
-              
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Customer Information */}
-                <div>
-                  <h4 className="text-lg font-medium text-gray-900 mb-4">Personal Information</h4>
-                  <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-                    <div>
-                      <span className="font-medium text-gray-700">Customer ID:</span>
-                      <span className="ml-2 text-gray-900">{selectedCustomer.id}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Name:</span>
-                      <span className="ml-2 text-gray-900">
-                        {selectedCustomer.firstName} {selectedCustomer.lastName}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Email:</span>
-                      <span className="ml-2 text-gray-900">{selectedCustomer.email}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Phone:</span>
-                      <span className="ml-2 text-gray-900">{selectedCustomer.phone}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Country:</span>
-                      <span className="ml-2 text-gray-900">{selectedCustomer.country}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Registration Date:</span>
-                      <span className="ml-2 text-gray-900">{selectedCustomer.registrationDate}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Status:</span>
-                      <span className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${
-                        selectedCustomer.status === 'VIP' 
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-green-100 text-green-800'
-                      }`}>
-                        {selectedCustomer.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  <h4 className="text-lg font-medium text-gray-900 mb-4 mt-6">Preferences</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedCustomer.preferences.map((pref: string, index: number) => (
-                      <span key={index} className="px-3 py-1 bg-primary-100 text-primary-800 text-sm rounded-full">
-                        {pref}
-                      </span>
-                    ))}
-                  </div>
+      {/* Detail Modal */}
+      {showDetails && selectedUser && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">Customer Details</h3>
+              <button onClick={() => setShowDetails(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="h-14 w-14 bg-primary-100 rounded-full flex items-center justify-center shrink-0">
+                  <span className="text-primary-700 text-lg font-bold">{initials(selectedUser)}</span>
                 </div>
-
-                {/* Booking Statistics */}
                 <div>
-                  <h4 className="text-lg font-medium text-gray-900 mb-4">Booking Statistics</h4>
-                  <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-                    <div>
-                      <span className="font-medium text-gray-700">Total Bookings:</span>
-                      <span className="ml-2 text-gray-900">{selectedCustomer.totalBookings}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Total Spent:</span>
-                      <span className="ml-2 text-gray-900 font-semibold">{selectedCustomer.totalSpent}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Last Booking:</span>
-                      <span className="ml-2 text-gray-900">{selectedCustomer.lastBooking}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Loyalty Points:</span>
-                      <span className="ml-2 text-gray-900 font-semibold">
-                        {selectedCustomer.loyaltyPoints.toLocaleString()} pts
-                      </span>
-                    </div>
-                  </div>
-
-                  <h4 className="text-lg font-medium text-gray-900 mb-4 mt-6">Recent Bookings</h4>
-                  <div className="space-y-3">
-                    {bookingHistory[selectedCustomer.id as keyof typeof bookingHistory]?.map((booking: any) => (
-                      <div key={booking.id} className="border border-gray-200 rounded-lg p-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="font-medium text-gray-900">{booking.id}</div>
-                            <div className="text-sm text-gray-600">{booking.hotel}</div>
-                            <div className="text-sm text-gray-600">{booking.room}</div>
-                            <div className="text-sm text-gray-600">
-                              {booking.checkIn} - {booking.checkOut}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-medium text-gray-900">{booking.amount}</div>
-                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                              {booking.status}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )) || (
-                      <p className="text-gray-500 text-sm">No recent bookings available</p>
-                    )}
-                  </div>
+                  <p className="font-semibold text-gray-900 text-base">{displayName(selectedUser)}</p>
+                  <p className="text-sm text-gray-500">{selectedUser.email}</p>
                 </div>
               </div>
-              
-              <div className="mt-8 flex justify-end space-x-3">
-                <button
-                  onClick={() => setShowDetails(false)}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
-                >
-                  Close
-                </button>
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                  Edit Customer
-                </button>
-                <button className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
-                  View All Bookings
-                </button>
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">ID</span>
+                  <span className="font-mono text-gray-700 text-xs">{selectedUser.id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Status</span>
+                  <span className={`font-medium ${selectedUser.status === 'ACTIVE' ? 'text-green-600' : 'text-gray-500'}`}>
+                    {selectedUser.status}
+                  </span>
+                </div>
+                {selectedUser.phoneNumber && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Phone</span>
+                    <span className="text-gray-700">{selectedUser.phoneNumber}</span>
+                  </div>
+                )}
+                {selectedUser.country && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Country</span>
+                    <span className="text-gray-700">{selectedUser.country}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Registered</span>
+                  <span className="text-gray-700">{formatDate(selectedUser.createdAt)}</span>
+                </div>
               </div>
+            </div>
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
+              <button
+                onClick={() => setShowDetails(false)}
+                className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => { handleDelete(selectedUser); setShowDetails(false) }}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Delete Account
+              </button>
             </div>
           </div>
         </div>

@@ -538,3 +538,33 @@ export async function uploadHomepageSectionImage(file: File) {
 
   return res.json()
 }
+
+export interface AdminUser {
+  id: string
+  email: string
+  fullName: string | null
+  firstName: string | null
+  lastName: string | null
+  status: string
+  createdAt: string
+  phoneNumber: string | null
+  country: string | null
+}
+
+export async function fetchAllUsers(token: string, query: Record<string, string> = {}) {
+  const qs = new URLSearchParams(query).toString()
+  const url = `${API_BASE_URL}/api/v1/users/get-all${qs ? `?${qs}` : ''}`
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function deleteAdminUser(token: string, id: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/users/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}
