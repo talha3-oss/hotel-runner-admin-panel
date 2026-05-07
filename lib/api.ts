@@ -85,6 +85,8 @@ export interface Room {
   description: string | null
   amenities: string[]
   images: string[]
+  discount?: number
+  childrenPrice?: number
   createdAt: string
   updatedAt: string
 }
@@ -104,6 +106,8 @@ export interface RoomPayload {
   description?: string
   amenities: string[]
   images?: string[]
+  discount?: number
+  childrenPrice?: number
 }
 
 export interface UploadImageResult {

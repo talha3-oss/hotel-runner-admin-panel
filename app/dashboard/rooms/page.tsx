@@ -40,6 +40,8 @@ type GroupedRoom = {
   images: string[]
   locationName?: string
   countryName?: string
+  discount: number
+  childrenPrice: number
   plans: Array<{ id: string; roomType: string; price: number }>
 }
 
@@ -51,7 +53,8 @@ type RoomFormData = {
   roomNumbers: string
   selectedRatePlans: string[]
   ratePlanPrices: Record<string, string>
-  markup: string
+  discount: string
+  childrenPrice: string
   roomType: string
   capacity: string
   bedType: string
@@ -72,7 +75,8 @@ const EMPTY_FORM: RoomFormData = {
   roomNumbers: '',
   selectedRatePlans: [],
   ratePlanPrices: {},
-  markup: '15',
+  discount: '10',
+  childrenPrice: '',
   roomType: '',
   capacity: '',
   bedType: '',
@@ -228,6 +232,8 @@ export default function RoomsPage() {
           images: room.images,
           locationName: room.locationName,
           countryName: room.countryName,
+          discount: room.discount ?? 0,
+          childrenPrice: room.childrenPrice ?? 0,
           plans: [],
         })
       }
@@ -265,7 +271,8 @@ export default function RoomsPage() {
       roomNumbers: group.roomNumber,
       selectedRatePlans: selectedPlans,
       ratePlanPrices: planPrices,
-      markup: '15',
+      discount: String(group.discount ?? 10),
+      childrenPrice: String(group.childrenPrice ?? ''),
       roomType: group.plans[0]?.roomType || '',
       capacity: String(group.capacity),
       bedType: group.bedType,
@@ -407,6 +414,8 @@ export default function RoomsPage() {
               roomType: plan.roomType,
               price: Number(formData.ratePlanPrices[plan.roomType]),
               roomNumber: formData.roomNumber.trim(),
+              discount: Number(formData.discount) || 0,
+              childrenPrice: Number(formData.childrenPrice) || 0,
             })
             if (!result.success) errors.push(`${plan.roomType}: ${result.message || 'Failed to update'}`)
           }
@@ -429,6 +438,8 @@ export default function RoomsPage() {
               price: Number(formData.ratePlanPrices[planType]),
               roomCount: 1,
               roomNumbers: [formData.roomNumber.trim()],
+              discount: Number(formData.discount) || 0,
+              childrenPrice: Number(formData.childrenPrice) || 0,
             })
             if (!result.success) errors.push(`${planType}: ${result.message || 'Failed to create'}`)
           }
@@ -506,6 +517,8 @@ export default function RoomsPage() {
           images,
           roomCount,
           roomNumbers,
+          discount: Number(formData.discount) || 0,
+          childrenPrice: Number(formData.childrenPrice) || 0,
         })
         if (!result.success) {
           errors.push(`${plan}: ${result.message || 'Failed'}`)
@@ -803,17 +816,28 @@ export default function RoomsPage() {
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                     <h4 className="text-sm font-semibold text-orange-800">Rate Plans & Pricing</h4>
                     <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-600 font-medium">Markup %</label>
+                      <label className="text-xs text-gray-600 font-medium">Discount %</label>
                       <input
                         type="number"
                         min="0"
                         max="100"
                         step="0.1"
-                        value={formData.markup}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, markup: e.target.value }))}
+                        value={formData.discount}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, discount: e.target.value }))}
                         className="w-16 px-2 py-1 text-sm border border-orange-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 font-bold text-orange-700"
                       />
-                      <span className="text-xs text-gray-500">% above Luxotel rate</span>
+                      <span className="text-xs text-gray-500">% discount for Luxotel rate</span>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <label className="text-xs text-gray-600 font-medium">Children Price (JOD)</label>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={formData.childrenPrice}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, childrenPrice: e.target.value }))}
+                        className="w-20 px-2 py-1 text-sm border border-orange-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 font-bold text-orange-700"
+                        placeholder="0.00"
+                      />
+                      <span className="text-xs text-gray-500">per child (6-12)</span>
                     </div>
                   </div>
 
@@ -824,18 +848,18 @@ export default function RoomsPage() {
                           <th className="px-2 py-2 w-8" />
                           <th className="px-2 py-2 text-center font-bold text-orange-800 w-14">Code</th>
                           <th className="px-2 py-2 text-left font-semibold text-gray-700">Rate Plan</th>
-                          <th className="px-2 py-2 text-center font-semibold text-orange-700 w-36">Luxotels Rate (JOD)</th>
-                          <th className="px-2 py-2 text-center font-semibold text-gray-600 w-32">Public Rate</th>
+                          <th className="px-2 py-2 text-center font-semibold text-orange-700 w-36">Public Rate (JOD)</th>
+                          <th className="px-2 py-2 text-center font-semibold text-gray-600 w-32">Luxotel Rate</th>
                         </tr>
                       </thead>
                       <tbody>
                         {allRatePlans.map((plan) => {
                           const isSelected = formData.selectedRatePlans.includes(plan.key)
                           const luxPrice = formData.ratePlanPrices[plan.key] || ''
-                          const markupFactor = 1 + Number(formData.markup || 15) / 100
-                          const publicRate =
+                          const discountFactor = 1 - Number(formData.discount || 10) / 100
+                          const luxotelRate =
                             luxPrice && Number(luxPrice) > 0
-                              ? (Number(luxPrice) * markupFactor).toFixed(2)
+                              ? (Number(luxPrice) * discountFactor).toFixed(2)
                               : null
                           return (
                             <tr key={plan.key} className={isSelected ? 'bg-orange-50' : 'hover:bg-gray-50'}>
@@ -886,7 +910,7 @@ export default function RoomsPage() {
                                 )}
                               </td>
                               <td className="px-2 py-2 text-center text-sm text-gray-600">
-                                {isSelected && publicRate ? `JOD ${publicRate}` : <span className="text-gray-300 text-xs">—</span>}
+                                {isSelected && luxotelRate ? `JOD ${luxotelRate}` : <span className="text-gray-300 text-xs">—</span>}
                               </td>
                             </tr>
                           )
