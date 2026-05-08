@@ -21,7 +21,6 @@ export default function RatePlansPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingPlan, setEditingPlan] = useState<RoomTypeOption | null>(null)
   const [formData, setFormData] = useState<FormData>(EMPTY_FORM)
-  const [codeManuallyEdited, setCodeManuallyEdited] = useState(false)
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState('')
 
@@ -49,7 +48,6 @@ export default function RatePlansPage() {
   const openAddModal = () => {
     setEditingPlan(null)
     setFormData(EMPTY_FORM)
-    setCodeManuallyEdited(false)
     setFormError('')
     setShowModal(true)
   }
@@ -57,7 +55,6 @@ export default function RatePlansPage() {
   const openEditModal = (plan: RoomTypeOption) => {
     setEditingPlan(plan)
     setFormData({ name: plan.name, code: (plan.key || '').toUpperCase(), description: plan.description || '' })
-    setCodeManuallyEdited(true)
     setFormError('')
     setShowModal(true)
   }
@@ -66,7 +63,6 @@ export default function RatePlansPage() {
     setShowModal(false)
     setEditingPlan(null)
     setFormData(EMPTY_FORM)
-    setCodeManuallyEdited(false)
     setFormError('')
   }
 
@@ -122,15 +118,6 @@ export default function RatePlansPage() {
       setError('Unable to connect to server.')
     }
   }
-
-  // Auto-derive a short uppercase code from the name initials e.g. "Pay Now - Room Only" → "PNRO"
-  const autoCode = formData.name
-    .trim()
-    .split(/[\s\-&]+/)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('')
-    .replace(/[^A-Z0-9]/g, '')
-    .slice(0, 6)
 
   const isBuiltin = (plan: RoomTypeOption) => Boolean(plan.derived)
 
@@ -269,16 +256,7 @@ export default function RatePlansPage() {
                   type="text"
                   required
                   value={formData.name}
-                  onChange={(e) => {
-                    const name = e.target.value
-                    setFormData((prev) => ({
-                      ...prev,
-                      name,
-                      code: codeManuallyEdited
-                        ? prev.code
-                        : name.trim().split(/[\s\-&]+/).map((w) => w[0]?.toUpperCase() ?? '').join('').replace(/[^A-Z0-9]/g, '').slice(0, 6),
-                    }))
-                  }}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="e.g. Pay Now - All Inclusive"
                 />
@@ -292,12 +270,9 @@ export default function RatePlansPage() {
                   type="text"
                   required
                   value={formData.code}
-                  onChange={(e) => {
-                    setCodeManuallyEdited(true)
-                    setFormData((prev) => ({ ...prev, code: e.target.value }))
-                  }}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder={autoCode || 'e.g. PNRO'}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 uppercase"
+                  placeholder="e.g. PNRO"
                 />
                 <p className="mt-1 text-xs text-gray-400">Short uppercase code shown in the rooms table (e.g. PNRO, FXBB). Max 10 characters.</p>
               </div>

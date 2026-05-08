@@ -87,6 +87,8 @@ export interface Room {
   images: string[]
   discount?: number
   childrenPrice?: number
+  childrenAllowed?: boolean
+  adultMinAge?: number
   createdAt: string
   updatedAt: string
 }
@@ -108,6 +110,8 @@ export interface RoomPayload {
   images?: string[]
   discount?: number
   childrenPrice?: number
+  childrenAllowed?: boolean
+  adultMinAge?: number
 }
 
 export interface UploadImageResult {

@@ -42,6 +42,8 @@ type GroupedRoom = {
   countryName?: string
   discount: number
   childrenPrice: number
+  childrenAllowed: boolean
+  adultMinAge: number
   plans: Array<{ id: string; roomType: string; price: number }>
 }
 
@@ -55,6 +57,8 @@ type RoomFormData = {
   ratePlanPrices: Record<string, string>
   discount: string
   childrenPrice: string
+  childrenAllowed: boolean
+  adultMinAge: string
   roomType: string
   capacity: string
   bedType: string
@@ -77,6 +81,8 @@ const EMPTY_FORM: RoomFormData = {
   ratePlanPrices: {},
   discount: '10',
   childrenPrice: '',
+  childrenAllowed: true,
+  adultMinAge: '0',
   roomType: '',
   capacity: '',
   bedType: '',
@@ -109,15 +115,6 @@ const parseRoomNumbersInput = (value: string): string[] =>
     .filter(Boolean)
 
 type RatePlanMeta = { code: string; key: string; label: string }
-
-// Derive a short code from any plan name e.g. "All Inclusive Board" → "AIB"
-function deriveCode(name: string): string {
-  return name
-    .split(/\s+/)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('')
-    .slice(0, 6) || name.slice(0, 4).toUpperCase()
-}
 
 export default function RoomsPage() {
   const [rooms, setRooms] = useState<Room[]>([])
@@ -176,7 +173,7 @@ export default function RoomsPage() {
             seen.add(nameLower)
             return true
           })
-          .map((t) => ({ code: (t.key || deriveCode(t.name)).toUpperCase(), key: t.name, label: t.name }))
+          .map((t) => ({ code: (t.key || '').toUpperCase(), key: t.name, label: t.name }))
         setAllRatePlans(allPlans)
       }
 
@@ -234,6 +231,8 @@ export default function RoomsPage() {
           countryName: room.countryName,
           discount: room.discount ?? 0,
           childrenPrice: room.childrenPrice ?? 0,
+          childrenAllowed: room.childrenAllowed !== false,
+          adultMinAge: room.adultMinAge ?? 0,
           plans: [],
         })
       }
@@ -273,6 +272,8 @@ export default function RoomsPage() {
       ratePlanPrices: planPrices,
       discount: String(group.discount ?? 10),
       childrenPrice: String(group.childrenPrice ?? ''),
+      childrenAllowed: group.childrenAllowed !== false,
+      adultMinAge: String(group.adultMinAge ?? 0),
       roomType: group.plans[0]?.roomType || '',
       capacity: String(group.capacity),
       bedType: group.bedType,
@@ -416,6 +417,8 @@ export default function RoomsPage() {
               roomNumber: formData.roomNumber.trim(),
               discount: Number(formData.discount) || 0,
               childrenPrice: Number(formData.childrenPrice) || 0,
+              childrenAllowed: formData.childrenAllowed,
+              adultMinAge: Number(formData.adultMinAge) || 0,
             })
             if (!result.success) errors.push(`${plan.roomType}: ${result.message || 'Failed to update'}`)
           }
@@ -440,6 +443,8 @@ export default function RoomsPage() {
               roomNumbers: [formData.roomNumber.trim()],
               discount: Number(formData.discount) || 0,
               childrenPrice: Number(formData.childrenPrice) || 0,
+              childrenAllowed: formData.childrenAllowed,
+              adultMinAge: Number(formData.adultMinAge) || 0,
             })
             if (!result.success) errors.push(`${planType}: ${result.message || 'Failed to create'}`)
           }
@@ -648,13 +653,15 @@ export default function RoomsPage() {
                   <div className="flex flex-wrap gap-1">
                     {group.plans.map((plan) => {
                       const meta = allRatePlans.find((m) => m.key === plan.roomType)
+                      const luxotelRate = Math.round(plan.price * (1 - (group.discount ?? 0) / 100))
                       return (
                         <span
                           key={plan.roomType}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-orange-50 border border-orange-200 text-xs rounded-full"
+                          className="inline-flex items-center gap-1.5 px-2 py-1 bg-orange-50 border border-orange-200 text-xs rounded-full"
                         >
                           <span className="font-bold text-orange-800">{meta?.code ?? plan.roomType}</span>
-                          <span className="text-orange-600 font-medium">JOD {plan.price}</span>
+                          <span className="text-gray-400 line-through">JOD {plan.price}</span>
+                          <span className="text-orange-600 font-bold">JOD {luxotelRate}</span>
                         </span>
                       )
                     })}
@@ -839,6 +846,28 @@ export default function RoomsPage() {
                       />
                       <span className="text-xs text-gray-500">per child (6-12)</span>
                     </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <label className="text-xs text-gray-600 font-medium">Children Allowed</label>
+                      <button
+                        type="button"
+                        onClick={() => setFormData((prev) => ({ ...prev, childrenAllowed: !prev.childrenAllowed }))}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${formData.childrenAllowed ? 'bg-green-500' : 'bg-gray-300'}`}
+                      >
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${formData.childrenAllowed ? 'translate-x-4' : 'translate-x-1'}`} />
+                      </button>
+                      <span className="text-xs text-gray-500">{formData.childrenAllowed ? 'Yes' : 'No'}</span>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <label className="text-xs text-gray-600 font-medium">Adult Min Age</label>
+                      <input
+                        type="number" min="0" max="25" step="1"
+                        value={formData.adultMinAge}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, adultMinAge: e.target.value }))}
+                        className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        placeholder="0"
+                      />
+                      <span className="text-xs text-gray-500">years (0 = default 13+)</span>
+                    </div>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -859,7 +888,7 @@ export default function RoomsPage() {
                           const discountFactor = 1 - Number(formData.discount || 10) / 100
                           const luxotelRate =
                             luxPrice && Number(luxPrice) > 0
-                              ? (Number(luxPrice) * discountFactor).toFixed(2)
+                              ? String(Math.round(Number(luxPrice) * discountFactor))
                               : null
                           return (
                             <tr key={plan.key} className={isSelected ? 'bg-orange-50' : 'hover:bg-gray-50'}>
@@ -1057,13 +1086,17 @@ export default function RoomsPage() {
                     <div className="space-y-1">
                       {selectedGroup.plans.map((plan) => {
                         const meta = allRatePlans.find((m) => m.key === plan.roomType)
+                        const luxotelRate = Math.round(plan.price * (1 - (selectedGroup.discount ?? 0) / 100))
                         return (
                           <div key={plan.roomType} className="flex items-center justify-between rounded-md bg-orange-50 px-3 py-2 text-sm">
                             <span className="font-medium text-gray-700">
                               <span className="font-mono text-xs font-bold text-orange-700 mr-2">{meta?.code ?? plan.roomType}</span>
                               {meta?.label ?? plan.roomType}
                             </span>
-                            <span className="font-bold text-orange-700">JOD {plan.price}</span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-gray-400 line-through">Public: JOD {plan.price}</span>
+                              <span className="font-bold text-orange-700">Luxotel: JOD {luxotelRate}</span>
+                            </div>
                           </div>
                         )
                       })}
