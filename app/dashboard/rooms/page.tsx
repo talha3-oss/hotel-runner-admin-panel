@@ -744,18 +744,12 @@ export default function RoomsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {editingGroup ? 'Room Number' : 'Number of Rooms'}
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Number of Rooms</label>
                     {editingGroup ? (
-                      <input
-                        type="text"
-                        required
-                        value={formData.roomNumber}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, roomNumber: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        placeholder="Enter room number"
-                      />
+                      <div className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-800 font-semibold">
+                        {groupedFilteredRooms.filter(g => g.hotelId === editingGroup.hotelId && g.name === editingGroup.name).length}
+                        <span className="ml-2 text-xs font-normal text-gray-400">rooms of this type in hotel</span>
+                      </div>
                     ) : (
                       <input
                         type="number"
