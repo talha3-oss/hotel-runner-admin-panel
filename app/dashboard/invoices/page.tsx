@@ -1,483 +1,249 @@
 'use client'
 
-import { useState } from 'react'
-import { 
+import { useCallback, useEffect, useState } from 'react'
+import {
   MagnifyingGlassIcon,
   EyeIcon,
+  XMarkIcon,
   DocumentTextIcon,
-  ArrowDownTrayIcon,
-  PlusIcon,
-  PrinterIcon
 } from '@heroicons/react/24/outline'
+import { fetchAdminInvoices, InvoiceRecord } from '../../../lib/api'
 
-const invoices = [
-  {
-    id: 'INV-2024-001',
-    bookingId: 'BK001',
-    customer: {
-      name: 'John Smith',
-      email: 'john.smith@email.com',
-      address: '123 Main Street, London, UK'
-    },
-    hotel: 'Clayton Hotel London',
-    room: 'Deluxe Double Room',
-    checkIn: '2024-01-15',
-    checkOut: '2024-01-18',
-    nights: 3,
-    roomRate: 150.00,
-    subtotal: 450.00,
-    extras: [
-      { name: 'Breakfast', quantity: 3, rate: 15.00, total: 45.00 },
-      { name: 'Late Checkout', quantity: 1, rate: 30.00, total: 30.00 }
-    ],
-    tax: 52.50,
-    total: 527.50,
-    status: 'Paid',
-    issueDate: '2024-01-15',
-    dueDate: '2024-01-30',
-    paymentDate: '2024-01-15'
-  },
-  {
-    id: 'INV-2024-002',
-    bookingId: 'BK002',
-    customer: {
-      name: 'Sarah Johnson',
-      email: 'sarah.j@email.com',
-      address: '456 Oak Avenue, Manchester, UK'
-    },
-    hotel: 'Clayton Hotel London',
-    room: 'Executive Suite',
-    checkIn: '2024-01-20',
-    checkOut: '2024-01-23',
-    nights: 3,
-    roomRate: 220.00,
-    subtotal: 660.00,
-    extras: [
-      { name: 'Breakfast', quantity: 3, rate: 15.00, total: 45.00 },
-      { name: 'Dinner', quantity: 2, rate: 35.00, total: 70.00 },
-      { name: 'Spa Access', quantity: 1, rate: 50.00, total: 50.00 }
-    ],
-    tax: 82.50,
-    total: 907.50,
-    status: 'Pending',
-    issueDate: '2024-01-20',
-    dueDate: '2024-02-04',
-    paymentDate: null
-  },
-  {
-    id: 'INV-2024-003',
-    bookingId: 'BK003',
-    customer: {
-      name: 'Mike Wilson',
-      email: 'mike.wilson@email.com',
-      address: '789 Pine Road, Dublin, Ireland'
-    },
-    hotel: 'Clayton Hotel London',
-    room: 'Junior Suite',
-    checkIn: '2024-01-25',
-    checkOut: '2024-01-27',
-    nights: 2,
-    roomRate: 180.00,
-    subtotal: 360.00,
-    extras: [
-      { name: 'Breakfast', quantity: 2, rate: 15.00, total: 30.00 }
-    ],
-    tax: 39.00,
-    total: 429.00,
-    status: 'Paid',
-    issueDate: '2024-01-25',
-    dueDate: '2024-02-09',
-    paymentDate: '2024-01-25'
-  }
-]
+const INVOICE_STATUS_COLORS: Record<string, string> = {
+  ISSUED: 'bg-blue-100 text-blue-700',
+  SENT: 'bg-green-100 text-green-700',
+  CANCELLED: 'bg-red-100 text-red-700',
+}
+
+function fmt(n: number) {
+  return `JOD ${Math.round(n)}`
+}
+
+function fmtDate(iso: string) {
+  try { return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }
+  catch { return iso }
+}
 
 export default function InvoicesPage() {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [selectedInvoice, setSelectedInvoice] = useState<any>(null)
-  const [showDetails, setShowDetails] = useState(false)
+  const [invoices, setInvoices] = useState<InvoiceRecord[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const limit = 50
 
-  const filteredInvoices = invoices.filter(invoice => {
-    const matchesSearch = 
-      invoice.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.bookingId.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || invoice.status.toLowerCase() === statusFilter
-    return matchesSearch && matchesStatus
-  })
+  const [selected, setSelected] = useState<InvoiceRecord | null>(null)
 
-  const handleViewInvoice = (invoice: any) => {
-    setSelectedInvoice(invoice)
-    setShowDetails(true)
-  }
+  const load = useCallback(async (q = '', p = 1) => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) { setError('Admin token not found.'); setLoading(false); return }
+    setError('')
+    try {
+      const result = await fetchAdminInvoices(token, { ...(q ? { search: q } : {}), page: p, limit })
+      if (result.success) {
+        setInvoices(result.invoices || [])
+        setTotal(result.total || 0)
+      } else {
+        setError(result.message || 'Failed to load invoices.')
+      }
+    } catch {
+      setError('Unable to connect to server.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  const handlePrintInvoice = (invoice: any) => {
-    // In a real app, this would generate and print the invoice
-    console.log('Printing invoice:', invoice.id)
-  }
+  useEffect(() => { load(search, page) }, [load, search, page])
 
-  const handleDownloadInvoice = (invoice: any) => {
-    // In a real app, this would generate and download a PDF
-    console.log('Downloading invoice:', invoice.id)
-  }
+  const handleSearch = (v: string) => { setSearch(v); setPage(1); setLoading(true); load(v, 1) }
+
+  const totalPages = Math.ceil(total / limit)
+  const b = selected?.booking
+  const rooms = Array.isArray(b?.rooms) ? (b!.rooms as { name: string; publicRate: number; claytonRate: number }[]) : []
+  const extras = Array.isArray(b?.extras) ? (b!.extras as { name: string; price: number; total: number }[]) : []
 
   return (
     <div>
       <div className="mb-8">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Invoice Management</h1>
-            <p className="mt-1 text-sm text-gray-600">
-              Generate and manage booking invoices
-            </p>
-          </div>
-          <button className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md flex items-center">
-            <PlusIcon className="h-5 w-5 mr-2" />
-            Create Invoice
-          </button>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
+        <p className="mt-1 text-sm text-gray-600">{total} invoice{total !== 1 ? 's' : ''} generated</p>
       </div>
 
-      {/* Invoice Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <DocumentTextIcon className="h-8 w-8 text-primary-600" />
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Invoices</p>
-              <p className="text-2xl font-bold text-gray-900">{invoices.length}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-green-600 font-bold text-sm">JD</span>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Value</p>
-              <p className="text-2xl font-bold text-gray-900">
-                JOD {invoices.reduce((sum, inv) => sum + inv.total, 0).toLocaleString()}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-green-600 font-bold text-sm">✓</span>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Paid</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {invoices.filter(inv => inv.status === 'Paid').length}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="h-8 w-8 bg-yellow-100 rounded-full flex items-center justify-center">
-              <span className="text-yellow-600 font-bold text-sm">⏳</span>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Pending</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {invoices.filter(inv => inv.status === 'Pending').length}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by customer, invoice ID, or booking ID..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-          <div>
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="all">All Status</option>
-              <option value="paid">Paid</option>
-              <option value="pending">Pending</option>
-              <option value="overdue">Overdue</option>
-            </select>
-          </div>
+        <div className="relative max-w-sm">
+          <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-2.5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search by invoice or booking ref, email…"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
         </div>
       </div>
 
-      {/* Invoices Table */}
+      {error && (
+        <div className="mb-6 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+
       <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Invoice Details
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Customer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Booking Details
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredInvoices.map((invoice) => (
-                <tr key={invoice.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{invoice.id}</div>
-                      <div className="text-sm text-gray-500">Issued: {invoice.issueDate}</div>
-                      <div className="text-sm text-gray-500">Due: {invoice.dueDate}</div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{invoice.customer.name}</div>
-                      <div className="text-sm text-gray-500">{invoice.customer.email}</div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm text-gray-900">{invoice.bookingId}</div>
-                      <div className="text-sm text-gray-500">{invoice.room}</div>
-                      <div className="text-sm text-gray-500">
-                        {invoice.checkIn} - {invoice.checkOut} ({invoice.nights} nights)
+        {loading ? (
+          <div className="p-8 text-center text-sm text-gray-500">Loading invoices…</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Booking Ref</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Guest</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hotel</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issued</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {invoices.length === 0 ? (
+                  <tr><td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-400">No invoices yet.</td></tr>
+                ) : invoices.map((inv) => (
+                  <tr key={inv.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <DocumentTextIcon className="h-4 w-4 text-gray-400 shrink-0" />
+                        <span className="font-mono text-sm font-semibold text-gray-900">{inv.invoiceRef}</span>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-bold text-gray-900">JOD {invoice.total.toFixed(2)}</div>
-                    <div className="text-sm text-gray-500">inc. tax</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      invoice.status === 'Paid' 
-                        ? 'bg-green-100 text-green-800'
-                        : invoice.status === 'Pending'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {invoice.status}
-                    </span>
-                    {invoice.paymentDate && (
-                      <div className="text-sm text-gray-500 mt-1">
-                        Paid: {invoice.paymentDate}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap font-mono text-sm text-primary-700">{inv.booking?.bookingRef || '—'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">{inv.booking?.firstName} {inv.booking?.lastName}</div>
+                      <div className="text-xs text-gray-400">{inv.booking?.email}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{inv.booking?.hotelName || '—'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{inv.booking ? fmt(inv.booking.total) : '—'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${INVOICE_STATUS_COLORS[inv.status] || 'bg-gray-100 text-gray-600'}`}>
+                        {inv.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">{fmtDate(inv.createdAt)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
                       <button
-                        onClick={() => handleViewInvoice(invoice)}
-                        className="text-primary-600 hover:text-primary-900"
-                        title="View Invoice"
+                        onClick={() => setSelected(inv)}
+                        className="text-gray-400 hover:text-primary-600 transition-colors"
+                        title="View invoice"
                       >
                         <EyeIcon className="h-5 w-5" />
                       </button>
-                      <button
-                        onClick={() => handlePrintInvoice(invoice)}
-                        className="text-blue-600 hover:text-blue-900"
-                        title="Print Invoice"
-                      >
-                        <PrinterIcon className="h-5 w-5" />
-                      </button>
-                      <button
-                        onClick={() => handleDownloadInvoice(invoice)}
-                        className="text-green-600 hover:text-green-900"
-                        title="Download PDF"
-                      >
-                        <ArrowDownTrayIcon className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+            <p className="text-xs text-gray-500">Page {page} of {totalPages}</p>
+            <div className="flex gap-2">
+              <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="text-xs px-3 py-1.5 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">Previous</button>
+              <button disabled={page === totalPages} onClick={() => setPage((p) => p + 1)} className="text-xs px-3 py-1.5 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">Next</button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Invoice Details Modal */}
-      {showDetails && selectedInvoice && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-10 mx-auto p-5 border w-11/12 md:w-4/5 lg:w-3/4 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-medium text-gray-900">Invoice Preview</h3>
-                <button
-                  onClick={() => setShowDetails(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ×
+      {/* Invoice detail modal */}
+      {selected && b && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+            {/* Invoice header */}
+            <div className="bg-gray-900 px-6 py-5 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-orange-400 tracking-widest">LUXOTEL</h2>
+                  <p className="text-gray-400 text-xs mt-0.5">Invoice</p>
+                </div>
+                <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-white">
+                  <XMarkIcon className="h-6 w-6" />
                 </button>
               </div>
-              
-              {/* Invoice Content */}
-              <div className="bg-white border border-gray-200 rounded-lg p-8">
-                {/* Header */}
-                <div className="flex justify-between items-start mb-8">
-                  <div>
-                    <h1 className="text-3xl font-bold text-primary-600">LUXOTEL</h1>
-                    <p className="text-gray-600">Hotel Management</p>
-                  </div>
-                  <div className="text-right">
-                    <h2 className="text-2xl font-bold text-gray-900">INVOICE</h2>
-                    <p className="text-gray-600">{selectedInvoice.id}</p>
-                  </div>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="bg-white/10 rounded-lg px-4 py-3 text-center">
+                  <p className="text-gray-400 text-xs">Invoice No.</p>
+                  <p className="text-white font-bold text-lg mt-0.5">{selected.invoiceRef}</p>
                 </div>
-
-                {/* Invoice Details */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Bill To:</h3>
-                    <div className="text-gray-700">
-                      <p className="font-medium">{selectedInvoice.customer.name}</p>
-                      <p>{selectedInvoice.customer.email}</p>
-                      <p className="whitespace-pre-line">{selectedInvoice.customer.address}</p>
-                    </div>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Invoice Details:</h3>
-                    <div className="text-gray-700 space-y-1">
-                      <p><span className="font-medium">Issue Date:</span> {selectedInvoice.issueDate}</p>
-                      <p><span className="font-medium">Due Date:</span> {selectedInvoice.dueDate}</p>
-                      <p><span className="font-medium">Booking ID:</span> {selectedInvoice.bookingId}</p>
-                      <p><span className="font-medium">Hotel:</span> {selectedInvoice.hotel}</p>
-                    </div>
-                  </div>
+                <div className="bg-white/10 rounded-lg px-4 py-3 text-center">
+                  <p className="text-gray-400 text-xs">Booking Ref.</p>
+                  <p className="text-orange-400 font-bold text-lg mt-0.5">{b.bookingRef}</p>
                 </div>
+              </div>
+            </div>
 
-                {/* Stay Details */}
-                <div className="mb-8">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Stay Details:</h3>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <span className="font-medium text-gray-700">Room:</span>
-                        <p className="text-gray-900">{selectedInvoice.room}</p>
-                      </div>
-                      <div>
-                        <span className="font-medium text-gray-700">Check-in:</span>
-                        <p className="text-gray-900">{selectedInvoice.checkIn}</p>
-                      </div>
-                      <div>
-                        <span className="font-medium text-gray-700">Check-out:</span>
-                        <p className="text-gray-900">{selectedInvoice.checkOut}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            <div className="p-6 space-y-5">
+              {/* Guest */}
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Billed To</p>
+                <p className="text-sm font-semibold text-gray-900">{b.firstName} {b.lastName}</p>
+                <p className="text-sm text-gray-500">{b.email} · {b.phone}</p>
+              </div>
 
-                {/* Invoice Items */}
-                <div className="mb-8">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b-2 border-gray-200">
-                        <th className="text-left py-2 text-gray-700">Description</th>
-                        <th className="text-center py-2 text-gray-700">Qty</th>
-                        <th className="text-right py-2 text-gray-700">Rate</th>
-                        <th className="text-right py-2 text-gray-700">Amount</th>
+              {/* Stay */}
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div><span className="text-gray-400">Hotel: </span><span className="font-medium text-gray-800">{b.hotelName}</span></div>
+                <div><span className="text-gray-400">Nights: </span><span className="font-medium text-gray-800">{b.nights}</span></div>
+                <div><span className="text-gray-400">Check-in: </span><span className="font-medium text-gray-800">{b.checkIn}</span></div>
+                <div><span className="text-gray-400">Check-out: </span><span className="font-medium text-gray-800">{b.checkOut}</span></div>
+              </div>
+
+              {/* Line items */}
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Items</p>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-gray-400 border-b border-gray-100">
+                      <th className="text-left pb-1 font-medium">Description</th>
+                      <th className="text-right pb-1 font-medium">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rooms.map((r, i) => (
+                      <tr key={i} className="border-b border-gray-50">
+                        <td className="py-1.5 text-gray-700">{r.name} × {b.nights} nights</td>
+                        <td className="py-1.5 text-right text-gray-700">{fmt((r.publicRate || 0) * b.nights)}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b border-gray-100">
-                        <td className="py-2">{selectedInvoice.room}</td>
-                        <td className="text-center py-2">{selectedInvoice.nights}</td>
-                        <td className="text-right py-2">JOD {selectedInvoice.roomRate.toFixed(2)}</td>
-                        <td className="text-right py-2">JOD {selectedInvoice.subtotal.toFixed(2)}</td>
+                    ))}
+                    {extras.map((e, i) => (
+                      <tr key={i} className="border-b border-gray-50">
+                        <td className="py-1.5 text-gray-700">{e.name}</td>
+                        <td className="py-1.5 text-right text-gray-700">{fmt(e.total || e.price)}</td>
                       </tr>
-                      {selectedInvoice.extras.map((extra: any, index: number) => (
-                        <tr key={index} className="border-b border-gray-100">
-                          <td className="py-2">{extra.name}</td>
-                          <td className="text-center py-2">{extra.quantity}</td>
-                          <td className="text-right py-2">JOD {extra.rate.toFixed(2)}</td>
-                          <td className="text-right py-2">JOD {extra.total.toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-                {/* Totals */}
-                <div className="flex justify-end">
-                  <div className="w-64">
-                    <div className="flex justify-between py-2 border-b border-gray-200">
-                      <span className="text-gray-700">Subtotal:</span>
-                      <span className="text-gray-900">
-                        JOD {(selectedInvoice.subtotal + selectedInvoice.extras.reduce((sum: number, extra: any) => sum + extra.total, 0)).toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-gray-200">
-                      <span className="text-gray-700">Tax (10%):</span>
-                      <span className="text-gray-900">JOD {selectedInvoice.tax.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b-2 border-gray-300 font-bold text-lg">
-                      <span className="text-gray-900">Total:</span>
-                      <span className="text-gray-900">JOD {selectedInvoice.total.toFixed(2)}</span>
-                    </div>
-                  </div>
+              {/* Totals */}
+              <div className="border-t border-gray-100 pt-3 space-y-1.5">
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Public Rate Total</span><span>{fmt(b.subtotal)}</span>
                 </div>
-
-                {/* Payment Status */}
-                <div className="mt-8 text-center">
-                  <span className={`inline-flex px-4 py-2 text-sm font-semibold rounded-full ${
-                    selectedInvoice.status === 'Paid' 
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {selectedInvoice.status === 'Paid' ? `PAID - ${selectedInvoice.paymentDate}` : 'PAYMENT PENDING'}
-                  </span>
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Luxotel Saving</span><span>−{fmt(b.discount)}</span>
+                </div>
+                <div className="flex justify-between text-base font-bold text-gray-900 pt-2 border-t border-gray-200">
+                  <span>Total</span><span>{fmt(b.total)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-400 pt-1">
+                  <span>Payment</span>
+                  <span>{b.paymentMethod === 'hotel' ? 'Pay at Hotel' : 'Paid Online'} · {b.paymentStatus}</span>
                 </div>
               </div>
-              
-              <div className="mt-6 flex justify-end space-x-3">
-                <button
-                  onClick={() => setShowDetails(false)}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={() => handlePrintInvoice(selectedInvoice)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
-                >
-                  <PrinterIcon className="h-4 w-4 mr-2" />
-                  Print
-                </button>
-                <button
-                  onClick={() => handleDownloadInvoice(selectedInvoice)}
-                  className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 flex items-center"
-                >
-                  <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
-                  Download PDF
-                </button>
-              </div>
+
+              <div className="text-xs text-gray-400">Issued {fmtDate(selected.createdAt)} · Email sent automatically on booking confirmation</div>
             </div>
           </div>
         </div>

@@ -72,6 +72,7 @@ type HomePageFormState = {
   leftLinks: LinkItemDraft[]
   rightColumnTitle: string
   rightLinks: LinkItemDraft[]
+  copyrightText: string
 }
 
 type SectionTemplate = {
@@ -307,6 +308,7 @@ const SECTION_TEMPLATES: SectionTemplate[] = [
         leftLinks: DEFAULT_LEFT_LINKS,
         rightColumnTitle: 'Useful Links',
         rightLinks: DEFAULT_RIGHT_LINKS,
+        copyrightText: `© ${new Date().getFullYear()} Luxotel. All rights reserved.`,
       },
     },
   },
@@ -414,6 +416,7 @@ const createFormFromSection = (template: SectionTemplate, section?: HomePageSect
     leftLinks: normalizeLinks(content.leftLinks, normalizeLinks(defaultContent.leftLinks, DEFAULT_LEFT_LINKS)),
     rightColumnTitle: readString(content.rightColumnTitle, readString(defaultContent.rightColumnTitle, 'Useful Links')),
     rightLinks: normalizeLinks(content.rightLinks, normalizeLinks(defaultContent.rightLinks, DEFAULT_RIGHT_LINKS)),
+    copyrightText: readString(content.copyrightText, readString(defaultContent.copyrightText, `© ${new Date().getFullYear()} Luxotel. All rights reserved.`)),
   }
 }
 
@@ -462,6 +465,7 @@ const buildSectionContent = (template: SectionTemplate, form: HomePageFormState)
         label: item.label.trim(),
         href: item.href.trim(),
       })),
+      copyrightText: form.copyrightText.trim(),
     }
   }
 
@@ -824,61 +828,83 @@ export default function HomePageContentPage() {
     const links = column === 'leftLinks' ? form.leftLinks : form.rightLinks
 
     return (
-      <div className="rounded-lg border border-gray-200 p-4">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-200">
+          <h3 className="text-sm font-bold text-gray-800">{title}</h3>
           <button
             type="button"
             onClick={() => addLink(column)}
-            className="text-sm font-medium text-primary-600 hover:text-primary-700"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-700 bg-primary-50 hover:bg-primary-100 px-3 py-1.5 rounded-full transition-colors"
           >
-            Add Link
+            <span className="text-base leading-none">+</span> Add Link
           </button>
         </div>
 
-        <label className="block text-sm font-medium text-gray-700">
-          Column Title
-          <input
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-            value={form[headingKey]}
-            onChange={(event) => handleTextChange(headingKey, event.target.value)}
-          />
-        </label>
+        <div className="p-5 space-y-4">
+          {/* Column title */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+              Column Title
+            </label>
+            <input
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
+              value={form[headingKey]}
+              onChange={(event) => handleTextChange(headingKey, event.target.value)}
+            />
+          </div>
 
-        <div className="mt-4 space-y-3">
-          {links.map((item, index) => (
-            <div key={`${column}-${index}`} className="rounded-md border border-gray-200 p-3">
-              <div className="grid gap-3 md:grid-cols-[1fr,1fr,auto]">
-                <label className="block text-sm font-medium text-gray-700">
-                  Link Label
+          {/* Links list */}
+          {links.length === 0 && (
+            <p className="text-xs text-gray-400 text-center py-3">No links yet — click Add Link to start.</p>
+          )}
+          <div className="space-y-2">
+            {links.map((item, index) => (
+              <div
+                key={`${column}-${index}`}
+                className="group flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 hover:border-gray-300 transition-colors"
+              >
+                {/* Index badge */}
+                <span className="shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-gray-200 text-gray-500 text-xs font-bold">
+                  {index + 1}
+                </span>
+
+                {/* Label input */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-gray-400 mb-1">Label</p>
                   <input
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                    className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent bg-white"
+                    placeholder="e.g. Contact Us"
                     value={item.label}
                     onChange={(event) => handleLinkChange(column, index, 'label', event.target.value)}
                   />
-                </label>
+                </div>
 
-                <label className="block text-sm font-medium text-gray-700">
-                  Link URL
+                {/* URL input */}
+                <div className="flex-[1.5] min-w-0">
+                  <p className="text-xs text-gray-400 mb-1">URL</p>
                   <input
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                    className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent bg-white"
+                    placeholder="/contact"
                     value={item.href}
                     onChange={(event) => handleLinkChange(column, index, 'href', event.target.value)}
                   />
-                </label>
-
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={() => removeLink(column, index)}
-                    className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
-                  >
-                    Remove
-                  </button>
                 </div>
+
+                {/* Remove button */}
+                <button
+                  type="button"
+                  onClick={() => removeLink(column, index)}
+                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                  title="Remove link"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                    <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+                  </svg>
+                </button>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     )
@@ -1183,6 +1209,15 @@ export default function HomePageContentPage() {
             {renderLinkEditor('Left Footer Column', 'leftLinks', 'leftColumnTitle')}
             {renderLinkEditor('Right Footer Column', 'rightLinks', 'rightColumnTitle')}
           </div>
+
+          <label className="block text-sm font-medium text-gray-700">
+            Copyright Text
+            <input
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+              value={form.copyrightText}
+              onChange={(event) => handleTextChange('copyrightText', event.target.value)}
+            />
+          </label>
         </div>
       )
     }

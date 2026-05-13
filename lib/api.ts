@@ -565,10 +565,131 @@ export async function fetchAllUsers(token: string, query: Record<string, string>
   return res.json()
 }
 
+export async function updateAdminUser(
+  token: string,
+  id: string,
+  payload: { firstName?: string; lastName?: string; phoneNumber?: string; country?: string; status?: string }
+) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/users/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  })
+  return res.json()
+}
+
 export async function deleteAdminUser(token: string, id: string) {
   const res = await fetch(`${API_BASE_URL}/api/v1/users/${id}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}
+
+export interface CookieConsentRecord {
+  id: string
+  createdAt: string
+  sessionId: string
+  page: string | null
+  analytics: boolean
+  marketing: boolean
+  functional: boolean
+  necessary: boolean
+  ipAddress: string | null
+}
+
+export interface CookieStats {
+  total: number
+  analyticsAccepted: number
+  marketingAccepted: number
+  functionalAccepted: number
+  thisMonth: number
+  analyticsRate: number
+  marketingRate: number
+}
+
+export interface BookingRecord {
+  id: string
+  createdAt: string
+  bookingRef: string
+  status: string
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+  hotelName: string
+  checkIn: string
+  checkOut: string
+  nights: number
+  adults: number
+  children: number
+  rooms: { id: string; name: string; publicRate: number; claytonRate: number }[]
+  extras: { id: string; name: string; price: number; total: number }[]
+  subtotal: number
+  discount: number
+  total: number
+  paymentMethod: string
+  paymentStatus: string
+  invoice: { id: string; invoiceRef: string; status: string; sentAt: string | null } | null
+}
+
+export interface InvoiceRecord {
+  id: string
+  createdAt: string
+  invoiceRef: string
+  status: string
+  sentAt: string | null
+  booking: BookingRecord
+}
+
+export async function fetchAdminBookings(
+  token: string,
+  query: { search?: string; status?: string; page?: number; limit?: number } = {}
+) {
+  const qs = new URLSearchParams(
+    Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
+  ).toString()
+  const res = await fetch(`${API_BASE_URL}/api/v1/bookings${qs ? `?${qs}` : ''}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function fetchAdminInvoices(
+  token: string,
+  query: { search?: string; page?: number; limit?: number } = {}
+) {
+  const qs = new URLSearchParams(
+    Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
+  ).toString()
+  const res = await fetch(`${API_BASE_URL}/api/v1/bookings/invoices${qs ? `?${qs}` : ''}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function updateBookingStatus(token: string, id: string, status: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/bookings/${id}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status }),
+  })
+  return res.json()
+}
+
+export async function fetchCookieStats(
+  token: string,
+  query: { page?: number; limit?: number } = {}
+) {
+  const qs = new URLSearchParams(
+    Object.fromEntries(Object.entries(query).map(([k, v]) => [k, String(v)]))
+  ).toString()
+  const url = `${API_BASE_URL}/api/v1/cookies/stats${qs ? `?${qs}` : ''}`
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
   })
   return res.json()
 }

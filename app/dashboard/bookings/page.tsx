@@ -1,311 +1,305 @@
 'use client'
 
-import { useState } from 'react'
-import { 
+import { useCallback, useEffect, useState } from 'react'
+import {
   MagnifyingGlassIcon,
-  FunnelIcon,
   EyeIcon,
-  PencilIcon,
-  TrashIcon,
-  PlusIcon
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
+import { fetchAdminBookings, updateBookingStatus, BookingRecord } from '../../../lib/api'
 
-const bookings = [
-  {
-    id: 'BK001',
-    customer: {
-      name: 'John Smith',
-      email: 'john.smith@email.com',
-      phone: '+44 7700 900123'
-    },
-    hotel: 'Clayton Hotel London',
-    room: 'Deluxe Double Room',
-    checkIn: '2024-01-15',
-    checkOut: '2024-01-18',
-    nights: 3,
-    guests: 2,
-    status: 'Confirmed',
-    amount: 'JOD 525.00',
-    paymentStatus: 'Paid',
-    paymentMethod: 'Credit Card',
-    extras: ['Breakfast', 'Late Checkout'],
-    bookingDate: '2024-01-10'
-  },
-  {
-    id: 'BK002',
-    customer: {
-      name: 'Sarah Johnson',
-      email: 'sarah.j@email.com',
-      phone: '+44 7700 900456'
-    },
-    hotel: 'Clayton Hotel London',
-    room: 'Executive Suite',
-    checkIn: '2024-01-20',
-    checkOut: '2024-01-23',
-    nights: 3,
-    guests: 2,
-    status: 'Pending',
-    amount: 'JOD 789.00',
-    paymentStatus: 'Pending',
-    paymentMethod: 'Pay at Hotel',
-    extras: ['Breakfast', 'Dinner', 'Spa Access'],
-    bookingDate: '2024-01-12'
-  },
-  {
-    id: 'BK003',
-    customer: {
-      name: 'Mike Wilson',
-      email: 'mike.wilson@email.com',
-      phone: '+44 7700 900789'
-    },
-    hotel: 'Clayton Hotel London',
-    room: 'Junior Suite',
-    checkIn: '2024-01-25',
-    checkOut: '2024-01-27',
-    nights: 2,
-    guests: 1,
-    status: 'Confirmed',
-    amount: 'JOD 456.00',
-    paymentStatus: 'Paid',
-    paymentMethod: 'Credit Card',
-    extras: ['Breakfast'],
-    bookingDate: '2024-01-15'
-  },
-]
+const STATUS_COLORS: Record<string, string> = {
+  CONFIRMED: 'bg-green-100 text-green-700',
+  PENDING: 'bg-yellow-100 text-yellow-700',
+  CANCELLED: 'bg-red-100 text-red-700',
+}
+
+const PAYMENT_COLORS: Record<string, string> = {
+  PAID: 'bg-blue-100 text-blue-700',
+  PENDING: 'bg-gray-100 text-gray-600',
+}
+
+function fmt(n: number) {
+  return `JOD ${Math.round(n)}`
+}
+
+function fmtDate(iso: string) {
+  try { return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }
+  catch { return iso }
+}
 
 export default function BookingsPage() {
-  const [searchTerm, setSearchTerm] = useState('')
+  const [bookings, setBookings] = useState<BookingRecord[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [selectedBooking, setSelectedBooking] = useState<any>(null)
-  const [showDetails, setShowDetails] = useState(false)
+  const [page, setPage] = useState(1)
+  const limit = 50
 
-  const filteredBookings = bookings.filter(booking => {
-    const matchesSearch = booking.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         booking.id.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || booking.status.toLowerCase() === statusFilter
-    return matchesSearch && matchesStatus
-  })
+  const [selectedBooking, setSelectedBooking] = useState<BookingRecord | null>(null)
+  const [statusUpdating, setStatusUpdating] = useState(false)
 
-  const handleViewDetails = (booking: any) => {
-    setSelectedBooking(booking)
-    setShowDetails(true)
+  const load = useCallback(async (q = '', s = 'all', p = 1) => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) { setError('Admin token not found.'); setLoading(false); return }
+    setError('')
+    try {
+      const result = await fetchAdminBookings(token, {
+        ...(q ? { search: q } : {}),
+        ...(s !== 'all' ? { status: s } : {}),
+        page: p,
+        limit,
+      })
+      if (result.success) {
+        setBookings(result.bookings || [])
+        setTotal(result.total || 0)
+      } else {
+        setError(result.message || 'Failed to load bookings.')
+      }
+    } catch {
+      setError('Unable to connect to server.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load(search, statusFilter, page) }, [load, search, statusFilter, page])
+
+  const handleSearch = (v: string) => { setSearch(v); setPage(1); setLoading(true); load(v, statusFilter, 1) }
+  const handleStatusFilter = (v: string) => { setStatusFilter(v); setPage(1); setLoading(true); load(search, v, 1) }
+
+  const handleChangeStatus = async (booking: BookingRecord, newStatus: string) => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setStatusUpdating(true)
+    try {
+      const result = await updateBookingStatus(token, booking.id, newStatus)
+      if (result.success) {
+        setBookings((prev) => prev.map((b) => b.id === booking.id ? { ...b, status: newStatus } : b))
+        if (selectedBooking?.id === booking.id) setSelectedBooking({ ...selectedBooking, status: newStatus })
+      } else {
+        alert(result.message || 'Failed to update status.')
+      }
+    } catch {
+      alert('Unable to connect to server.')
+    } finally {
+      setStatusUpdating(false)
+    }
   }
+
+  const totalPages = Math.ceil(total / limit)
+
+  const displayName = (b: BookingRecord) => `${b.firstName} ${b.lastName}`
+  const rooms = Array.isArray(selectedBooking?.rooms) ? (selectedBooking!.rooms as { name: string; publicRate: number; claytonRate: number }[]) : []
+  const extras = Array.isArray(selectedBooking?.extras) ? (selectedBooking!.extras as { name: string; price: number; total: number }[]) : []
 
   return (
     <div>
       <div className="mb-8">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Bookings Management</h1>
-            <p className="mt-1 text-sm text-gray-600">
-              Manage all hotel bookings and reservations
-            </p>
-          </div>
-          <button className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md flex items-center">
-            <PlusIcon className="h-5 w-5 mr-2" />
-            New Booking
-          </button>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Bookings</h1>
+        <p className="mt-1 text-sm text-gray-600">{total} total booking{total !== 1 ? 's' : ''}</p>
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by customer name or booking ID..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex gap-4">
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="all">All Status</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="pending">Pending</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="completed">Completed</option>
-            </select>
-            <button className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 flex items-center">
-              <FunnelIcon className="h-5 w-5 mr-2" />
-              More Filters
-            </button>
-          </div>
+      <div className="bg-white p-4 rounded-lg shadow mb-6 flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-2.5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search name, email, reference…"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
         </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => handleStatusFilter(e.target.value)}
+          className="border border-gray-300 rounded-md text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+        >
+          <option value="all">All Statuses</option>
+          <option value="CONFIRMED">Confirmed</option>
+          <option value="PENDING">Pending</option>
+          <option value="CANCELLED">Cancelled</option>
+        </select>
       </div>
 
-      {/* Bookings Table */}
+      {error && (
+        <div className="mb-6 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+
       <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Booking Details
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Customer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Stay Details
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredBookings.map((booking) => (
-                <tr key={booking.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{booking.id}</div>
-                      <div className="text-sm text-gray-500">{booking.room}</div>
-                      <div className="text-sm text-gray-500">{booking.hotel}</div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{booking.customer.name}</div>
-                      <div className="text-sm text-gray-500">{booking.customer.email}</div>
-                      <div className="text-sm text-gray-500">{booking.customer.phone}</div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm text-gray-900">{booking.checkIn} - {booking.checkOut}</div>
-                      <div className="text-sm text-gray-500">{booking.nights} nights, {booking.guests} guests</div>
-                      <div className="text-sm text-gray-500">Booked: {booking.bookingDate}</div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="space-y-1">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        booking.status === 'Confirmed' 
-                          ? 'bg-green-100 text-green-800'
-                          : booking.status === 'Pending'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {booking.status}
+        {loading ? (
+          <div className="p-8 text-center text-sm text-gray-500">Loading bookings…</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Guest</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hotel</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dates</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {bookings.length === 0 ? (
+                  <tr><td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-400">No bookings found.</td></tr>
+                ) : bookings.map((b) => (
+                  <tr key={b.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap font-mono text-sm font-semibold text-primary-700">{b.bookingRef}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">{displayName(b)}</div>
+                      <div className="text-xs text-gray-400">{b.email}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{b.hotelName}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
+                      <div>{b.checkIn}</div>
+                      <div className="text-gray-400">{b.nights} night{b.nights !== 1 ? 's' : ''}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{fmt(b.total)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[b.status] || 'bg-gray-100 text-gray-600'}`}>
+                        {b.status}
                       </span>
-                      <div className="text-xs text-gray-500">
-                        Payment: {booking.paymentStatus}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{booking.amount}</div>
-                      <div className="text-sm text-gray-500">{booking.paymentMethod}</div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${PAYMENT_COLORS[b.paymentStatus] || 'bg-gray-100 text-gray-600'}`}>
+                        {b.paymentStatus === 'PAID' ? 'Paid' : b.paymentMethod === 'hotel' ? 'Pay at Hotel' : 'Pending'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
                       <button
-                        onClick={() => handleViewDetails(booking)}
-                        className="text-primary-600 hover:text-primary-900"
+                        onClick={() => setSelectedBooking(b)}
+                        className="text-gray-400 hover:text-primary-600 transition-colors"
+                        title="View details"
                       >
                         <EyeIcon className="h-5 w-5" />
                       </button>
-                      <button className="text-blue-600 hover:text-blue-900">
-                        <PencilIcon className="h-5 w-5" />
-                      </button>
-                      <button className="text-red-600 hover:text-red-900">
-                        <TrashIcon className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+            <p className="text-xs text-gray-500">Page {page} of {totalPages}</p>
+            <div className="flex gap-2">
+              <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="text-xs px-3 py-1.5 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">Previous</button>
+              <button disabled={page === totalPages} onClick={() => setPage((p) => p + 1)} className="text-xs px-3 py-1.5 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">Next</button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Booking Details Modal */}
-      {showDetails && selectedBooking && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Booking Details - {selectedBooking.id}</h3>
-                <button
-                  onClick={() => setShowDetails(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ×
-                </button>
+      {/* Detail modal */}
+      {selectedBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">{selectedBooking.bookingRef}</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Invoice: {selectedBooking.invoice?.invoiceRef || '—'}</p>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Customer Information</h4>
-                  <div className="space-y-1 text-sm">
-                    <p><span className="font-medium">Name:</span> {selectedBooking.customer.name}</p>
-                    <p><span className="font-medium">Email:</span> {selectedBooking.customer.email}</p>
-                    <p><span className="font-medium">Phone:</span> {selectedBooking.customer.phone}</p>
-                  </div>
+              <button onClick={() => setSelectedBooking(null)} className="text-gray-400 hover:text-gray-700">
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Status control */}
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700">Status:</span>
+                <select
+                  value={selectedBooking.status}
+                  disabled={statusUpdating}
+                  onChange={(e) => handleChangeStatus(selectedBooking, e.target.value)}
+                  className="border border-gray-300 rounded-md text-sm px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="CONFIRMED">Confirmed</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="CANCELLED">Cancelled</option>
+                </select>
+              </div>
+
+              {/* Guest */}
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Guest</h3>
+                <p className="text-sm font-semibold text-gray-900">{selectedBooking.firstName} {selectedBooking.lastName}</p>
+                <p className="text-sm text-gray-500">{selectedBooking.email}</p>
+                <p className="text-sm text-gray-500">{selectedBooking.phone}</p>
+              </div>
+
+              {/* Stay */}
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Stay</h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div><span className="text-gray-400">Hotel: </span><span className="font-medium text-gray-800">{selectedBooking.hotelName}</span></div>
+                  <div><span className="text-gray-400">Nights: </span><span className="font-medium text-gray-800">{selectedBooking.nights}</span></div>
+                  <div><span className="text-gray-400">Check-in: </span><span className="font-medium text-gray-800">{selectedBooking.checkIn}</span></div>
+                  <div><span className="text-gray-400">Check-out: </span><span className="font-medium text-gray-800">{selectedBooking.checkOut}</span></div>
+                  <div><span className="text-gray-400">Adults: </span><span className="font-medium text-gray-800">{selectedBooking.adults}</span></div>
+                  <div><span className="text-gray-400">Children: </span><span className="font-medium text-gray-800">{selectedBooking.children}</span></div>
                 </div>
-                
+              </div>
+
+              {/* Rooms */}
+              {rooms.length > 0 && (
                 <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Booking Information</h4>
-                  <div className="space-y-1 text-sm">
-                    <p><span className="font-medium">Hotel:</span> {selectedBooking.hotel}</p>
-                    <p><span className="font-medium">Room:</span> {selectedBooking.room}</p>
-                    <p><span className="font-medium">Check-in:</span> {selectedBooking.checkIn}</p>
-                    <p><span className="font-medium">Check-out:</span> {selectedBooking.checkOut}</p>
-                    <p><span className="font-medium">Guests:</span> {selectedBooking.guests}</p>
-                  </div>
-                </div>
-                
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Extras</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedBooking.extras.map((extra: string, index: number) => (
-                      <span key={index} className="px-2 py-1 bg-primary-100 text-primary-800 text-xs rounded-full">
-                        {extra}
-                      </span>
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Rooms</h3>
+                  <div className="space-y-1">
+                    {rooms.map((r, i) => (
+                      <div key={i} className="flex justify-between text-sm">
+                        <span className="text-gray-700">{r.name}</span>
+                        <span className="text-gray-500">{fmt(r.claytonRate)} / night</span>
+                      </div>
                     ))}
                   </div>
                 </div>
-                
+              )}
+
+              {/* Extras */}
+              {extras.length > 0 && (
                 <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Payment Details</h4>
-                  <div className="space-y-1 text-sm">
-                    <p><span className="font-medium">Amount:</span> {selectedBooking.amount}</p>
-                    <p><span className="font-medium">Method:</span> {selectedBooking.paymentMethod}</p>
-                    <p><span className="font-medium">Status:</span> {selectedBooking.paymentStatus}</p>
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Extras</h3>
+                  <div className="space-y-1">
+                    {extras.map((e, i) => (
+                      <div key={i} className="flex justify-between text-sm">
+                        <span className="text-gray-700">{e.name}</span>
+                        <span className="text-gray-500">{fmt(e.total || e.price)}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
+              )}
+
+              {/* Pricing */}
+              <div className="border-t border-gray-100 pt-4 space-y-1">
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Public Rate Total</span><span>{fmt(selectedBooking.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Luxotel Saving</span><span>−{fmt(selectedBooking.discount)}</span>
+                </div>
+                <div className="flex justify-between text-base font-bold text-gray-900 pt-1 border-t border-gray-100">
+                  <span>Total</span><span>{fmt(selectedBooking.total)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-400 pt-1">
+                  <span>Payment</span>
+                  <span>{selectedBooking.paymentMethod === 'hotel' ? 'Pay at Hotel' : 'Paid Online'} · {selectedBooking.paymentStatus}</span>
+                </div>
               </div>
-              
-              <div className="mt-6 flex justify-end space-x-3">
-                <button
-                  onClick={() => setShowDetails(false)}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
-                >
-                  Close
-                </button>
-                <button className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
-                  Generate Invoice
-                </button>
-              </div>
+
+              <div className="text-xs text-gray-400">Booked on {fmtDate(selectedBooking.createdAt)}</div>
             </div>
           </div>
         </div>
