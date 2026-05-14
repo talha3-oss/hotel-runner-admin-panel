@@ -836,3 +836,56 @@ export async function saveNavMenu(token: string, items: NavItem[]) {
   })
   return res.json()
 }
+
+// ── Coupons ──────────────────────────────────────────────────────────────────
+
+export interface Coupon {
+  id: string
+  code: string
+  discount: number
+  description: string | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type CouponPayload = {
+  code: string
+  discount: number
+  description?: string
+  isActive?: boolean
+}
+
+export async function fetchAdminCoupons(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/coupons`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function createAdminCoupon(token: string, data: CouponPayload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/coupons`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  })
+  return res.json()
+}
+
+export async function updateAdminCoupon(token: string, id: string, data: Partial<CouponPayload>) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/coupons/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  })
+  return res.json()
+}
+
+export async function deleteAdminCoupon(token: string, id: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/coupons/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}

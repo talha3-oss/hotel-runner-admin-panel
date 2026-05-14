@@ -18,6 +18,7 @@ import {
   TagIcon,
   SparklesIcon,
   ShieldCheckIcon,
+  TicketIcon,
 } from '@heroicons/react/24/outline'
 
 const navigation = [
@@ -29,6 +30,7 @@ const navigation = [
   { name: 'Rate Plans', href: '/dashboard/rate-plans', icon: TagIcon },
   { name: 'Extras', href: '/dashboard/extras', icon: SparklesIcon },
   { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarDaysIcon },
+  { name: 'Coupons', href: '/dashboard/coupons', icon: TicketIcon },
   { name: 'Customers', href: '/dashboard/customers', icon: UserGroupIcon },
   { name: 'Payments', href: '/dashboard/payments', icon: CreditCardIcon },
   { name: 'Invoices', href: '/dashboard/invoices', icon: DocumentTextIcon },
