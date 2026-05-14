@@ -829,39 +829,6 @@ export default function RoomsPage() {
                       />
                       <span className="text-xs text-gray-500">% discount for Luxotel rate</span>
                     </div>
-                    <div className="flex items-center gap-2 ml-4">
-                      <label className="text-xs text-gray-600 font-medium">Children Price (JOD)</label>
-                      <input
-                        type="number" min="0" step="0.01"
-                        value={formData.childrenPrice}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, childrenPrice: e.target.value }))}
-                        className="w-20 px-2 py-1 text-sm border border-orange-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 font-bold text-orange-700"
-                        placeholder="0.00"
-                      />
-                      <span className="text-xs text-gray-500">per child (6-12)</span>
-                    </div>
-                    <div className="flex items-center gap-2 ml-4">
-                      <label className="text-xs text-gray-600 font-medium">Children Allowed</label>
-                      <button
-                        type="button"
-                        onClick={() => setFormData((prev) => ({ ...prev, childrenAllowed: !prev.childrenAllowed }))}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${formData.childrenAllowed ? 'bg-green-500' : 'bg-gray-300'}`}
-                      >
-                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${formData.childrenAllowed ? 'translate-x-4' : 'translate-x-1'}`} />
-                      </button>
-                      <span className="text-xs text-gray-500">{formData.childrenAllowed ? 'Yes' : 'No'}</span>
-                    </div>
-                    <div className="flex items-center gap-2 ml-4">
-                      <label className="text-xs text-gray-600 font-medium">Adult Min Age</label>
-                      <input
-                        type="number" min="0" max="25" step="1"
-                        value={formData.adultMinAge}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, adultMinAge: e.target.value }))}
-                        className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-                        placeholder="0"
-                      />
-                      <span className="text-xs text-gray-500">years (0 = default 13+)</span>
-                    </div>
                   </div>
 
                   <div className="overflow-x-auto">

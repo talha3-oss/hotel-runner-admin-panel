@@ -1,9 +1,10 @@
 'use client'
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowPathIcon, PhotoIcon } from '@heroicons/react/24/outline'
+import { ArrowPathIcon, DocumentDuplicateIcon, PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import {
   createAdminHomePageSection,
+  createLandingPage,
   fetchAdminHomePageSections,
   getApiAssetUrl,
   HomePageSection,
@@ -1270,6 +1271,38 @@ export default function HomePageContentPage() {
     )
   }
 
+  // ── Duplicate as Page modal ──────────────────────────────────────────────
+  const [showDuplicate, setShowDuplicate] = useState(false)
+  const [dupName, setDupName] = useState('')
+  const [dupSlug, setDupSlug] = useState('')
+  const [duplicating, setDuplicating] = useState(false)
+  const [dupError, setDupError] = useState('')
+  const [dupSuccess, setDupSuccess] = useState('')
+
+  const slugify = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+
+  const handleDuplicate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!dupName.trim() || !dupSlug.trim()) { setDupError('Name and URL slug are required.'); return }
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setDuplicating(true)
+    setDupError('')
+    try {
+      const result = await createLandingPage(token, { name: dupName.trim(), slug: dupSlug.trim() })
+      if (result.success) {
+        setDupSuccess(`Page "${dupName}" created at /${dupSlug}`)
+        setDupName('')
+        setDupSlug('')
+        setTimeout(() => { setShowDuplicate(false); setDupSuccess('') }, 2000)
+      } else {
+        setDupError(result.message || 'Failed to create page.')
+      }
+    } catch { setDupError('Unable to connect.') }
+    finally { setDuplicating(false) }
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1283,14 +1316,87 @@ export default function HomePageContentPage() {
           </p>
         </div>
 
-        <button
-          onClick={loadSections}
-          className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
-          <ArrowPathIcon className="mr-2 h-5 w-5" />
-          Refresh Sections
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setShowDuplicate(true); setDupError(''); setDupSuccess('') }}
+            className="inline-flex items-center gap-2 rounded-md bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 text-sm font-semibold transition-colors"
+          >
+            <DocumentDuplicateIcon className="h-4 w-4" />
+            Duplicate as New Page
+          </button>
+          <button
+            onClick={loadSections}
+            className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <ArrowPathIcon className="mr-2 h-5 w-5" />
+            Refresh
+          </button>
+        </div>
       </div>
+
+      {/* Duplicate modal */}
+      {showDuplicate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-base font-bold text-gray-900">Duplicate Homepage as New Page</h2>
+              <button onClick={() => setShowDuplicate(false)} className="text-gray-400 hover:text-gray-700">
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleDuplicate} className="p-6 space-y-4">
+              <p className="text-sm text-gray-500">
+                This copies all current homepage sections into an independent page you can edit separately.
+              </p>
+              {dupError && <p className="text-sm text-red-600">{dupError}</p>}
+              {dupSuccess && <p className="text-sm text-green-600">{dupSuccess}</p>}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Page Name</label>
+                <input
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="e.g. Summer Offers"
+                  value={dupName}
+                  onChange={(e) => {
+                    setDupName(e.target.value)
+                    if (!dupSlug || dupSlug === slugify(dupName)) setDupSlug(slugify(e.target.value))
+                  }}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">URL Slug</label>
+                <div className="flex items-center gap-1">
+                  <span className="text-sm text-gray-400 font-mono">yourdomain.com/</span>
+                  <input
+                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="summer-offers"
+                    value={dupSlug}
+                    onChange={(e) => setDupSlug(slugify(e.target.value))}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={duplicating}
+                  className="flex-1 bg-primary-600 hover:bg-primary-700 text-white py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50 transition-colors"
+                >
+                  {duplicating ? 'Creating…' : 'Create Page'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDuplicate(false)}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {error && <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {successMessage && (

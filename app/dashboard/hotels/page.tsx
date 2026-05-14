@@ -54,6 +54,9 @@ type HotelForm = {
   businessSubtitle: string
   businessDescription: string
   accessibilityText: string
+  childrenAllowed: boolean
+  childrenPrice: string
+  adultMinAge: string
 }
 
 const EMPTY_HOTEL: HotelForm = {
@@ -85,6 +88,9 @@ const EMPTY_HOTEL: HotelForm = {
   businessSubtitle: '',
   businessDescription: '',
   accessibilityText: '',
+  childrenAllowed: true,
+  childrenPrice: '0',
+  adultMinAge: '13',
 }
 
 const parseCsv = (value: string) =>
@@ -246,6 +252,9 @@ export default function HotelsPage() {
       businessSubtitle: typeof detailContent?.businessSubtitle === 'string' ? detailContent.businessSubtitle : '',
       businessDescription: typeof detailContent?.businessDescription === 'string' ? detailContent.businessDescription : '',
       accessibilityText: typeof detailContent?.accessibilityText === 'string' ? detailContent.accessibilityText : '',
+      childrenAllowed: hotel.childrenAllowed !== false,
+      childrenPrice: String(hotel.childrenPrice ?? 0),
+      adultMinAge: String(hotel.adultMinAge ?? 13),
     })
     setFormError('')
     setPrimaryImageFile(null)
@@ -373,6 +382,9 @@ export default function HotelsPage() {
           businessDescription: hotelForm.businessDescription.trim() || null,
           accessibilityText: hotelForm.accessibilityText.trim() || null,
         },
+        childrenAllowed: hotelForm.childrenAllowed,
+        childrenPrice: Number(hotelForm.childrenPrice) || 0,
+        adultMinAge: Number(hotelForm.adultMinAge) || 13,
       }
 
       const result = hotelForm.id ? await updateHotel(token, hotelForm.id, payload) : await createHotel(token, payload)
@@ -755,6 +767,54 @@ export default function HotelsPage() {
                   <input className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Business section subtitle" value={hotelForm.businessSubtitle} onChange={(e) => setHotelForm((prev) => ({ ...prev, businessSubtitle: e.target.value }))} />
                   <textarea className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2 min-h-[110px]" placeholder="Business section description" value={hotelForm.businessDescription} onChange={(e) => setHotelForm((prev) => ({ ...prev, businessDescription: e.target.value }))} />
                   <textarea className="w-full px-3 py-2 border border-gray-300 rounded-md md:col-span-2 min-h-[110px]" placeholder="Accessibility section text" value={hotelForm.accessibilityText} onChange={(e) => setHotelForm((prev) => ({ ...prev, accessibilityText: e.target.value }))} />
+                </div>
+
+                {/* Children Policy */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 mt-2 border-t pt-4">Children Policy</h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3 items-start">
+                    <label className="flex items-center gap-3 cursor-pointer select-none col-span-1 md:col-span-3">
+                      <div
+                        onClick={() => setHotelForm((prev) => ({ ...prev, childrenAllowed: !prev.childrenAllowed }))}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${hotelForm.childrenAllowed ? 'bg-primary-600' : 'bg-gray-300'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hotelForm.childrenAllowed ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </div>
+                      <span className="text-sm font-medium text-gray-700">Children Allowed</span>
+                    </label>
+                    {hotelForm.childrenAllowed && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Children Price (per night)</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">£</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-md text-sm"
+                              placeholder="0.00"
+                              value={hotelForm.childrenPrice}
+                              onChange={(e) => setHotelForm((prev) => ({ ...prev, childrenPrice: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Adult Min Age (years)</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="21"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                            placeholder="13"
+                            value={hotelForm.adultMinAge}
+                            onChange={(e) => setHotelForm((prev) => ({ ...prev, adultMinAge: e.target.value }))}
+                          />
+                          <p className="text-xs text-gray-400 mt-1">Guests below this age are considered children</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {formError && <p className="text-sm text-red-600">{formError}</p>}

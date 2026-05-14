@@ -260,6 +260,9 @@ export interface Hotel {
   bookingExtras?: unknown
   bookingDefaults?: unknown
   detailContent?: unknown
+  childrenAllowed?: boolean
+  childrenPrice?: number
+  adultMinAge?: number
   locationId: string
   location: string
   country: string
@@ -690,6 +693,111 @@ export async function fetchCookieStats(
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
+  })
+  return res.json()
+}
+
+// ─── Landing Pages ────────────────────────────────────────────────────────────
+
+export interface LandingPageMeta {
+  id: string
+  name: string
+  slug: string
+  status: 'ACTIVE' | 'INACTIVE'
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PageSection {
+  sectionKey: string
+  sectionType: string
+  groupKey: string
+  sortOrder: number
+  name: string
+  status: 'ACTIVE' | 'INACTIVE'
+  badge: string | null
+  eyebrow: string | null
+  title: string | null
+  subtitle: string | null
+  description: string | null
+  buttonLabel: string | null
+  buttonLink: string | null
+  secondaryButtonLabel: string | null
+  secondaryButtonLink: string | null
+  image: string | null
+  imageAlt: string | null
+  content: unknown
+}
+
+export async function fetchAdminPages(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/pages/admin/pages`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function fetchAdminPageById(token: string, id: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/pages/admin/pages/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function createLandingPage(token: string, payload: { name: string; slug: string }) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/pages/admin/pages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  })
+  return res.json()
+}
+
+export async function updateLandingPage(
+  token: string,
+  id: string,
+  payload: { name?: string; slug?: string; status?: string; sections?: unknown }
+) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/pages/admin/pages/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  })
+  return res.json()
+}
+
+export async function deleteLandingPage(token: string, id: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/pages/admin/pages/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}
+
+// ─── Navigation Menu ──────────────────────────────────────────────────────────
+
+export interface NavItem {
+  id?: string
+  label: string
+  href: string
+  order: number
+  visible: boolean
+  openInNewTab: boolean
+}
+
+export async function fetchNavMenu(_token?: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/pages/nav-menu`, {
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function saveNavMenu(token: string, items: NavItem[]) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/pages/admin/nav-menu`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ items }),
   })
   return res.json()
 }

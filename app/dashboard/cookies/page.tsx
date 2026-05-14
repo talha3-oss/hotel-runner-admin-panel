@@ -7,6 +7,7 @@ import {
   XCircleIcon,
   GlobeAltIcon,
   MegaphoneIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline'
 import { fetchCookieStats, CookieConsentRecord, CookieStats } from '../../../lib/api'
 
@@ -154,7 +155,13 @@ export default function CookiesPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {consents.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-gray-400">No consent records yet.</td>
+                    <td colSpan={7} className="px-6 py-14 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <ShieldCheckIcon className="h-10 w-10 text-gray-200" />
+                        <p className="text-sm font-medium text-gray-400">No consent records yet</p>
+                        <p className="text-xs text-gray-300 max-w-xs">Records will appear here as visitors interact with the cookie banner on the website.</p>
+                      </div>
+                    </td>
                   </tr>
                 ) : (
                   consents.map((c) => (
