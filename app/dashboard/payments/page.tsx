@@ -1,304 +1,232 @@
 'use client'
 
-import { useState } from 'react'
-import { 
+import { useCallback, useEffect, useState } from 'react'
+import {
   MagnifyingGlassIcon,
   EyeIcon,
   CreditCardIcon,
   BanknotesIcon,
   CheckCircleIcon,
   ClockIcon,
-  XCircleIcon
+  XCircleIcon,
+  CurrencyPoundIcon,
 } from '@heroicons/react/24/outline'
+import { fetchAdminBookings, BookingRecord } from '../../../lib/api'
 
-const payments = [
-  {
-    id: 'PAY001',
-    bookingId: 'BK001',
-    customer: 'John Smith',
-    amount: 'JOD 525.00',
-    method: 'Credit Card',
-    provider: 'Stripe',
-    status: 'Completed',
-    date: '2024-01-15',
-    transactionId: 'txn_1234567890',
-    cardLast4: '4242',
-    currency: 'JOD'
-  },
-  {
-    id: 'PAY002',
-    bookingId: 'BK002',
-    customer: 'Sarah Johnson',
-    amount: 'JOD 789.00',
-    method: 'Pay at Hotel',
-    provider: 'Cash/Card',
-    status: 'Pending',
-    date: '2024-01-20',
-    transactionId: null,
-    cardLast4: null,
-    currency: 'JOD'
-  },
-  {
-    id: 'PAY003',
-    bookingId: 'BK003',
-    customer: 'Mike Wilson',
-    amount: 'JOD 456.00',
-    method: 'MontyPay',
-    provider: 'MontyPay',
-    status: 'Completed',
-    date: '2024-01-25',
-    transactionId: 'mty_9876543210',
-    cardLast4: '1234',
-    currency: 'JOD'
-  },
-  {
-    id: 'PAY004',
-    bookingId: 'BK004',
-    customer: 'Emma Davis',
-    amount: 'JOD 1,200.00',
-    method: 'Credit Card',
-    provider: 'Stripe',
-    status: 'Failed',
-    date: '2024-01-28',
-    transactionId: 'txn_failed_001',
-    cardLast4: '5678',
-    currency: 'JOD'
-  }
-]
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
 
-const paymentStats = {
-  totalRevenue: payments.reduce((sum, p) => sum + parseFloat(p.amount.replace('JOD', '').replace(',', '').trim()), 0),
-  completedPayments: payments.filter(p => p.status === 'Completed').length,
-  pendingPayments: payments.filter(p => p.status === 'Pending').length,
-  failedPayments: payments.filter(p => p.status === 'Failed').length
+const PAYMENT_STATUS_STYLES: Record<string, string> = {
+  PAID: 'bg-green-100 text-green-800',
+  PENDING: 'bg-yellow-100 text-yellow-800',
+  FAILED: 'bg-red-100 text-red-800',
+  REFUNDED: 'bg-gray-100 text-gray-700',
+}
+
+function fmtCurrency(n: number) {
+  return `£${new Intl.NumberFormat('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}`
+}
+
+function fmtDate(s: string) {
+  return new Date(s).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function methodLabel(method: string) {
+  if (!method) return 'Unknown'
+  if (method === 'now') return 'Pay Now'
+  if (method === 'hotel') return 'Pay at Hotel'
+  return method
+}
+
+function methodIcon(method: string) {
+  if (method === 'hotel') return <BanknotesIcon className="h-4 w-4 text-green-500" />
+  return <CreditCardIcon className="h-4 w-4 text-blue-500" />
+}
+
+function statusIcon(status: string) {
+  if (status === 'PAID') return <CheckCircleIcon className="h-4 w-4 text-green-500" />
+  if (status === 'PENDING') return <ClockIcon className="h-4 w-4 text-yellow-500" />
+  return <XCircleIcon className="h-4 w-4 text-red-500" />
 }
 
 export default function PaymentsPage() {
-  const [searchTerm, setSearchTerm] = useState('')
+  const [bookings, setBookings] = useState<BookingRecord[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [methodFilter, setMethodFilter] = useState('all')
-  const [selectedPayment, setSelectedPayment] = useState<any>(null)
-  const [showDetails, setShowDetails] = useState(false)
+  const [page, setPage] = useState(1)
+  const [selected, setSelected] = useState<BookingRecord | null>(null)
+  const limit = 20
 
-  const filteredPayments = payments.filter(payment => {
-    const matchesSearch = 
-      payment.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.bookingId.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || payment.status.toLowerCase() === statusFilter
-    const matchesMethod = methodFilter === 'all' || payment.method.toLowerCase().includes(methodFilter.toLowerCase())
-    return matchesSearch && matchesStatus && matchesMethod
-  })
-
-  const handleViewDetails = (payment: any) => {
-    setSelectedPayment(payment)
-    setShowDetails(true)
-  }
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'Completed':
-        return <CheckCircleIcon className="h-5 w-5 text-green-500" />
-      case 'Pending':
-        return <ClockIcon className="h-5 w-5 text-yellow-500" />
-      case 'Failed':
-        return <XCircleIcon className="h-5 w-5 text-red-500" />
-      default:
-        return <ClockIcon className="h-5 w-5 text-gray-500" />
+  const load = useCallback(async (q: string, status: string, p: number) => {
+    setLoading(true)
+    try {
+      const token = localStorage.getItem('adminToken') || ''
+      const result = await fetchAdminBookings(token, {
+        ...(q ? { search: q } : {}),
+        ...(status !== 'all' ? { status } : {}),
+        page: p,
+        limit,
+      })
+      if (result?.success) {
+        setBookings(result.bookings || [])
+        setTotal(result.total || 0)
+      } else {
+        setError(result?.message || 'Failed to load payments.')
+      }
+    } catch {
+      setError('Could not reach server.')
+    } finally {
+      setLoading(false)
     }
+  }, [])
+
+  useEffect(() => { load(search, statusFilter, page) }, [])
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    setPage(1)
+    load(search, statusFilter, 1)
   }
 
-  const getMethodIcon = (method: string) => {
-    if (method.includes('Credit Card') || method.includes('MontyPay')) {
-      return <CreditCardIcon className="h-5 w-5 text-blue-500" />
-    }
-    return <BanknotesIcon className="h-5 w-5 text-green-500" />
-  }
+  const filtered = methodFilter === 'all'
+    ? bookings
+    : bookings.filter(b => {
+        if (methodFilter === 'now') return b.paymentMethod === 'now'
+        if (methodFilter === 'hotel') return b.paymentMethod === 'hotel'
+        return true
+      })
+
+  const paid = bookings.filter(b => b.paymentStatus === 'PAID')
+  const pending = bookings.filter(b => b.paymentStatus === 'PENDING')
+  const totalRevenue = paid.reduce((s, b) => s + (b.total || 0), 0)
+  const pendingRevenue = pending.reduce((s, b) => s + (b.total || 0), 0)
 
   return (
-    <div>
-      <div className="mb-8">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Payment Management</h1>
-            <p className="mt-1 text-sm text-gray-600">
-              Track and manage all payment transactions
-            </p>
-          </div>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Payments</h1>
+        <p className="mt-1 text-sm text-gray-500">All payment records derived from bookings.</p>
       </div>
 
-      {/* Payment Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <CreditCardIcon className="h-6 w-6 text-green-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-              <p className="text-2xl font-bold text-gray-900">
-                JOD {paymentStats.totalRevenue.toLocaleString()}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <CheckCircleIcon className="h-6 w-6 text-green-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Completed</p>
-              <p className="text-2xl font-bold text-gray-900">{paymentStats.completedPayments}</p>
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: 'Collected Revenue', value: fmtCurrency(totalRevenue), icon: CurrencyPoundIcon, color: 'bg-emerald-50 text-emerald-600' },
+          { label: 'Paid Bookings', value: paid.length.toString(), icon: CheckCircleIcon, color: 'bg-green-50 text-green-600' },
+          { label: 'Pending Revenue', value: fmtCurrency(pendingRevenue), icon: ClockIcon, color: 'bg-yellow-50 text-yellow-600' },
+          { label: 'Pending Payments', value: pending.length.toString(), icon: BanknotesIcon, color: 'bg-orange-50 text-orange-600' },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <div key={label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-start gap-3">
+              <div className={`p-2 rounded-lg ${color}`}>
+                <Icon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">{label}</p>
+                <p className="text-lg font-bold text-gray-900 mt-0.5">{value}</p>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <ClockIcon className="h-6 w-6 text-yellow-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Pending</p>
-              <p className="text-2xl font-bold text-gray-900">{paymentStats.pendingPayments}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <div className="h-12 w-12 bg-red-100 rounded-lg flex items-center justify-center">
-              <XCircleIcon className="h-6 w-6 text-red-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Failed</p>
-              <p className="text-2xl font-bold text-gray-900">{paymentStats.failedPayments}</p>
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by customer, payment ID, or booking ID..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1 relative">
+            <MagnifyingGlassIcon className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search booking ref, guest name, email…"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
           </div>
-          <div className="flex gap-4">
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="all">All Status</option>
-              <option value="completed">Completed</option>
-              <option value="pending">Pending</option>
-              <option value="failed">Failed</option>
-            </select>
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              value={methodFilter}
-              onChange={(e) => setMethodFilter(e.target.value)}
-            >
-              <option value="all">All Methods</option>
-              <option value="credit">Credit Card</option>
-              <option value="montypay">MontyPay</option>
-              <option value="hotel">Pay at Hotel</option>
-            </select>
-          </div>
-        </div>
+          <select
+            className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            value={statusFilter}
+            onChange={e => { setStatusFilter(e.target.value); setPage(1); load(search, e.target.value, 1) }}
+          >
+            <option value="all">All Status</option>
+            <option value="PAID">Paid</option>
+            <option value="PENDING">Pending</option>
+          </select>
+          <select
+            className="text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            value={methodFilter}
+            onChange={e => setMethodFilter(e.target.value)}
+          >
+            <option value="all">All Methods</option>
+            <option value="now">Pay Now</option>
+            <option value="hotel">Pay at Hotel</option>
+          </select>
+          <button type="submit" className="px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+            Search
+          </button>
+        </form>
       </div>
 
-      {/* Payments Table */}
-      <div className="bg-white shadow rounded-lg overflow-hidden">
+      {error && (
+        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Payment Details
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Customer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Method
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
+          <table className="min-w-full divide-y divide-gray-100">
+            <thead>
+              <tr className="bg-gray-50">
+                {['Booking Ref', 'Guest', 'Hotel', 'Amount', 'Method', 'Payment Status', 'Booking Status', 'Date', ''].map(h => (
+                  <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                ))}
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredPayments.map((payment) => (
-                <tr key={payment.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{payment.id}</div>
-                      <div className="text-sm text-gray-500">Booking: {payment.bookingId}</div>
-                      {payment.transactionId && (
-                        <div className="text-sm text-gray-500">Txn: {payment.transactionId}</div>
-                      )}
+            <tbody className="divide-y divide-gray-100">
+              {loading && (
+                <tr><td colSpan={9} className="px-5 py-10 text-center text-sm text-gray-400">Loading…</td></tr>
+              )}
+              {!loading && filtered.length === 0 && (
+                <tr><td colSpan={9} className="px-5 py-10 text-center text-sm text-gray-400">No payment records found.</td></tr>
+              )}
+              {!loading && filtered.map(b => (
+                <tr key={b.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-5 py-3.5 whitespace-nowrap text-sm font-mono font-semibold text-gray-900">{b.bookingRef}</td>
+                  <td className="px-5 py-3.5 whitespace-nowrap text-sm text-gray-700">{b.firstName} {b.lastName}</td>
+                  <td className="px-5 py-3.5 whitespace-nowrap text-sm text-gray-500 max-w-[140px] truncate">{b.hotelName}</td>
+                  <td className="px-5 py-3.5 whitespace-nowrap text-sm font-semibold text-gray-900">{fmtCurrency(b.total)}</td>
+                  <td className="px-5 py-3.5 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5 text-sm text-gray-700">
+                      {methodIcon(b.paymentMethod)}
+                      {methodLabel(b.paymentMethod)}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{payment.customer}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-bold text-gray-900">{payment.amount}</div>
-                    <div className="text-sm text-gray-500">{payment.currency}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      {getMethodIcon(payment.method)}
-                      <div className="ml-2">
-                        <div className="text-sm text-gray-900">{payment.method}</div>
-                        <div className="text-sm text-gray-500">{payment.provider}</div>
-                        {payment.cardLast4 && (
-                          <div className="text-sm text-gray-500">****{payment.cardLast4}</div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      {getStatusIcon(payment.status)}
-                      <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        payment.status === 'Completed' 
-                          ? 'bg-green-100 text-green-800'
-                          : payment.status === 'Pending'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {payment.status}
+                  <td className="px-5 py-3.5 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      {statusIcon(b.paymentStatus)}
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${PAYMENT_STATUS_STYLES[b.paymentStatus] || 'bg-gray-100 text-gray-700'}`}>
+                        {b.paymentStatus}
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {payment.date}
+                  <td className="px-5 py-3.5 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      b.status === 'CONFIRMED' ? 'bg-green-100 text-green-800' :
+                      b.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                      b.status === 'CANCELLED' ? 'bg-red-100 text-red-800' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {b.status.charAt(0) + b.status.slice(1).toLowerCase()}
+                    </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <td className="px-5 py-3.5 whitespace-nowrap text-sm text-gray-500">{fmtDate(b.createdAt)}</td>
+                  <td className="px-5 py-3.5 whitespace-nowrap">
                     <button
-                      onClick={() => handleViewDetails(payment)}
-                      className="text-primary-600 hover:text-primary-900"
+                      onClick={() => setSelected(b)}
+                      className="text-gray-400 hover:text-primary-600 transition-colors"
                     >
                       <EyeIcon className="h-5 w-5" />
                     </button>
@@ -308,126 +236,65 @@ export default function PaymentsPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {total > limit && (
+          <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between text-sm text-gray-600">
+            <span>Showing {((page - 1) * limit) + 1}–{Math.min(page * limit, total)} of {total}</span>
+            <div className="flex gap-2">
+              <button
+                disabled={page === 1}
+                onClick={() => { const p = page - 1; setPage(p); load(search, statusFilter, p) }}
+                className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-40 hover:bg-gray-50"
+              >Prev</button>
+              <button
+                disabled={page * limit >= total}
+                onClick={() => { const p = page + 1; setPage(p); load(search, statusFilter, p) }}
+                className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-40 hover:bg-gray-50"
+              >Next</button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Payment Details Modal */}
-      {showDetails && selectedPayment && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-medium text-gray-900">
-                  Payment Details - {selectedPayment.id}
-                </h3>
-                <button
-                  onClick={() => setShowDetails(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ×
-                </button>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-3">Payment Information</h4>
-                  <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                    <div>
-                      <span className="font-medium text-gray-700">Payment ID:</span>
-                      <span className="ml-2 text-gray-900">{selectedPayment.id}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Booking ID:</span>
-                      <span className="ml-2 text-gray-900">{selectedPayment.bookingId}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Amount:</span>
-                      <span className="ml-2 text-gray-900 font-bold">{selectedPayment.amount}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Currency:</span>
-                      <span className="ml-2 text-gray-900">{selectedPayment.currency}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Date:</span>
-                      <span className="ml-2 text-gray-900">{selectedPayment.date}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <span className="font-medium text-gray-700">Status:</span>
-                      <div className="ml-2 flex items-center">
-                        {getStatusIcon(selectedPayment.status)}
-                        <span className={`ml-1 px-2 py-1 text-xs font-semibold rounded-full ${
-                          selectedPayment.status === 'Completed' 
-                            ? 'bg-green-100 text-green-800'
-                            : selectedPayment.status === 'Pending'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {selectedPayment.status}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-3">Payment Method</h4>
-                  <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                    <div className="flex items-center">
-                      <span className="font-medium text-gray-700">Method:</span>
-                      <div className="ml-2 flex items-center">
-                        {getMethodIcon(selectedPayment.method)}
-                        <span className="ml-1 text-gray-900">{selectedPayment.method}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Provider:</span>
-                      <span className="ml-2 text-gray-900">{selectedPayment.provider}</span>
-                    </div>
-                    {selectedPayment.cardLast4 && (
-                      <div>
-                        <span className="font-medium text-gray-700">Card:</span>
-                        <span className="ml-2 text-gray-900">****{selectedPayment.cardLast4}</span>
-                      </div>
-                    )}
-                    {selectedPayment.transactionId && (
-                      <div>
-                        <span className="font-medium text-gray-700">Transaction ID:</span>
-                        <span className="ml-2 text-gray-900 font-mono text-sm">
-                          {selectedPayment.transactionId}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                <div className="md:col-span-2">
-                  <h4 className="font-medium text-gray-900 mb-3">Customer Information</h4>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <div>
-                      <span className="font-medium text-gray-700">Customer:</span>
-                      <span className="ml-2 text-gray-900">{selectedPayment.customer}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="mt-8 flex justify-end space-x-3">
-                <button
-                  onClick={() => setShowDetails(false)}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
-                >
-                  Close
-                </button>
-                {selectedPayment.status === 'Failed' && (
-                  <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                    Retry Payment
-                  </button>
-                )}
-                <button className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">
-                  Generate Receipt
-                </button>
-              </div>
+      {/* Detail modal */}
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-gray-900">Payment Detail</h2>
+              <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
             </div>
+            <div className="space-y-4 text-sm">
+              {[
+                ['Booking Ref', selected.bookingRef],
+                ['Guest', `${selected.firstName} ${selected.lastName}`],
+                ['Email', selected.email],
+                ['Phone', selected.phone],
+                ['Hotel', selected.hotelName],
+                ['Check-in / Check-out', `${selected.checkIn} → ${selected.checkOut}`],
+                ['Nights', selected.nights],
+                ['Adults / Children', `${selected.adults} / ${selected.children}`],
+                ['Subtotal', fmtCurrency(selected.subtotal)],
+                ['Discount', fmtCurrency(selected.discount)],
+                ['Total', fmtCurrency(selected.total)],
+                ['Payment Method', methodLabel(selected.paymentMethod)],
+                ['Payment Status', selected.paymentStatus],
+                ['Booking Status', selected.status],
+                ['Date', fmtDate(selected.createdAt)],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="flex justify-between border-b border-gray-100 pb-2 last:border-0">
+                  <span className="text-gray-500">{label}</span>
+                  <span className="font-medium text-gray-900 text-right">{String(value)}</span>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setSelected(null)}
+              className="mt-6 w-full py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}

@@ -9,7 +9,6 @@ import {
   UserGroupIcon,
   CalendarDaysIcon,
   CreditCardIcon,
-  ChartBarIcon,
   CogIcon,
   MapPinIcon,
   DocumentTextIcon,
@@ -33,7 +32,6 @@ const navigation = [
   { name: 'Customers', href: '/dashboard/customers', icon: UserGroupIcon },
   { name: 'Payments', href: '/dashboard/payments', icon: CreditCardIcon },
   { name: 'Invoices', href: '/dashboard/invoices', icon: DocumentTextIcon },
-  { name: 'Analytics', href: '/dashboard/analytics', icon: ChartBarIcon },
   { name: 'Cookie Consents', href: '/dashboard/cookies', icon: ShieldCheckIcon },
   { name: 'Settings', href: '/dashboard/settings', icon: CogIcon },
 ]

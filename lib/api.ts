@@ -56,6 +56,15 @@ export async function getAdminMe(token: string) {
   return res.json();
 }
 
+export async function updateAdminMe(token: string, data: { fullName?: string; email?: string; currentPassword?: string; newPassword?: string }) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/auth/me`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 export type RoomStatus = 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'CLEANING'
 
 export interface RoomTypeOption {
@@ -691,6 +700,32 @@ export async function fetchCookieStats(
   ).toString()
   const url = `${API_BASE_URL}/api/v1/cookies/stats${qs ? `?${qs}` : ''}`
   const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+// ─── Dashboard Stats ──────────────────────────────────────────────────────────
+
+export async function fetchDashboardStats(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/bookings/stats`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function fetchHotelCount(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/properties/hotels`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function fetchRoomCount(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
   })

@@ -1,490 +1,292 @@
 'use client'
 
-import { useState } from 'react'
-import { 
-  CogIcon,
+import { FormEvent, useEffect, useState } from 'react'
+import {
   UserIcon,
-  BellIcon,
-  CreditCardIcon,
   ShieldCheckIcon,
-  GlobeAltIcon
+  CheckCircleIcon,
 } from '@heroicons/react/24/outline'
+import { getAdminMe, updateAdminMe } from '../../../lib/api'
+
+interface AdminUser {
+  id: string
+  email: string
+  fullName: string
+  profilePhoto?: string
+  role: string
+  status: string
+  createdAt: string
+}
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState('general')
-  const [settings, setSettings] = useState({
-    general: {
-      hotelName: 'Luxotel Hotels',
-      timezone: 'Europe/London',
-      currency: 'JOD',
-      language: 'English',
-      dateFormat: 'DD/MM/YYYY'
-    },
-    notifications: {
-      emailBookings: true,
-      emailPayments: true,
-      emailCancellations: true,
-      smsBookings: false,
-      smsPayments: true,
-      pushNotifications: true
-    },
-    payment: {
-      stripeEnabled: true,
-      stripePublicKey: 'pk_test_...',
-      stripeSecretKey: '••••••••••••••••',
-      montypayEnabled: true,
-      montypayApiKey: '••••••••••••••••',
-      payAtHotelEnabled: true
-    },
-    security: {
-      twoFactorAuth: false,
-      sessionTimeout: 30,
-      passwordExpiry: 90,
-      loginAttempts: 5
+  const [user, setUser] = useState<AdminUser | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [activeTab, setActiveTab] = useState<'profile' | 'security'>('profile')
+
+  // Profile form
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  // Password form
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    const token = localStorage.getItem('adminToken') || ''
+    getAdminMe(token)
+      .then(res => {
+        if (res?.success && res.user) {
+          setUser(res.user)
+          setFullName(res.user.fullName || '')
+          setEmail(res.user.email || '')
+        } else {
+          setLoadError(res?.message || 'Failed to load profile.')
+        }
+      })
+      .catch(() => setLoadError('Could not reach server.'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const handleProfileSave = async (e: FormEvent) => {
+    e.preventDefault()
+    setProfileMsg(null)
+    setProfileSaving(true)
+    try {
+      const token = localStorage.getItem('adminToken') || ''
+      const res = await updateAdminMe(token, { fullName, email })
+      if (res?.success) {
+        setUser(res.user)
+        setProfileMsg({ ok: true, text: 'Profile updated successfully.' })
+      } else {
+        setProfileMsg({ ok: false, text: res?.message || 'Failed to save.' })
+      }
+    } catch {
+      setProfileMsg({ ok: false, text: 'Server error.' })
+    } finally {
+      setProfileSaving(false)
     }
-  })
+  }
+
+  const handlePasswordSave = async (e: FormEvent) => {
+    e.preventDefault()
+    setPwMsg(null)
+    if (newPassword !== confirmPassword) {
+      setPwMsg({ ok: false, text: 'New passwords do not match.' })
+      return
+    }
+    if (newPassword.length < 8) {
+      setPwMsg({ ok: false, text: 'Password must be at least 8 characters.' })
+      return
+    }
+    setPwSaving(true)
+    try {
+      const token = localStorage.getItem('adminToken') || ''
+      const res = await updateAdminMe(token, { currentPassword, newPassword })
+      if (res?.success) {
+        setCurrentPassword('')
+        setNewPassword('')
+        setConfirmPassword('')
+        setPwMsg({ ok: true, text: 'Password changed successfully.' })
+      } else {
+        setPwMsg({ ok: false, text: res?.message || 'Failed to change password.' })
+      }
+    } catch {
+      setPwMsg({ ok: false, text: 'Server error.' })
+    } finally {
+      setPwSaving(false)
+    }
+  }
 
   const tabs = [
-    { id: 'general', name: 'General', icon: CogIcon },
-    { id: 'notifications', name: 'Notifications', icon: BellIcon },
-    { id: 'payment', name: 'Payment', icon: CreditCardIcon },
-    { id: 'security', name: 'Security', icon: ShieldCheckIcon },
-    { id: 'users', name: 'Users', icon: UserIcon }
+    { id: 'profile' as const, name: 'Profile', icon: UserIcon },
+    { id: 'security' as const, name: 'Security', icon: ShieldCheckIcon },
   ]
 
-  const handleSave = () => {
-    // In a real app, this would save settings to the backend
-    alert('Settings saved successfully!')
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{loadError}</div>
+    )
   }
 
   return (
-    <div>
-      <div className="mb-8">
+    <div className="space-y-6">
+      <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Manage your hotel system preferences and configurations
-        </p>
+        <p className="mt-1 text-sm text-gray-500">Manage your account profile and security.</p>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-8">
-        {/* Sidebar */}
-        <div className="lg:w-64">
-          <nav className="space-y-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === tab.id
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                }`}
-              >
-                <tab.icon className="mr-3 h-5 w-5" />
-                {tab.name}
-              </button>
-            ))}
-          </nav>
-        </div>
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Tab nav */}
+        <nav className="lg:w-52 flex lg:flex-col gap-1">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors w-full text-left ${
+                activeTab === tab.id
+                  ? 'bg-primary-50 text-primary-700'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+            >
+              <tab.icon className="h-4 w-4 shrink-0" />
+              {tab.name}
+            </button>
+          ))}
+        </nav>
 
         {/* Content */}
-        <div className="flex-1">
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">
-                {tabs.find(tab => tab.id === activeTab)?.name} Settings
-              </h3>
+        <div className="flex-1 space-y-5">
+
+          {/* Account info card (always visible) */}
+          {user && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+              <div className="h-14 w-14 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-xl font-bold shrink-0">
+                {(user.fullName || user.email).charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <p className="text-base font-semibold text-gray-900">{user.fullName || '—'}</p>
+                <p className="text-sm text-gray-500">{user.email}</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    <CheckCircleIcon className="h-3 w-3" /> {user.status}
+                  </span>
+                  <span className="text-xs text-gray-400 uppercase tracking-wide">{user.role}</span>
+                </div>
+              </div>
             </div>
+          )}
 
-            <div className="p-6">
-              {/* General Settings */}
-              {activeTab === 'general' && (
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Hotel Name
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      value={settings.general.hotelName}
-                      onChange={(e) => setSettings({
-                        ...settings,
-                        general: { ...settings.general, hotelName: e.target.value }
-                      })}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Timezone
-                      </label>
-                      <select
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        value={settings.general.timezone}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          general: { ...settings.general, timezone: e.target.value }
-                        })}
-                      >
-                        <option value="Europe/London">Europe/London</option>
-                        <option value="Europe/Dublin">Europe/Dublin</option>
-                        <option value="Europe/Paris">Europe/Paris</option>
-                        <option value="America/New_York">America/New_York</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Currency
-                      </label>
-                      <select
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        value={settings.general.currency}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          general: { ...settings.general, currency: e.target.value }
-                        })}
-                      >
-                        <option value="JOD">JOD (JD)</option>
-                        <option value="EUR">EUR (€)</option>
-                        <option value="USD">USD ($)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Language
-                      </label>
-                      <select
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        value={settings.general.language}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          general: { ...settings.general, language: e.target.value }
-                        })}
-                      >
-                        <option value="English">English</option>
-                        <option value="French">French</option>
-                        <option value="German">German</option>
-                        <option value="Spanish">Spanish</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Date Format
-                      </label>
-                      <select
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        value={settings.general.dateFormat}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          general: { ...settings.general, dateFormat: e.target.value }
-                        })}
-                      >
-                        <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                        <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                        <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Notification Settings */}
-              {activeTab === 'notifications' && (
-                <div className="space-y-6">
-                  <div>
-                    <h4 className="text-md font-medium text-gray-900 mb-4">Email Notifications</h4>
-                    <div className="space-y-3">
-                      {[
-                        { key: 'emailBookings', label: 'New Bookings' },
-                        { key: 'emailPayments', label: 'Payment Confirmations' },
-                        { key: 'emailCancellations', label: 'Booking Cancellations' }
-                      ].map((item) => (
-                        <div key={item.key} className="flex items-center">
-                          <input
-                            type="checkbox"
-                            id={item.key}
-                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                            checked={settings.notifications[item.key as keyof typeof settings.notifications]}
-                            onChange={(e) => setSettings({
-                              ...settings,
-                              notifications: {
-                                ...settings.notifications,
-                                [item.key]: e.target.checked
-                              }
-                            })}
-                          />
-                          <label htmlFor={item.key} className="ml-2 text-sm text-gray-700">
-                            {item.label}
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-md font-medium text-gray-900 mb-4">SMS Notifications</h4>
-                    <div className="space-y-3">
-                      {[
-                        { key: 'smsBookings', label: 'New Bookings' },
-                        { key: 'smsPayments', label: 'Payment Confirmations' }
-                      ].map((item) => (
-                        <div key={item.key} className="flex items-center">
-                          <input
-                            type="checkbox"
-                            id={item.key}
-                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                            checked={settings.notifications[item.key as keyof typeof settings.notifications]}
-                            onChange={(e) => setSettings({
-                              ...settings,
-                              notifications: {
-                                ...settings.notifications,
-                                [item.key]: e.target.checked
-                              }
-                            })}
-                          />
-                          <label htmlFor={item.key} className="ml-2 text-sm text-gray-700">
-                            {item.label}
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="pushNotifications"
-                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                        checked={settings.notifications.pushNotifications}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          notifications: {
-                            ...settings.notifications,
-                            pushNotifications: e.target.checked
-                          }
-                        })}
-                      />
-                      <label htmlFor="pushNotifications" className="ml-2 text-sm text-gray-700">
-                        Push Notifications
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Payment Settings */}
-              {activeTab === 'payment' && (
-                <div className="space-y-6">
-                  <div>
-                    <h4 className="text-md font-medium text-gray-900 mb-4">Payment Providers</h4>
-                    
-                    <div className="space-y-6">
-                      {/* Stripe */}
-                      <div className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <h5 className="text-sm font-medium text-gray-900">Stripe</h5>
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                            checked={settings.payment.stripeEnabled}
-                            onChange={(e) => setSettings({
-                              ...settings,
-                              payment: { ...settings.payment, stripeEnabled: e.target.checked }
-                            })}
-                          />
-                        </div>
-                        {settings.payment.stripeEnabled && (
-                          <div className="space-y-3">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Public Key
-                              </label>
-                              <input
-                                type="text"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                                value={settings.payment.stripePublicKey}
-                                onChange={(e) => setSettings({
-                                  ...settings,
-                                  payment: { ...settings.payment, stripePublicKey: e.target.value }
-                                })}
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Secret Key
-                              </label>
-                              <input
-                                type="password"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                                value={settings.payment.stripeSecretKey}
-                                onChange={(e) => setSettings({
-                                  ...settings,
-                                  payment: { ...settings.payment, stripeSecretKey: e.target.value }
-                                })}
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* MontyPay */}
-                      <div className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <h5 className="text-sm font-medium text-gray-900">MontyPay</h5>
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                            checked={settings.payment.montypayEnabled}
-                            onChange={(e) => setSettings({
-                              ...settings,
-                              payment: { ...settings.payment, montypayEnabled: e.target.checked }
-                            })}
-                          />
-                        </div>
-                        {settings.payment.montypayEnabled && (
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              API Key
-                            </label>
-                            <input
-                              type="password"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                              value={settings.payment.montypayApiKey}
-                              onChange={(e) => setSettings({
-                                ...settings,
-                                payment: { ...settings.payment, montypayApiKey: e.target.value }
-                              })}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Pay at Hotel */}
-                      <div className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h5 className="text-sm font-medium text-gray-900">Pay at Hotel</h5>
-                            <p className="text-sm text-gray-500">Allow customers to pay upon arrival</p>
-                          </div>
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                            checked={settings.payment.payAtHotelEnabled}
-                            onChange={(e) => setSettings({
-                              ...settings,
-                              payment: { ...settings.payment, payAtHotelEnabled: e.target.checked }
-                            })}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Security Settings */}
-              {activeTab === 'security' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-900">Two-Factor Authentication</h4>
-                      <p className="text-sm text-gray-500">Add an extra layer of security to your account</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                      checked={settings.security.twoFactorAuth}
-                      onChange={(e) => setSettings({
-                        ...settings,
-                        security: { ...settings.security, twoFactorAuth: e.target.checked }
-                      })}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Session Timeout (minutes)
-                      </label>
-                      <input
-                        type="number"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        value={settings.security.sessionTimeout}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          security: { ...settings.security, sessionTimeout: parseInt(e.target.value) }
-                        })}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Password Expiry (days)
-                      </label>
-                      <input
-                        type="number"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        value={settings.security.passwordExpiry}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          security: { ...settings.security, passwordExpiry: parseInt(e.target.value) }
-                        })}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Max Login Attempts
-                      </label>
-                      <input
-                        type="number"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        value={settings.security.loginAttempts}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          security: { ...settings.security, loginAttempts: parseInt(e.target.value) }
-                        })}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Users Settings */}
-              {activeTab === 'users' && (
+          {/* Profile tab */}
+          {activeTab === 'profile' && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h2 className="text-base font-semibold text-gray-800">Edit Profile</h2>
+              </div>
+              <form onSubmit={handleProfileSave} className="p-6 space-y-5">
                 <div>
-                  <div className="text-center py-12">
-                    <UserIcon className="mx-auto h-12 w-12 text-gray-400" />
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">User Management</h3>
-                    <p className="mt-1 text-sm text-gray-500">
-                      User management functionality will be implemented here.
-                    </p>
-                    <div className="mt-6">
-                      <button className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md">
-                        Add New User
-                      </button>
-                    </div>
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={e => setFullName(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
                 </div>
-              )}
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Role</label>
+                  <input
+                    type="text"
+                    value={user?.role || ''}
+                    disabled
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed"
+                  />
+                </div>
 
-            {/* Save Button */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end">
-              <button
-                onClick={handleSave}
-                className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-md font-medium"
-              >
-                Save Changes
-              </button>
+                {profileMsg && (
+                  <div className={`rounded-lg px-4 py-2.5 text-sm ${profileMsg.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                    {profileMsg.text}
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    disabled={profileSaving}
+                    className="px-5 py-2 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    {profileSaving ? 'Saving…' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
             </div>
-          </div>
+          )}
+
+          {/* Security tab */}
+          {activeTab === 'security' && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h2 className="text-base font-semibold text-gray-800">Change Password</h2>
+              </div>
+              <form onSubmit={handlePasswordSave} className="p-6 space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Current Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={currentPassword}
+                    onChange={e => setCurrentPassword(e.target.value)}
+                    autoComplete="current-password"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">New Password</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    autoComplete="new-password"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-400">Minimum 8 characters.</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirm New Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+
+                {pwMsg && (
+                  <div className={`rounded-lg px-4 py-2.5 text-sm ${pwMsg.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                    {pwMsg.text}
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    disabled={pwSaving}
+                    className="px-5 py-2 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    {pwSaving ? 'Changing…' : 'Change Password'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
         </div>
       </div>
     </div>
