@@ -11,12 +11,15 @@ import {
   updateAdminCoupon,
 } from '../../../lib/api'
 
-const EMPTY_FORM: CouponPayload & { id: string } = {
+type FormState = CouponPayload & { id: string; maxUses: number | null }
+
+const EMPTY_FORM: FormState = {
   id: '',
   code: '',
   discount: 0,
   description: '',
   isActive: true,
+  maxUses: null,
 }
 
 export default function CouponsPage() {
@@ -27,8 +30,8 @@ export default function CouponsPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [showModal, setShowModal] = useState(false)
-  const [editing, setEditing] = useState<(CouponPayload & { id: string }) | null>(null)
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [editing, setEditing] = useState<FormState | null>(null)
+  const [form, setForm] = useState<FormState>(EMPTY_FORM)
 
   const load = useCallback(async () => {
     const token = localStorage.getItem('adminToken')
@@ -54,8 +57,16 @@ export default function CouponsPage() {
   }
 
   const openEdit = (coupon: Coupon) => {
-    setEditing({ id: coupon.id, code: coupon.code, discount: coupon.discount, description: coupon.description || '', isActive: coupon.isActive })
-    setForm({ id: coupon.id, code: coupon.code, discount: coupon.discount, description: coupon.description || '', isActive: coupon.isActive })
+    const f: FormState = {
+      id: coupon.id,
+      code: coupon.code,
+      discount: coupon.discount,
+      description: coupon.description || '',
+      isActive: coupon.isActive,
+      maxUses: coupon.maxUses ?? null,
+    }
+    setEditing(f)
+    setForm(f)
     setError('')
     setSuccess('')
     setShowModal(true)
@@ -73,6 +84,7 @@ export default function CouponsPage() {
         discount: Number(form.discount),
         description: form.description?.trim() || undefined,
         isActive: form.isActive,
+        maxUses: form.maxUses != null && form.maxUses > 0 ? Number(form.maxUses) : null,
       }
       const result = editing?.id
         ? await updateAdminCoupon(token, editing.id, payload)
@@ -143,57 +155,95 @@ export default function CouponsPage() {
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Code</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Discount</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Usage</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Created</th>
                 <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
-              {coupons.map(coupon => (
-                <tr key={coupon.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <span className="font-mono text-sm font-bold text-gray-900 bg-gray-100 px-2 py-1 rounded">{coupon.code}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm font-semibold text-primary-600">{coupon.discount}% off</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm text-gray-600">{coupon.description || <span className="text-gray-300">—</span>}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    {coupon.isActive ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">
-                        <CheckCircleIcon className="h-3.5 w-3.5" /> Active
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-500">
-                        <XCircleIcon className="h-3.5 w-3.5" /> Inactive
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {new Date(coupon.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => openEdit(coupon)}
-                        className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                      >
-                        <PencilIcon className="h-3.5 w-3.5" /> Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(coupon.id, coupon.code)}
-                        disabled={deletingId === coupon.id}
-                        className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors disabled:opacity-40"
-                      >
-                        <TrashIcon className="h-3.5 w-3.5" />
-                        {deletingId === coupon.id ? '…' : 'Delete'}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {coupons.map(coupon => {
+                const used = coupon.usedCount ?? 0
+                const max = coupon.maxUses ?? null
+                const remaining = max != null ? max - used : null
+                const exhausted = max != null && used >= max
+
+                return (
+                  <tr key={coupon.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <span className="font-mono text-sm font-bold text-gray-900 bg-gray-100 px-2 py-1 rounded">{coupon.code}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-sm font-semibold text-primary-600">{coupon.discount}% off</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-sm text-gray-600">{coupon.description || <span className="text-gray-300">—</span>}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {max == null ? (
+                        <div className="text-sm">
+                          <span className="font-semibold text-gray-700">{used}</span>
+                          <span className="text-gray-400"> used · unlimited</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <div className="text-sm">
+                            <span className={`font-semibold ${exhausted ? 'text-red-600' : 'text-gray-700'}`}>{used}</span>
+                            <span className="text-gray-400"> / {max} used</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <div className="h-1.5 w-20 rounded-full bg-gray-200 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${exhausted ? 'bg-red-500' : 'bg-green-500'}`}
+                                style={{ width: `${Math.min(100, (used / max) * 100)}%` }}
+                              />
+                            </div>
+                            <span className={`text-xs font-medium ${exhausted ? 'text-red-600' : 'text-green-600'}`}>
+                              {exhausted ? 'Exhausted' : `${remaining} left`}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      {coupon.isActive && !exhausted ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+                          <CheckCircleIcon className="h-3.5 w-3.5" /> Active
+                        </span>
+                      ) : exhausted ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-600">
+                          <XCircleIcon className="h-3.5 w-3.5" /> Exhausted
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-500">
+                          <XCircleIcon className="h-3.5 w-3.5" /> Inactive
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {new Date(coupon.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => openEdit(coupon)}
+                          className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          <PencilIcon className="h-3.5 w-3.5" /> Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(coupon.id, coupon.code)}
+                          disabled={deletingId === coupon.id}
+                          className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors disabled:opacity-40"
+                        >
+                          <TrashIcon className="h-3.5 w-3.5" />
+                          {deletingId === coupon.id ? '…' : 'Delete'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
@@ -238,6 +288,22 @@ export default function CouponsPage() {
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Maximum Uses <span className="text-gray-400">(optional — leave empty for unlimited)</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="e.g. 100"
+                  value={form.maxUses ?? ''}
+                  onChange={e => setForm(prev => ({ ...prev, maxUses: e.target.value ? Number(e.target.value) : null }))}
+                />
+                <p className="mt-1 text-xs text-gray-400">Each email address can only use this coupon once regardless of this limit.</p>
               </div>
 
               <div>
