@@ -845,6 +845,8 @@ export interface Coupon {
   discount: number
   description: string | null
   isActive: boolean
+  maxUses: number | null
+  usedCount: number
   createdAt: string
   updatedAt: string
 }
@@ -854,6 +856,7 @@ export type CouponPayload = {
   discount: number
   description?: string
   isActive?: boolean
+  maxUses?: number | null
 }
 
 export async function fetchAdminCoupons(token: string) {

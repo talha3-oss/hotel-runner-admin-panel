@@ -1,19 +1,16 @@
 'use client'
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowPathIcon, DocumentDuplicateIcon, PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { ArrowPathIcon, PhotoIcon, TrashIcon } from '@heroicons/react/24/outline'
 import {
   createAdminHomePageSection,
   deleteAdminHomePageSection,
-  deleteLandingPage,
   fetchAdminHomePageSections,
-  fetchAdminPages,
   getApiAssetUrl,
   HomePageSection,
   HomePageSectionPayload,
   HomePageSectionStatus,
   HomePageSectionType,
-  LandingPageMeta,
   updateAdminHomePageSection,
   uploadHomepageSectionImage,
 } from '../../../lib/api'
@@ -1299,10 +1296,7 @@ export default function HomePageContentPage() {
     )
   }
 
-  // ── All landing pages list ────────────────────────────────────────────────
-  const [allPages, setAllPages] = useState<LandingPageMeta[]>([])
-  const [pagesLoading, setPagesLoading] = useState(false)
-  const [deletingPageId, setDeletingPageId] = useState<string | null>(null)
+  // ── Delete Section ────────────────────────────────────────────────────────
   const [deletingSectionId, setDeletingSectionId] = useState<string | null>(null)
 
   const handleDeleteSection = async (id: string, name: string) => {
@@ -1312,91 +1306,14 @@ export default function HomePageContentPage() {
     setDeletingSectionId(id)
     try {
       await deleteAdminHomePageSection(token, id)
+      const deletedKey = sections.find(s => s.id === id)?.sectionKey
       setSections(prev => prev.filter(s => s.id !== id))
-      if (selectedSectionKey === sections.find(s => s.id === id)?.sectionKey) {
+      if (deletedKey && selectedSectionKey === deletedKey) {
         setSelectedSectionKey(SECTION_TEMPLATES[0].sectionKey)
       }
     } finally {
       setDeletingSectionId(null)
     }
-  }
-
-  const loadAllPages = useCallback(async () => {
-    const token = localStorage.getItem('adminToken')
-    if (!token) return
-    setPagesLoading(true)
-    try {
-      const result = await fetchAdminPages(token)
-      if (result?.success && Array.isArray(result.pages)) setAllPages(result.pages)
-    } finally {
-      setPagesLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { loadAllPages() }, [loadAllPages])
-
-  const handleDeletePage = async (id: string, name: string) => {
-    if (!confirm(`Delete page "${name}"? This cannot be undone.`)) return
-    const token = localStorage.getItem('adminToken')
-    if (!token) return
-    setDeletingPageId(id)
-    try {
-      await deleteLandingPage(token, id)
-      setAllPages(prev => prev.filter(p => p.id !== id))
-    } finally {
-      setDeletingPageId(null)
-    }
-  }
-
-  // ── Duplicate Section modal ───────────────────────────────────────────────
-  const [showDupSection, setShowDupSection] = useState(false)
-  const [dupSectionName, setDupSectionName] = useState('')
-  const [dupSectionSaving, setDupSectionSaving] = useState(false)
-  const [dupSectionError, setDupSectionError] = useState('')
-
-  const handleDuplicateSection = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!dupSectionName.trim()) { setDupSectionError('Name is required.'); return }
-    const token = localStorage.getItem('adminToken')
-    if (!token) return
-    setDupSectionSaving(true)
-    setDupSectionError('')
-    try {
-      const newKey = `${selectedTemplate.sectionKey}-copy-${Date.now()}`
-      const contentWithVariant = {
-        ...(isRecord(selectedSection?.content) ? selectedSection!.content : {}),
-        _variant: selectedTemplate.variant,
-      }
-      const payload: HomePageSectionPayload = {
-        name: dupSectionName.trim(),
-        sectionKey: newKey,
-        groupKey: selectedTemplate.groupKey,
-        sectionType: selectedTemplate.sectionType,
-        status: 'ACTIVE',
-        sortOrder: selectedTemplate.sortOrder + 1,
-        badge: form.badge.trim(),
-        eyebrow: form.eyebrow.trim(),
-        title: form.title.trim(),
-        subtitle: form.subtitle.trim(),
-        description: form.description.trim(),
-        buttonLabel: form.buttonLabel.trim(),
-        buttonLink: form.buttonLink.trim(),
-        secondaryButtonLabel: form.secondaryButtonLabel.trim(),
-        secondaryButtonLink: form.secondaryButtonLink.trim(),
-        imageAlt: form.imageAlt.trim(),
-        content: JSON.stringify(contentWithVariant),
-      }
-      const result = await createAdminHomePageSection(token, payload)
-      if (result.success) {
-        setShowDupSection(false)
-        setDupSectionName('')
-        await loadSections()
-        setSelectedSectionKey(newKey)
-      } else {
-        setDupSectionError(result.message || 'Failed to duplicate section.')
-      }
-    } catch { setDupSectionError('Unable to connect.') }
-    finally { setDupSectionSaving(false) }
   }
 
   return (
@@ -1437,55 +1354,10 @@ export default function HomePageContentPage() {
               <h2 className="text-lg font-semibold text-gray-900">{selectedTemplate.name}</h2>
               <p className="mt-1 text-sm text-gray-500">{selectedTemplate.summary}</p>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => { setDupSectionName(form.name + ' Copy'); setDupSectionError(''); setShowDupSection(true) }}
-                className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                <DocumentDuplicateIcon className="h-3.5 w-3.5" />
-                Duplicate
-              </button>
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${form.status === 'ACTIVE' ? statusClasses.ACTIVE : statusClasses.INACTIVE}`}>
-                {form.status}
-              </span>
-            </div>
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${form.status === 'ACTIVE' ? statusClasses.ACTIVE : statusClasses.INACTIVE}`}>
+              {form.status}
+            </span>
           </div>
-
-          {/* Duplicate Section modal */}
-          {showDupSection && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-              <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                  <h2 className="text-sm font-bold text-gray-900">Duplicate Section</h2>
-                  <button onClick={() => setShowDupSection(false)} className="text-gray-400 hover:text-gray-700"><XMarkIcon className="h-5 w-5" /></button>
-                </div>
-                <form onSubmit={handleDuplicateSection} className="p-5 space-y-4">
-                  <p className="text-xs text-gray-500">Creates a copy of <strong>{selectedTemplate.name}</strong> with all current content.</p>
-                  {dupSectionError && <p className="text-xs text-red-600">{dupSectionError}</p>}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">New Section Name</label>
-                    <input
-                      autoFocus
-                      required
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      value={dupSectionName}
-                      onChange={e => setDupSectionName(e.target.value)}
-                      placeholder="e.g. Dining Experience Feature Copy"
-                    />
-                  </div>
-                  <div className="flex gap-3 pt-1">
-                    <button type="submit" disabled={dupSectionSaving} className="flex-1 bg-primary-600 hover:bg-primary-700 text-white py-2 rounded-lg text-sm font-semibold disabled:opacity-50">
-                      {dupSectionSaving ? 'Creating…' : 'Create Copy'}
-                    </button>
-                    <button type="button" onClick={() => setShowDupSection(false)} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-lg text-sm font-semibold">
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
 
           <form onSubmit={submitForm} className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2">
@@ -1543,45 +1415,6 @@ export default function HomePageContentPage() {
               {sections.length}
             </span>
           </div>
-
-          {/* Duplicated pages list */}
-          {(allPages.length > 0 || pagesLoading) && (
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-gray-700">Duplicated Pages</h3>
-                {pagesLoading && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
-              </div>
-              <div className="space-y-2">
-                {allPages.map(p => (
-                  <div key={p.id} className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 gap-3 bg-gray-50">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
-                      <p className="text-xs text-gray-400 font-mono mt-0.5">/{p.slug}</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${p.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                        {p.status}
-                      </span>
-                      <a
-                        href={`/dashboard/pages/${p.id}`}
-                        className="text-xs font-semibold text-primary-600 hover:text-primary-700 border border-primary-200 rounded px-2 py-0.5"
-                      >
-                        Edit
-                      </a>
-                      <button
-                        onClick={() => handleDeletePage(p.id, p.name)}
-                        disabled={deletingPageId === p.id}
-                        className="text-xs font-semibold text-red-500 hover:text-red-700 border border-red-200 rounded px-2 py-0.5 disabled:opacity-40"
-                      >
-                        {deletingPageId === p.id ? '…' : 'Delete'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 border-t border-gray-200" />
-            </div>
-          )}
 
           {loading ? (
             <div className="rounded-md bg-gray-50 px-4 py-6 text-sm text-gray-600">Loading homepage sections...</div>
@@ -1652,9 +1485,10 @@ export default function HomePageContentPage() {
                             type="button"
                             onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id, section.name) }}
                             disabled={deletingSectionId === section.id}
-                            className="text-xs font-semibold text-red-500 hover:text-red-700 border border-red-200 rounded px-2 py-0.5 disabled:opacity-40"
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-md px-2.5 py-1 disabled:opacity-40 transition-colors"
                           >
-                            {deletingSectionId === section.id ? '…' : 'Delete'}
+                            <TrashIcon className="h-3.5 w-3.5" />
+                            {deletingSectionId === section.id ? 'Deleting…' : 'Delete'}
                           </button>
                         </div>
                       )}
