@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from
 import {
   PlusIcon, PencilIcon, TrashIcon, EyeIcon, EyeSlashIcon,
   ArrowUpIcon, ArrowDownIcon, PhotoIcon, CheckCircleIcon, XCircleIcon,
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline'
 import {
   fetchAdminHomePageSections, createAdminHomePageSection, updateAdminHomePageSection,
@@ -11,6 +12,7 @@ import {
   uploadHomepageSectionImage,
   HomePageSection, HomePageSectionType, HomePageSectionStatus,
 } from '../../../lib/api'
+import PageEditorModal from './PageEditorModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -219,6 +221,11 @@ export default function HomepagePage() {
   const [partnerLogoUploading, setPartnerLogoUploading] = useState(false)
   const partnerLogoInputRef = useRef<HTMLInputElement>(null)
 
+  // Page editor
+  const [showPageEditor, setShowPageEditor] = useState(false)
+  const [pageEditorSlug, setPageEditorSlug] = useState('')
+  const [pageEditorName, setPageEditorName] = useState('')
+
   // Shared
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -399,6 +406,15 @@ export default function HomepagePage() {
   const addLink = (side: 'leftLinks'|'rightLinks') => setFooter(prev => ({ ...prev, [side]: [...prev[side], { label:'', href:'' }] }))
   const removeLink = (side: 'leftLinks'|'rightLinks', idx: number) => setFooter(prev => ({ ...prev, [side]: prev[side].filter((_,i) => i !== idx) }))
 
+  // ── Page editor ─────────────────────────────────────────────────────────────
+
+  const openPageEditor = (href: string, label: string) => {
+    const slug = href.replace(/^\/+/, '').split('?')[0].split('#')[0] || href
+    setPageEditorSlug(slug)
+    setPageEditorName(label || slug)
+    setShowPageEditor(true)
+  }
+
   // ── Cards helpers ───────────────────────────────────────────────────────────
 
   const addCard = () => setForm(p => ({ ...p, cards: [...p.cards, { title:'', link:'', image:'', imageAlt:'', linkLabel:'Discover' }] }))
@@ -488,6 +504,7 @@ export default function HomepagePage() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => openNavEdit(item)} className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><PencilIcon className="h-3.5 w-3.5" /> Edit</button>
+                          <button onClick={() => openPageEditor(item.href, item.label)} title="Edit page content" className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-100"><DocumentTextIcon className="h-3.5 w-3.5" /> Page</button>
                           <button onClick={() => setNavItems(prev => prev.filter(i => i.id!==item.id))} className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"><TrashIcon className="h-3.5 w-3.5" /></button>
                         </div>
                       </td>
@@ -564,6 +581,12 @@ export default function HomepagePage() {
                   <div key={idx} className="flex gap-2 items-center">
                     <input className={inp} placeholder="Label" value={link.label} onChange={e => updateLink(side, idx, 'label', e.target.value)} />
                     <input className={monoInp} placeholder="/url" value={link.href} onChange={e => updateLink(side, idx, 'href', e.target.value)} />
+                    {link.href && (
+                      <button type="button" onClick={() => openPageEditor(link.href, link.label)} title="Edit page sections"
+                        className="p-1.5 rounded-lg border border-blue-200 text-blue-500 hover:bg-blue-50 flex-shrink-0" >
+                        <DocumentTextIcon className="h-4 w-4" />
+                      </button>
+                    )}
                     <button onClick={() => removeLink(side, idx)} className="text-red-400 hover:text-red-600 p-1 flex-shrink-0"><TrashIcon className="h-4 w-4" /></button>
                   </div>
                 ))}
@@ -767,6 +790,15 @@ export default function HomepagePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── PAGE EDITOR MODAL ── */}
+      {showPageEditor && (
+        <PageEditorModal
+          slug={pageEditorSlug}
+          pageName={pageEditorName}
+          onClose={() => setShowPageEditor(false)}
+        />
       )}
 
       {/* ── NAV MODAL ── */}
