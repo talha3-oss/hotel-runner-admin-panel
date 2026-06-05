@@ -947,3 +947,67 @@ export async function deleteAdminFaq(token: string, id: string) {
   })
   return res.json()
 }
+
+// ── Blog ──────────────────────────────────────────────────────────────────────
+
+export interface BlogPost {
+  id: string
+  title: string
+  slug: string
+  excerpt: string | null
+  content: string
+  coverImage: string | null
+  category: string | null
+  tags: string[]
+  author: string
+  isPublished: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type BlogPayload = {
+  title: string
+  excerpt?: string
+  content: string
+  coverImage?: string
+  category?: string
+  tags?: string[]
+  author?: string
+  isPublished?: boolean
+  sortOrder?: number
+}
+
+export async function fetchAdminBlogs(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/blog/admin`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function createAdminBlog(token: string, data: BlogPayload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/blog`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  })
+  return res.json()
+}
+
+export async function updateAdminBlog(token: string, id: string, data: Partial<BlogPayload>) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/blog/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  })
+  return res.json()
+}
+
+export async function deleteAdminBlog(token: string, id: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/blog/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}
