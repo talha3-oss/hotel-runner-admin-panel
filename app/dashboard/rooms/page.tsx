@@ -132,8 +132,9 @@ export default function RoomsPage() {
   const [formData, setFormData] = useState<RoomFormData>(EMPTY_FORM)
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState('')
-  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState('')
+  const [existingImages, setExistingImages] = useState<string[]>([])
+  const [newImageFiles, setNewImageFiles] = useState<File[]>([])
+  const [newImagePreviews, setNewImagePreviews] = useState<string[]>([])
 
   const loadData = useCallback(async () => {
     const token = localStorage.getItem('adminToken')
@@ -190,11 +191,9 @@ export default function RoomsPage() {
 
   useEffect(() => {
     return () => {
-      if (imagePreview.startsWith('blob:')) {
-        URL.revokeObjectURL(imagePreview)
-      }
+      newImagePreviews.forEach(p => { if (p.startsWith('blob:')) URL.revokeObjectURL(p) })
     }
-  }, [imagePreview])
+  }, [newImagePreviews])
 
   const filteredRooms = useMemo(() => {
     return rooms.filter((room) => {
@@ -248,8 +247,9 @@ export default function RoomsPage() {
       hotelId: hotels[0]?.id || '',
     })
     setFormError('')
-    setSelectedImageFile(null)
-    setImagePreview('')
+    setExistingImages([])
+    setNewImageFiles([])
+    setNewImagePreviews([])
     setShowRoomForm(true)
   }
 
@@ -283,8 +283,9 @@ export default function RoomsPage() {
       description: group.description,
       amenities: group.amenities.join(', '),
     })
-    setSelectedImageFile(null)
-    setImagePreview(group.images[0] ? getApiAssetUrl(group.images[0]) : '')
+    setExistingImages(group.images || [])
+    setNewImageFiles([])
+    setNewImagePreviews([])
     setShowRoomForm(true)
   }
 
@@ -293,28 +294,31 @@ export default function RoomsPage() {
     setEditingGroup(null)
     setFormData(EMPTY_FORM)
     setFormError('')
-    setSelectedImageFile(null)
-    setImagePreview('')
+    setExistingImages([])
+    newImagePreviews.forEach(p => { if (p.startsWith('blob:')) URL.revokeObjectURL(p) })
+    setNewImageFiles([])
+    setNewImagePreviews([])
   }
 
   const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null
+    const files = Array.from(event.target.files || [])
+    if (files.length === 0) return
+    const previews = files.map(f => URL.createObjectURL(f))
+    setNewImageFiles(prev => [...prev, ...files])
+    setNewImagePreviews(prev => [...prev, ...previews])
+    event.target.value = ''
+  }
 
-    setSelectedImageFile(file)
-    setImagePreview((currentPreview) => {
-      if (currentPreview.startsWith('blob:')) {
-        URL.revokeObjectURL(currentPreview)
-      }
+  const removeExistingImage = (idx: number) => {
+    setExistingImages(prev => prev.filter((_, i) => i !== idx))
+  }
 
-      if (file) {
-        return URL.createObjectURL(file)
-      }
-
-      if (editingGroup?.images[0]) {
-        return getApiAssetUrl(editingGroup.images[0])
-      }
-
-      return ''
+  const removeNewImage = (idx: number) => {
+    setNewImageFiles(prev => prev.filter((_, i) => i !== idx))
+    setNewImagePreviews(prev => {
+      const url = prev[idx]
+      if (url.startsWith('blob:')) URL.revokeObjectURL(url)
+      return prev.filter((_, i) => i !== idx)
     })
   }
 
@@ -380,16 +384,17 @@ export default function RoomsPage() {
       setFormError('')
 
       try {
-        let images: string[] = editingGroup.images?.length ? editingGroup.images : [DEFAULT_IMAGE]
-        if (selectedImageFile) {
-          const uploadResult = await uploadRoomImage(selectedImageFile)
+        let images: string[] = [...existingImages]
+        for (const file of newImageFiles) {
+          const uploadResult = await uploadRoomImage(file)
           const uploadedImagePath = uploadResult.data?.fileUrl
           if (!uploadResult.success || !uploadedImagePath) {
-            setFormError(uploadResult.message || 'Failed to upload room image.')
+            setFormError(uploadResult.message || `Failed to upload image: ${file.name}`)
             return
           }
-          images = [uploadedImagePath]
+          images.push(uploadedImagePath)
         }
+        if (images.length === 0) images = [DEFAULT_IMAGE]
 
         const commonFields = {
           hotelId: formData.hotelId,
@@ -495,16 +500,17 @@ export default function RoomsPage() {
     setFormError('')
 
     try {
-      let images: string[] = [DEFAULT_IMAGE]
-      if (selectedImageFile) {
-        const uploadResult = await uploadRoomImage(selectedImageFile)
+      const images: string[] = []
+      for (const file of newImageFiles) {
+        const uploadResult = await uploadRoomImage(file)
         const uploadedImagePath = uploadResult.data?.fileUrl
         if (!uploadResult.success || !uploadedImagePath) {
-          setFormError(uploadResult.message || 'Failed to upload room image.')
+          setFormError(uploadResult.message || `Failed to upload image: ${file.name}`)
           return
         }
-        images = [uploadedImagePath]
+        images.push(uploadedImagePath)
       }
+      if (images.length === 0) images.push(DEFAULT_IMAGE)
 
       const errors: string[] = []
       for (const plan of formData.selectedRatePlans) {
@@ -958,30 +964,49 @@ export default function RoomsPage() {
                   />
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
-                  <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
-                    <p className="mb-3 text-sm font-medium text-gray-700">Room Image</p>
-                    {imagePreview ? (
-                      <img src={imagePreview} alt={formData.name || 'Room preview'} className="h-36 w-full rounded-md object-cover" />
-                    ) : (
-                      <div className="flex h-36 items-center justify-center rounded-md bg-white text-gray-300">
-                        <PhotoIcon className="h-10 w-10" />
-                      </div>
-                    )}
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Room Images</label>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Upload Image (optional)</label>
+                  {/* Image grid */}
+                  {(existingImages.length > 0 || newImagePreviews.length > 0) && (
+                    <div className="flex flex-wrap gap-3 mb-3">
+                      {existingImages.map((img, i) => (
+                        <div key={`existing-${i}`} className="relative group">
+                          <img src={getApiAssetUrl(img)} alt="" className="h-24 w-32 object-cover rounded-lg border border-gray-200" />
+                          <button
+                            type="button"
+                            onClick={() => removeExistingImage(i)}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                          >✕</button>
+                          {i === 0 && <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white px-1 rounded">Cover</span>}
+                        </div>
+                      ))}
+                      {newImagePreviews.map((preview, i) => (
+                        <div key={`new-${i}`} className="relative group">
+                          <img src={preview} alt="" className="h-24 w-32 object-cover rounded-lg border-2 border-primary-400 border-dashed" />
+                          <button
+                            type="button"
+                            onClick={() => removeNewImage(i)}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                          >✕</button>
+                          <span className="absolute bottom-1 left-1 text-[10px] bg-primary-600/80 text-white px-1 rounded">New</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <label className="flex items-center gap-2 cursor-pointer w-fit px-4 py-2 border border-dashed border-gray-400 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-sm text-gray-600">
+                    <PhotoIcon className="h-5 w-5 text-gray-400" />
+                    Add Images
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={handleImageChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="hidden"
                     />
-                    <p className="mt-2 text-xs text-gray-500">
-                      Select a real image file and it will be uploaded to the server when you save this room.
-                    </p>
-                  </div>
+                  </label>
+                  <p className="mt-1.5 text-xs text-gray-400">Select multiple images. The first image is the cover. Hover over any image to remove it.</p>
                 </div>
 
                 <div className="flex justify-end space-x-3 pt-4">

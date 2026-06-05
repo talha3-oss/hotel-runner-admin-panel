@@ -892,3 +892,58 @@ export async function deleteAdminCoupon(token: string, id: string) {
   })
   return res.json()
 }
+
+// ── FAQs ──────────────────────────────────────────────────────────────────────
+
+export interface Faq {
+  id: string
+  question: string
+  answer: string
+  category: string | null
+  sortOrder: number
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type FaqPayload = {
+  question: string
+  answer: string
+  category?: string
+  sortOrder?: number
+  isActive?: boolean
+}
+
+export async function fetchAdminFaqs(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/faqs/admin`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function createAdminFaq(token: string, data: FaqPayload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/faqs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  })
+  return res.json()
+}
+
+export async function updateAdminFaq(token: string, id: string, data: Partial<FaqPayload>) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/faqs/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  })
+  return res.json()
+}
+
+export async function deleteAdminFaq(token: string, id: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/faqs/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}

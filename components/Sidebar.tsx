@@ -19,6 +19,7 @@ import {
   SparklesIcon,
   ShieldCheckIcon,
   TicketIcon,
+  QuestionMarkCircleIcon,
 } from '@heroicons/react/24/outline'
 
 const navigation = [
@@ -31,6 +32,7 @@ const navigation = [
   { name: 'Extras', href: '/dashboard/extras', icon: SparklesIcon },
   { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarDaysIcon },
   { name: 'Coupons', href: '/dashboard/coupons', icon: TicketIcon },
+  { name: 'FAQs', href: '/dashboard/faqs', icon: QuestionMarkCircleIcon },
   { name: 'Customers', href: '/dashboard/customers', icon: UserGroupIcon },
   { name: 'Payments', href: '/dashboard/payments', icon: CreditCardIcon },
   { name: 'Invoices', href: '/dashboard/invoices', icon: DocumentTextIcon },
