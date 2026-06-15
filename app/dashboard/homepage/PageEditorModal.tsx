@@ -136,7 +136,6 @@ function ImageUploadBox({ value, onChange, label = 'Background Image' }: { value
     try {
       const result = await uploadHomepageSectionImage(file)
       if (result.success && result.data?.fileUrl) onChange(result.data.fileUrl)
-      else if (result.success && result.data?.fileUrl) onChange(result.data.fileUrl)
     } finally { setUploading(false); if (ref.current) ref.current.value = '' }
   }
 
@@ -604,7 +603,6 @@ export default function PageEditorModal({ slug, pageName, onClose }: {
       if (!pagesResult.success) { setError('Failed to load pages.'); return }
       let page = (pagesResult.pages || []).find((p: { slug: string }) => p.slug === slug)
       if (!page) {
-        // Auto-create the page so any nav/footer link can be edited immediately
         const created = await createAdminContentPage(token, pageName || slug, slug)
         if (!created.success) { setError('Could not create page. Check the backend is running.'); return }
         page = created.page
