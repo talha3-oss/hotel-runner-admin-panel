@@ -7,7 +7,7 @@ import {
 } from '@heroicons/react/24/outline'
 import {
   fetchAdminPages, fetchAdminPageById, updateLandingPage,
-  uploadHomepageSectionImage, getApiAssetUrl,
+  uploadHomepageSectionImage, getApiAssetUrl, createAdminContentPage,
 } from '../../../lib/api'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
@@ -602,14 +602,19 @@ export default function PageEditorModal({ slug, pageName, onClose }: {
     try {
       const pagesResult = await fetchAdminPages(token)
       if (!pagesResult.success) { setError('Failed to load pages.'); return }
-      const page = (pagesResult.pages || []).find((p: { slug: string }) => p.slug === slug)
-      if (!page) { setError(`Page "/${slug}" not found. Make sure it has been seeded.`); return }
+      let page = (pagesResult.pages || []).find((p: { slug: string }) => p.slug === slug)
+      if (!page) {
+        // Auto-create the page so any nav/footer link can be edited immediately
+        const created = await createAdminContentPage(token, pageName || slug, slug)
+        if (!created.success) { setError('Could not create page. Check the backend is running.'); return }
+        page = created.page
+      }
       setPageId(page.id)
       const detail = await fetchAdminPageById(token, page.id)
       if (detail.success) setSections(Array.isArray(detail.page?.sections) ? detail.page.sections : [])
     } catch { setError('Connection error.') }
     finally { setLoading(false) }
-  }, [slug])
+  }, [slug, pageName])
 
   useEffect(() => { load() }, [load])
 

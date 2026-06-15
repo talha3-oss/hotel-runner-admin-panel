@@ -1011,3 +1011,12 @@ export async function deleteAdminBlog(token: string, id: string) {
   })
   return res.json()
 }
+
+export async function createAdminContentPage(token: string, name: string, slug: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/pages/admin/content-pages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name, slug, sections: [] }),
+  })
+  return res.json()
+}
