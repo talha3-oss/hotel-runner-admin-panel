@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from
 import {
   PlusIcon, PencilIcon, TrashIcon, EyeIcon, EyeSlashIcon,
   ArrowUpIcon, ArrowDownIcon, PhotoIcon, CheckCircleIcon, XCircleIcon,
-  DocumentTextIcon,
+  DocumentTextIcon, ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline'
 import {
   fetchAdminHomePageSections, createAdminHomePageSection, updateAdminHomePageSection,
@@ -242,20 +242,7 @@ export default function HomepagePage() {
       const r = await fetchAdminHomePageSections(token)
       if (r.success) {
         setSections(r.sections || [])
-        let fs = (r.sections || []).find((s: HomePageSection) => s.sectionType === 'FOOTER' || s.sectionKey === 'hotels-newsletter-footer')
-        if (!fs) {
-          // Auto-create the footer section so the Footer tab always works
-          const created = await createAdminHomePageSection(token, {
-            name: 'Footer',
-            sectionKey: 'hotels-newsletter-footer',
-            groupKey: 'general',
-            sectionType: 'FOOTER',
-            status: 'ACTIVE',
-            sortOrder: 999,
-            content: JSON.stringify(DEFAULT_FOOTER),
-          } as Parameters<typeof createAdminHomePageSection>[1])
-          if (created.success) fs = created.section
-        }
+        const fs = (r.sections || []).find((s: HomePageSection) => s.sectionType === 'FOOTER' || s.sectionKey === 'hotels-newsletter-footer')
         if (fs) {
           setFooterSection(fs)
           const c = fs.content as Record<string,unknown> | null
@@ -331,16 +318,16 @@ export default function HomepagePage() {
         name: form.name.trim(), sectionKey: form.sectionKey.trim(),
         groupKey: form.groupKey.trim() || 'general',
         sectionType: form.sectionType, status: form.status, sortOrder: form.sortOrder,
-        ...(form.badge && { badge: form.badge }),
-        ...(form.eyebrow && { eyebrow: form.eyebrow }),
-        ...(form.title && { title: form.title }),
-        ...(form.subtitle && { subtitle: form.subtitle }),
-        ...(form.description && { description: form.description }),
-        ...(form.buttonLabel && { buttonLabel: form.buttonLabel }),
-        ...(form.buttonLink && { buttonLink: form.buttonLink }),
-        ...(form.secondaryButtonLabel && { secondaryButtonLabel: form.secondaryButtonLabel }),
-        ...(form.secondaryButtonLink && { secondaryButtonLink: form.secondaryButtonLink }),
-        ...(form.imageAlt && { imageAlt: form.imageAlt }),
+        badge: form.badge,
+        eyebrow: form.eyebrow,
+        title: form.title,
+        subtitle: form.subtitle,
+        description: form.description,
+        buttonLabel: form.buttonLabel,
+        buttonLink: form.buttonLink,
+        secondaryButtonLabel: form.secondaryButtonLabel,
+        secondaryButtonLink: form.secondaryButtonLink,
+        imageAlt: form.imageAlt,
         content: JSON.stringify(contentJson),
         ...(sectionImage && { image: sectionImage }),
         ...(removeImage && { removeImage: true }),
@@ -396,10 +383,27 @@ export default function HomepagePage() {
 
   const saveFooter = async () => {
     const token = localStorage.getItem('adminToken')
-    if (!token || !footerSection) return
+    if (!token) return
     setFooterSaving(true); setError('')
     try {
-      const r = await updateAdminHomePageSection(token, footerSection.id, { content: JSON.stringify(footer) } as Parameters<typeof updateAdminHomePageSection>[2])
+      let sectionId = footerSection?.id
+      if (!sectionId) {
+        // Footer section doesn't exist in this DB yet — create it on first save
+        const created = await createAdminHomePageSection(token, {
+          name: 'Footer',
+          sectionKey: 'hotels-newsletter-footer',
+          groupKey: 'general',
+          sectionType: 'FOOTER',
+          status: 'ACTIVE',
+          sortOrder: 999,
+          content: JSON.stringify(footer),
+        } as Parameters<typeof createAdminHomePageSection>[1])
+        if (!created.success) { setError(created.message || 'Failed to create footer section.'); return }
+        setFooterSection(created.section)
+        setSuccess('Footer created and saved.'); setFooterDirty(false)
+        return
+      }
+      const r = await updateAdminHomePageSection(token, sectionId, { content: JSON.stringify(footer) } as Parameters<typeof updateAdminHomePageSection>[2])
       if (r.success) { setSuccess('Footer saved.'); setFooterDirty(false) }
       else setError(r.message || 'Failed to save footer.')
     } finally { setFooterSaving(false) }
@@ -545,6 +549,7 @@ export default function HomepagePage() {
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => openNavEdit(item)} className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><PencilIcon className="h-3.5 w-3.5" /> Edit</button>
                           <button onClick={() => openPageEditor(item.href, item.label)} title="Edit page content" className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-100"><DocumentTextIcon className="h-3.5 w-3.5" /> Page</button>
+                          <a href={`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}${item.href}`} target="_blank" rel="noopener noreferrer" title="View on site" className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"><ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> View</a>
                           <button onClick={() => { setNavItems(prev => prev.filter(i => i.id!==item.id)); setNavDirty(true) }} className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"><TrashIcon className="h-3.5 w-3.5" /></button>
                         </div>
                       </td>
