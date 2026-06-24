@@ -218,8 +218,12 @@ export default function HomepagePage() {
   const [footerSection, setFooterSection] = useState<HomePageSection | null>(null)
   const [footer, setFooter] = useState<FooterData>(DEFAULT_FOOTER)
   const [footerSaving, setFooterSaving] = useState(false)
+  const [footerDirty, setFooterDirty] = useState(false)
   const [partnerLogoUploading, setPartnerLogoUploading] = useState(false)
   const partnerLogoInputRef = useRef<HTMLInputElement>(null)
+
+  // Nav dirty
+  const [navDirty, setNavDirty] = useState(false)
 
   // Page editor
   const [showPageEditor, setShowPageEditor] = useState(false)
@@ -238,11 +242,25 @@ export default function HomepagePage() {
       const r = await fetchAdminHomePageSections(token)
       if (r.success) {
         setSections(r.sections || [])
-        const fs = (r.sections || []).find((s: HomePageSection) => s.sectionType === 'FOOTER' || s.sectionKey === 'hotels-newsletter-footer')
+        let fs = (r.sections || []).find((s: HomePageSection) => s.sectionType === 'FOOTER' || s.sectionKey === 'hotels-newsletter-footer')
+        if (!fs) {
+          // Auto-create the footer section so the Footer tab always works
+          const created = await createAdminHomePageSection(token, {
+            name: 'Footer',
+            sectionKey: 'hotels-newsletter-footer',
+            groupKey: 'general',
+            sectionType: 'FOOTER',
+            status: 'ACTIVE',
+            sortOrder: 999,
+            content: JSON.stringify(DEFAULT_FOOTER),
+          } as Parameters<typeof createAdminHomePageSection>[1])
+          if (created.success) fs = created.section
+        }
         if (fs) {
           setFooterSection(fs)
           const c = fs.content as Record<string,unknown> | null
           if (c && typeof c === 'object') setFooter(prev => ({ ...prev, ...parseFooterContent(c) }))
+          setFooterDirty(false)
         }
       }
     } finally { setLoadingSections(false) }
@@ -252,7 +270,7 @@ export default function HomepagePage() {
     setLoadingNav(true)
     try {
       const r = await fetchNavMenu()
-      if (r.success) setNavItems(r.items || [])
+      if (r.success) { setNavItems(r.items || []); setNavDirty(false) }
     } finally { setLoadingNav(false) }
   }, [])
 
@@ -354,21 +372,22 @@ export default function HomepagePage() {
     if (!navForm.label.trim() || !navForm.href.trim()) return
     if (editingNav) setNavItems(prev => prev.map(i => i.id === editingNav.id ? { ...i, ...navForm } : i))
     else setNavItems(prev => [...prev, { id: Date.now().toString(), ...navForm, order: prev.length }])
+    setNavDirty(true)
     setShowNavModal(false)
   }
-  const moveNav = (idx: number, dir: -1|1) => setNavItems(prev => {
+  const moveNav = (idx: number, dir: -1|1) => { setNavItems(prev => {
     const arr = [...prev]; const swap = idx + dir
     if (swap < 0 || swap >= arr.length) return arr;
     [arr[idx], arr[swap]] = [arr[swap], arr[idx]]
     return arr.map((item, i) => ({ ...item, order: i }))
-  })
+  }); setNavDirty(true) }
   const saveNav = async () => {
     const token = localStorage.getItem('adminToken')
     if (!token) return
     setNavSaving(true); setError('')
     try {
       const r = await saveNavMenu(token, navItems.map((item, i) => ({ ...item, order: i })))
-      if (r.success) { setNavItems(r.items || navItems); setSuccess('Navigation menu saved.') }
+      if (r.success) { setNavItems(r.items || navItems); setSuccess('Navigation menu saved.'); setNavDirty(false) }
       else setError(r.message || 'Failed to save.')
     } finally { setNavSaving(false) }
   }
@@ -381,7 +400,7 @@ export default function HomepagePage() {
     setFooterSaving(true); setError('')
     try {
       const r = await updateAdminHomePageSection(token, footerSection.id, { content: JSON.stringify(footer) } as Parameters<typeof updateAdminHomePageSection>[2])
-      if (r.success) setSuccess('Footer saved.')
+      if (r.success) { setSuccess('Footer saved.'); setFooterDirty(false) }
       else setError(r.message || 'Failed to save footer.')
     } finally { setFooterSaving(false) }
   }
@@ -397,14 +416,16 @@ export default function HomepagePage() {
         const result = await uploadHomepageSectionImage(file)
         if (result.success && result.data?.fileUrl) uploaded.push(result.data.fileUrl)
       }
-      if (uploaded.length) setFooter(prev => ({ ...prev, partnerLogos: [...prev.partnerLogos, ...uploaded] }))
+      if (uploaded.length) { setFooter(prev => ({ ...prev, partnerLogos: [...prev.partnerLogos, ...uploaded] })); setFooterDirty(true) }
     } finally { setPartnerLogoUploading(false) }
   }
 
-  const updateLink = (side: 'leftLinks'|'rightLinks', idx: number, field: 'label'|'href', value: string) =>
+  const updateLink = (side: 'leftLinks'|'rightLinks', idx: number, field: 'label'|'href', value: string) => {
     setFooter(prev => { const links = [...prev[side]]; links[idx] = { ...links[idx], [field]: value }; return { ...prev, [side]: links } })
-  const addLink = (side: 'leftLinks'|'rightLinks') => setFooter(prev => ({ ...prev, [side]: [...prev[side], { label:'', href:'' }] }))
-  const removeLink = (side: 'leftLinks'|'rightLinks', idx: number) => setFooter(prev => ({ ...prev, [side]: prev[side].filter((_,i) => i !== idx) }))
+    setFooterDirty(true)
+  }
+  const addLink = (side: 'leftLinks'|'rightLinks') => { setFooter(prev => ({ ...prev, [side]: [...prev[side], { label:'', href:'' }] })); setFooterDirty(true) }
+  const removeLink = (side: 'leftLinks'|'rightLinks', idx: number) => { setFooter(prev => ({ ...prev, [side]: prev[side].filter((_,i) => i !== idx) })); setFooterDirty(true) }
 
   // ── Page editor ─────────────────────────────────────────────────────────────
 
@@ -444,6 +465,25 @@ export default function HomepagePage() {
 
       {error && <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {success && <div className="rounded-md border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
+
+      {/* Unsaved changes banners */}
+      {tab === 'footer' && footerDirty && !footerSaving && (
+        <div className="flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>⚠ You have unsaved changes — click <strong>Save Footer</strong> to publish them to the site.</span>
+          <button onClick={saveFooter} className="ml-4 flex-shrink-0 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 transition-colors">Save Footer</button>
+        </div>
+      )}
+      {tab === 'nav' && navDirty && !navSaving && (
+        <div className="flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>⚠ You have unsaved changes — click <strong>Save Menu</strong> to publish them to the site.</span>
+          <button onClick={saveNav} className="ml-4 flex-shrink-0 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 transition-colors">Save Menu</button>
+        </div>
+      )}
+      {tab === 'sections' && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
+          Click <strong>Edit</strong> on a section card to modify it, then click <strong>Save</strong> inside the editor to publish changes.
+        </div>
+      )}
 
       <div className="border-b border-gray-200">
         <nav className="flex gap-6">
@@ -496,7 +536,7 @@ export default function HomepagePage() {
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.label}</td>
                       <td className="px-4 py-3 text-sm text-gray-500 font-mono">{item.href}</td>
                       <td className="px-4 py-3 hidden sm:table-cell">
-                        <button onClick={() => setNavItems(prev => prev.map(i => i.id===item.id ? { ...i, visible:!i.visible } : i))}>
+                        <button onClick={() => { setNavItems(prev => prev.map(i => i.id===item.id ? { ...i, visible:!i.visible } : i)); setNavDirty(true) }}>
                           {item.visible ? <EyeIcon className="h-4 w-4 text-green-500" /> : <EyeSlashIcon className="h-4 w-4 text-gray-300" />}
                         </button>
                       </td>
@@ -505,7 +545,7 @@ export default function HomepagePage() {
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => openNavEdit(item)} className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><PencilIcon className="h-3.5 w-3.5" /> Edit</button>
                           <button onClick={() => openPageEditor(item.href, item.label)} title="Edit page content" className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-100"><DocumentTextIcon className="h-3.5 w-3.5" /> Page</button>
-                          <button onClick={() => setNavItems(prev => prev.filter(i => i.id!==item.id))} className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"><TrashIcon className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => { setNavItems(prev => prev.filter(i => i.id!==item.id)); setNavDirty(true) }} className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"><TrashIcon className="h-3.5 w-3.5" /></button>
                         </div>
                       </td>
                     </tr>
@@ -521,14 +561,14 @@ export default function HomepagePage() {
       {/* ── FOOTER TAB ── */}
       {tab === 'footer' && (
         <div className="space-y-6 max-w-4xl">
-          {!footerSection && <div className="rounded-md border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-700">No footer section found. Create a section with type <strong>FOOTER</strong> first.</div>}
+          {!footerSection && <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-400">Initialising footer settings…</div>}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
             <h3 className="text-sm font-semibold text-gray-900 mb-4">Newsletter & Brand</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {([['partnerGroupSubtitle','Partner Group Subtitle (e.g. "Part of the")'],['partnerGroupTitle','Partner Group Title (e.g. "Dalata Hotel Group")'],['newsletterTitle','Newsletter Title'],['subscribeButtonLabel','Subscribe Button Label'],['consentText','Consent Text'],['privacyLabel','Privacy Policy Label'],['privacyLink','Privacy Policy URL'],['copyrightText','Copyright Text']] as [keyof FooterData, string][]).map(([field, label]) => (
                 <div key={field} className={field === 'consentText' ? 'sm:col-span-2' : ''}>
                   <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-                  <input className={inp} value={footer[field] as string} onChange={e => setFooter(prev => ({ ...prev, [field]: e.target.value }))} />
+                  <input className={inp} value={footer[field] as string} onChange={e => { setFooter(prev => ({ ...prev, [field]: e.target.value })); setFooterDirty(true) }} />
                 </div>
               ))}
             </div>
@@ -556,7 +596,7 @@ export default function HomepagePage() {
                     <div className="h-20 w-32 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden p-2">
                       <img src={getApiAssetUrl(logo)} alt="" className="h-full w-full object-contain" />
                     </div>
-                    <button type="button" onClick={() => setFooter(prev => ({ ...prev, partnerLogos: prev.partnerLogos.filter((_,j) => j!==i) }))}
+                    <button type="button" onClick={() => { setFooter(prev => ({ ...prev, partnerLogos: prev.partnerLogos.filter((_,j) => j!==i) })); setFooterDirty(true) }}
                       className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600">✕</button>
                     <p className="text-[10px] text-gray-400 text-center mt-1">Logo {i+1}</p>
                   </div>
@@ -574,7 +614,7 @@ export default function HomepagePage() {
               <div className="mb-3">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Column Title</label>
                 <input className={inp} value={side==='leftLinks' ? footer.leftColumnTitle : footer.rightColumnTitle}
-                  onChange={e => setFooter(prev => ({ ...prev, [side==='leftLinks' ? 'leftColumnTitle' : 'rightColumnTitle']: e.target.value }))} />
+                  onChange={e => { setFooter(prev => ({ ...prev, [side==='leftLinks' ? 'leftColumnTitle' : 'rightColumnTitle']: e.target.value })); setFooterDirty(true) }} />
               </div>
               <div className="space-y-2">
                 {footer[side].map((link, idx) => (
