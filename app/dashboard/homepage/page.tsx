@@ -31,6 +31,7 @@ interface SectionForm {
   sectionType: HomePageSectionType; status: HomePageSectionStatus; sortOrder: number
   badge: string; eyebrow: string; title: string; subtitle: string; description: string
   buttonLabel: string; buttonLink: string; secondaryButtonLabel: string; secondaryButtonLink: string
+  buttonEnabled: boolean
   imageAlt: string
   // type-specific content fields
   locationPlaceholder: string      // HERO
@@ -53,7 +54,7 @@ const TYPE_COLORS: Record<string, string> = {
 const EMPTY_FORM: SectionForm = {
   name:'', sectionKey:'', groupKey:'general', sectionType:'FEATURE', status:'ACTIVE', sortOrder:0,
   badge:'', eyebrow:'', title:'', subtitle:'', description:'',
-  buttonLabel:'', buttonLink:'', secondaryButtonLabel:'', secondaryButtonLink:'', imageAlt:'',
+  buttonLabel:'', buttonLink:'', secondaryButtonLabel:'', secondaryButtonLink:'', buttonEnabled:true, imageAlt:'',
   locationPlaceholder:'', secondaryTitle:'', secondaryDescription:'', cards:[],
 }
 
@@ -116,6 +117,7 @@ function sectionToForm(section: HomePageSection): SectionForm {
     locationPlaceholder: String(c.locationPlaceholder || ''),
     secondaryTitle: String(c.secondaryTitle || ''),
     secondaryDescription: String(c.secondaryDescription || ''),
+    buttonEnabled: c.buttonEnabled !== false,
     cards,
   }
 }
@@ -123,13 +125,13 @@ function sectionToForm(section: HomePageSection): SectionForm {
 function buildContent(form: SectionForm): Record<string, unknown> {
   switch (form.sectionType) {
     case 'HERO':
-      return { locationPlaceholder: form.locationPlaceholder }
+      return { locationPlaceholder: form.locationPlaceholder, buttonEnabled: form.buttonEnabled }
     case 'TEXT':
       return { secondaryTitle: form.secondaryTitle, secondaryDescription: form.secondaryDescription }
     case 'LOCATION':
       return { cards: form.cards.map(({ _file: _f, ...card }) => card) }
     default:
-      return {}
+      return { buttonEnabled: form.buttonEnabled }
   }
 }
 
@@ -241,8 +243,77 @@ export default function HomepagePage() {
     try {
       const r = await fetchAdminHomePageSections(token)
       if (r.success) {
-        setSections(r.sections || [])
-        const fs = (r.sections || []).find((s: HomePageSection) => s.sectionType === 'FOOTER' || s.sectionKey === 'hotels-newsletter-footer')
+        let allSections: HomePageSection[] = r.sections || []
+
+        // Seed any missing homepage sections so the admin always shows all of them
+        const SEED_SECTIONS: HomePageSectionPayload[] = [
+          {
+            name: 'Hero Banner', sectionKey: 'hotels-hero-banner', groupKey: 'homepage',
+            sectionType: 'HERO', status: 'ACTIVE', sortOrder: 10,
+            badge: 'HOTELS', eyebrow: 'Welcome to Luxotel',
+            title: "where it's personal", buttonLabel: 'BOOK NOW',
+            content: JSON.stringify({ locationPlaceholder: 'Choose your location' }),
+          },
+          {
+            name: 'Story Intro', sectionKey: 'hotels-story-intro', groupKey: 'homepage',
+            sectionType: 'TEXT', status: 'ACTIVE', sortOrder: 20,
+            title: "At Luxotel, we're dedicated to experiences centred around you, our guest.",
+            description: "We know a personal touch is about human connection in all its wonderful ways, from small gestures to going the extra mile.",
+            content: JSON.stringify({ secondaryTitle: 'Our Locations', secondaryDescription: '' }),
+          },
+          {
+            name: 'Location Cards', sectionKey: 'hotels-location-cards', groupKey: 'homepage',
+            sectionType: 'LOCATION', status: 'ACTIVE', sortOrder: 30,
+            title: 'Our Locations',
+            content: JSON.stringify({ cards: [] }),
+          },
+          {
+            name: 'Dining Feature', sectionKey: 'hotels-dining-feature', groupKey: 'homepage',
+            sectionType: 'FEATURE', status: 'ACTIVE', sortOrder: 40,
+            title: 'Experience', subtitle: 'flavour',
+            description: 'Discover a world of flavours at Luxotel, from the perfect start to your day with our Vitality Breakfast to our signature Red Bean Roastery coffee.',
+            buttonLabel: 'Explore Dining',
+          },
+          {
+            name: 'Book Direct Offer', sectionKey: 'hotels-book-direct-offer', groupKey: 'homepage',
+            sectionType: 'CTA', status: 'ACTIVE', sortOrder: 50,
+            title: 'Book Direct & Save',
+            description: 'Get the best rate guaranteed when you book directly with us.',
+            buttonLabel: 'Book Now', buttonLink: '/booking',
+          },
+          {
+            name: 'Business Feature', sectionKey: 'hotels-business-feature', groupKey: 'homepage',
+            sectionType: 'FEATURE', status: 'ACTIVE', sortOrder: 60,
+            title: 'Business done', subtitle: 'personally',
+            description: 'State of the art technology, inviting decor, exquisite catering and our dedicated meeting and events teams ensure all your meetings run smoothly.',
+            buttonLabel: 'Explore our Conference Venues',
+          },
+          {
+            name: 'Gift Cards', sectionKey: 'hotels-gift-cards', groupKey: 'homepage',
+            sectionType: 'CARD', status: 'ACTIVE', sortOrder: 70,
+            title: 'Gift Cards',
+            description: 'Give the gift of a Luxotel experience.',
+            buttonLabel: 'Shop Gift Cards', buttonLink: '/gift-cards',
+          },
+          {
+            name: 'Health & Safety', sectionKey: 'hotels-health-safety', groupKey: 'homepage',
+            sectionType: 'FEATURE', status: 'ACTIVE', sortOrder: 80,
+            description: 'Your health and safety is our top priority.',
+            buttonLabel: 'Learn More', buttonLink: '/health-safety',
+          },
+        ]
+
+        const existingKeys = new Set(allSections.map((s: HomePageSection) => s.sectionKey))
+        const missing = SEED_SECTIONS.filter(s => !existingKeys.has(s.sectionKey))
+
+        if (missing.length > 0) {
+          await Promise.all(missing.map(payload => createAdminHomePageSection(token, payload)))
+          const refreshed = await fetchAdminHomePageSections(token)
+          if (refreshed.success) allSections = refreshed.sections || []
+        }
+
+        setSections(allSections)
+        const fs = allSections.find((s: HomePageSection) => s.sectionType === 'FOOTER' || s.sectionKey === 'hotels-newsletter-footer')
         if (fs) {
           setFooterSection(fs)
           const c = fs.content as Record<string,unknown> | null
@@ -504,10 +575,15 @@ export default function HomepagePage() {
       {tab === 'sections' && (
         loadingSections ? <div className="py-12 text-center text-sm text-gray-400">Loading sections…</div> : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {[...sections].sort((a,b) => a.sortOrder - b.sortOrder).map(section => (
-              <SectionCard key={section.id} section={section} onEdit={() => openEdit(section)} onDelete={() => handleDeleteSection(section.id, section.name)} />
-            ))}
-            {sections.length === 0 && <div className="col-span-full py-16 text-center text-sm text-gray-400">No sections yet. Click <strong>Add Section</strong>.</div>}
+            {[...sections]
+              .filter(s => s.sectionType !== 'FOOTER' && s.sectionKey !== 'hotels-newsletter-footer')
+              .sort((a,b) => a.sortOrder - b.sortOrder)
+              .map(section => (
+                <SectionCard key={section.id} section={section} onEdit={() => openEdit(section)} onDelete={() => handleDeleteSection(section.id, section.name)} />
+              ))}
+            {sections.filter(s => s.sectionType !== 'FOOTER' && s.sectionKey !== 'hotels-newsletter-footer').length === 0 && (
+              <div className="col-span-full py-16 text-center text-sm text-gray-400">No sections yet. Click <strong>Add Section</strong>.</div>
+            )}
           </div>
         )
       )}
@@ -786,8 +862,20 @@ export default function HomepagePage() {
               {/* ── Buttons ── */}
               {['HERO','FEATURE','CTA','NEWSLETTER','CUSTOM'].includes(form.sectionType) && (
                 <div>
-                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 pb-2 border-b">Buttons</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b">
+                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Buttons</h3>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <span className="text-xs text-gray-500">{form.buttonEnabled ? 'Button visible' : 'Button hidden'}</span>
+                      <button
+                        type="button"
+                        onClick={() => sf({ buttonEnabled: !form.buttonEnabled })}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${form.buttonEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
+                      >
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${form.buttonEnabled ? 'translate-x-4' : 'translate-x-1'}`} />
+                      </button>
+                    </label>
+                  </div>
+                  <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity ${form.buttonEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
                     <Field label="Primary Button Label"><input className={inp} value={form.buttonLabel} onChange={e => sf({ buttonLabel: e.target.value })} placeholder="e.g. Book Now" /></Field>
                     <Field label="Primary Button URL"><input className={monoInp} value={form.buttonLink} onChange={e => sf({ buttonLink: e.target.value })} placeholder="/booking" /></Field>
                     <Field label="Secondary Button Label"><input className={inp} value={form.secondaryButtonLabel} onChange={e => sf({ secondaryButtonLabel: e.target.value })} /></Field>
@@ -800,7 +888,19 @@ export default function HomepagePage() {
               {form.sectionType !== 'TEXT' && form.sectionType !== 'FOOTER' && (
                 <div>
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 pb-2 border-b">
-                    {form.sectionType === 'LOCATION' ? 'Section Background Image (optional)' : 'Background / Feature Image'}
+                    {form.sectionKey === 'hotels-health-safety'
+                      ? 'Floating Person / Overlay Image'
+                      : form.sectionKey === 'hotels-gift-cards'
+                      ? 'Gift Section Background Image'
+                      : form.sectionKey === 'hotels-dining-feature'
+                      ? 'Dining Section Background Image'
+                      : form.sectionKey === 'hotels-business-feature'
+                      ? 'Business Section Background Image'
+                      : form.sectionKey === 'hotels-hero-banner'
+                      ? 'Hero Background Image (overrides video)'
+                      : form.sectionType === 'LOCATION'
+                      ? 'Section Background Image (optional)'
+                      : 'Background / Feature Image'}
                   </h3>
                   <div className="flex gap-4 items-start">
                     <div className="flex-shrink-0">
