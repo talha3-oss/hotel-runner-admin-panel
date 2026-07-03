@@ -10,7 +10,7 @@ import {
   fetchAdminHomePageSections, createAdminHomePageSection, updateAdminHomePageSection,
   deleteAdminHomePageSection, fetchNavMenu, saveNavMenu, getApiAssetUrl,
   uploadHomepageSectionImage,
-  HomePageSection, HomePageSectionType, HomePageSectionStatus,
+  HomePageSection, HomePageSectionType, HomePageSectionStatus, HomePageSectionPayload,
 } from '../../../lib/api'
 import PageEditorModal from './PageEditorModal'
 
