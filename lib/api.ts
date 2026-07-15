@@ -949,6 +949,80 @@ export async function deleteAdminFaq(token: string, id: string) {
   return res.json()
 }
 
+// ── Team Management ───────────────────────────────────────────────────────────
+
+export const TEAM_MODULES = [
+  { key: 'hotels', label: 'Hotels' },
+  { key: 'locations', label: 'Countries & Locations' },
+  { key: 'homepage', label: 'Homepage Content' },
+  { key: 'rooms', label: 'Rooms' },
+  { key: 'ratePlans', label: 'Rate Plans' },
+  { key: 'extras', label: 'Extras' },
+  { key: 'bookings', label: 'Bookings' },
+  { key: 'coupons', label: 'Coupons' },
+  { key: 'faqs', label: 'FAQs' },
+  { key: 'blog', label: 'Blog' },
+  { key: 'customers', label: 'Customers' },
+  { key: 'payments', label: 'Payments' },
+  { key: 'invoices', label: 'Invoices' },
+  { key: 'cookies', label: 'Cookie Consents' },
+  { key: 'settings', label: 'Settings' },
+] as const
+
+export interface TeamMember {
+  id: string
+  email: string
+  fullName: string | null
+  roleLabel: string | null
+  status: string
+  isSuperAdmin: boolean
+  permissions: string[]
+  createdAt: string
+}
+
+export type TeamMemberPayload = {
+  email?: string
+  password?: string
+  fullName: string
+  roleLabel?: string
+  permissions: string[]
+  status?: string
+}
+
+export async function fetchTeamMembers(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/team`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function createTeamMember(token: string, data: TeamMemberPayload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/team`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  })
+  return res.json()
+}
+
+export async function updateTeamMember(token: string, id: string, data: Partial<TeamMemberPayload>) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/team/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  })
+  return res.json()
+}
+
+export async function deleteTeamMember(token: string, id: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/team/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}
+
 // ── Blog ──────────────────────────────────────────────────────────────────────
 
 export interface BlogPost {
