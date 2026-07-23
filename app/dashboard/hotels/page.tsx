@@ -65,6 +65,7 @@ type HotelForm = {
   childrenAllowed: boolean
   childrenPrice: string
   adultMinAge: string
+  allowOlderChildren: boolean
 }
 
 const EMPTY_HOTEL: HotelForm = {
@@ -104,6 +105,7 @@ const EMPTY_HOTEL: HotelForm = {
   childrenAllowed: true,
   childrenPrice: '0',
   adultMinAge: '13',
+  allowOlderChildren: true,
 }
 
 const parseCsv = (value: string) =>
@@ -292,6 +294,7 @@ export default function HotelsPage() {
       childrenAllowed: hotel.childrenAllowed !== false,
       childrenPrice: String(hotel.childrenPrice ?? 0),
       adultMinAge: String(hotel.adultMinAge ?? 13),
+      allowOlderChildren: hotel.allowOlderChildren !== false,
     })
     setNewAmenity('')
     setFormError('')
@@ -460,6 +463,7 @@ export default function HotelsPage() {
         childrenAllowed: hotelForm.childrenAllowed,
         childrenPrice: Number(hotelForm.childrenPrice) || 0,
         adultMinAge: Number(hotelForm.adultMinAge) || 13,
+        allowOlderChildren: hotelForm.allowOlderChildren,
       }
 
       const result = hotelForm.id
@@ -761,6 +765,22 @@ export default function HotelsPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Adult Min Age (years)</label>
                       <input type="number" min="1" max="21" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="13" value={hotelForm.adultMinAge} onChange={field('adultMinAge')} />
                       <p className="text-xs text-gray-400 mt-1">Guests below this age are treated as children</p>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="flex items-center gap-3 cursor-pointer select-none">
+                        <div
+                          onClick={() => setHotelForm((prev) => ({ ...prev, allowOlderChildren: !prev.allowOlderChildren }))}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${hotelForm.allowOlderChildren ? 'bg-primary-600' : 'bg-gray-300'}`}
+                        >
+                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hotelForm.allowOlderChildren ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </div>
+                        <span className="text-sm font-medium text-gray-700">Allow older children (age 6+)</span>
+                      </label>
+                      <p className="text-xs text-gray-400 mt-1 ml-14">
+                        {hotelForm.allowOlderChildren
+                          ? 'Guests can add children under 6 or age 6 and up.'
+                          : 'Only children under 6 can be added — no older child age band shown.'}
+                      </p>
                     </div>
                   </>
                 )}

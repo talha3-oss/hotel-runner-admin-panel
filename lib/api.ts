@@ -273,6 +273,7 @@ export interface Hotel {
   childrenAllowed?: boolean
   childrenPrice?: number
   adultMinAge?: number
+  allowOlderChildren?: boolean
   locationId: string
   location: string
   country: string
