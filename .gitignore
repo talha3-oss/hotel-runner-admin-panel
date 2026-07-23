@@ -16,6 +16,4 @@ config.bat
 branch_structure.json
 
 # environment variables
-.env
-.env.local
 .env.*.local

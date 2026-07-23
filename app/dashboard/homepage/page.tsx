@@ -534,7 +534,7 @@ export default function HomepagePage() {
             <button onClick={openNavCreate} className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"><PlusIcon className="h-4 w-4" /> Add Link</button>
             <button onClick={saveNav} disabled={navSaving} className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50 transition-colors">{navSaving ? 'Saving…' : 'Save Menu'}</button>
           </>}
-          {tab === 'footer' && <button onClick={saveFooter} disabled={footerSaving || !footerSection} className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50 transition-colors">{footerSaving ? 'Saving…' : 'Save Footer'}</button>}
+          {tab === 'footer' && <button onClick={saveFooter} disabled={footerSaving} className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50 transition-colors">{footerSaving ? 'Saving…' : 'Save Footer'}</button>}
         </div>
       </div>
 
