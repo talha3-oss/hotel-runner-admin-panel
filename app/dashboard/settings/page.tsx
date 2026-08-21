@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react'
 import {
-  UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon,
+  UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, KeyIcon,
 } from '@heroicons/react/24/outline'
 import { getAdminMe, updateAdminMe } from '../../../lib/api'
 
@@ -22,11 +22,17 @@ const SMTP_DEFAULTS: SmtpForm = {
   smtp_username: '', smtp_password: '', smtp_from_email: '', smtp_from_name: 'Luxotel Reservations',
 }
 
+interface PartnerApiForm {
+  partner_api_key: string; partner_id: string
+}
+
+const PARTNER_API_DEFAULTS: PartnerApiForm = { partner_api_key: '', partner_id: '' }
+
 export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'email'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'email' | 'partner-api'>('profile')
 
   // Profile form
   const [fullName, setFullName] = useState('')
@@ -48,6 +54,13 @@ export default function SettingsPage() {
   const [smtpTesting, setSmtpTesting] = useState(false)
   const [smtpMsg, setSmtpMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+
+  // Partner API form
+  const [partnerApi, setPartnerApi] = useState<PartnerApiForm>(PARTNER_API_DEFAULTS)
+  const [partnerApiLoading, setPartnerApiLoading] = useState(false)
+  const [partnerApiSaving, setPartnerApiSaving] = useState(false)
+  const [partnerApiMsg, setPartnerApiMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [showPartnerApiKey, setShowPartnerApiKey] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem('adminToken') || ''
@@ -72,6 +85,19 @@ export default function SettingsPage() {
       .then(data => { if (data.success) setSmtp(prev => ({ ...prev, ...data.settings })) })
       .catch(() => {})
       .finally(() => setSmtpLoading(false))
+  }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'partner-api') return
+    const token = localStorage.getItem('adminToken') || ''
+    setPartnerApiLoading(true)
+    fetch(`${API_BASE_URL}/api/v1/admin/settings/partner-api`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(data => { if (data.success) setPartnerApi(prev => ({ ...prev, ...data.settings })) })
+      .catch(() => {})
+      .finally(() => setPartnerApiLoading(false))
   }, [activeTab])
 
   const handleProfileSave = async (e: FormEvent) => {
@@ -131,10 +157,28 @@ export default function SettingsPage() {
 
   const sf = (field: keyof SmtpForm, value: string) => setSmtp(prev => ({ ...prev, [field]: value }))
 
+  const handlePartnerApiSave = async (e: FormEvent) => {
+    e.preventDefault(); setPartnerApiMsg(null); setPartnerApiSaving(true)
+    try {
+      const token = localStorage.getItem('adminToken') || ''
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/partner-api`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(partnerApi),
+      }).then(r => r.json())
+      if (res.success) setPartnerApiMsg({ ok: true, text: 'Partner API settings saved successfully.' })
+      else setPartnerApiMsg({ ok: false, text: res.message || 'Failed to save.' })
+    } catch { setPartnerApiMsg({ ok: false, text: 'Server error.' }) }
+    finally { setPartnerApiSaving(false) }
+  }
+
+  const pf = (field: keyof PartnerApiForm, value: string) => setPartnerApi(prev => ({ ...prev, [field]: value }))
+
   const tabs = [
     { id: 'profile' as const, name: 'Profile', icon: UserIcon },
     { id: 'security' as const, name: 'Security', icon: ShieldCheckIcon },
     { id: 'email' as const, name: 'Email (SMTP)', icon: EnvelopeIcon },
+    { id: 'partner-api' as const, name: 'Partner API', icon: KeyIcon },
   ]
 
   const inp = 'w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500'
@@ -335,6 +379,68 @@ export default function SettingsPage() {
                   <div className="flex justify-end pt-2">
                     <button type="submit" disabled={smtpSaving} className="px-5 py-2 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
                       {smtpSaving ? 'Saving…' : 'Save SMTP Settings'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {/* Partner API tab */}
+          {activeTab === 'partner-api' && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h2 className="text-base font-semibold text-gray-800">Partner API Credentials</h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  The API-Key and partner_id our distribution partners use to authenticate against
+                  <code className="mx-1 px-1 py-0.5 rounded bg-gray-100 text-gray-600">POST /api/v1/authenticate</code>
+                  Update these here if a partner ever needs new credentials.
+                </p>
+              </div>
+
+              {partnerApiLoading ? (
+                <div className="flex justify-center py-12"><div className="w-6 h-6 border-4 border-primary-500 border-t-transparent rounded-full animate-spin" /></div>
+              ) : (
+                <form onSubmit={handlePartnerApiSave} className="p-6 space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">API-Key</label>
+                      <div className="relative">
+                        <input
+                          type={showPartnerApiKey ? 'text' : 'password'}
+                          required
+                          value={partnerApi.partner_api_key}
+                          onChange={e => pf('partner_api_key', e.target.value)}
+                          placeholder="e.g. NNb1156k4d987bb40gg339u216227j"
+                          className={`${inp} pr-10 font-mono`}
+                        />
+                        <button type="button" onClick={() => setShowPartnerApiKey(p => !p)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                          {showPartnerApiKey ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">partner_id</label>
+                      <input
+                        type="text"
+                        required
+                        value={partnerApi.partner_id}
+                        onChange={e => pf('partner_id', e.target.value)}
+                        placeholder="e.g. 301900"
+                        className={`${inp} font-mono`}
+                      />
+                    </div>
+                  </div>
+
+                  {partnerApiMsg && (
+                    <div className={`rounded-lg px-4 py-2.5 text-sm ${partnerApiMsg.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                      {partnerApiMsg.text}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end pt-2">
+                    <button type="submit" disabled={partnerApiSaving} className="px-5 py-2 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+                      {partnerApiSaving ? 'Saving…' : 'Save Partner API Settings'}
                     </button>
                   </div>
                 </form>
