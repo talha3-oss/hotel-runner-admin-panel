@@ -31,6 +31,7 @@ type NearbyPlace = { name: string; distance: string }
 type HotelForm = {
   id: string
   propertyId: string
+  rateTigerHotelCode: string
   name: string
   locationId: string
   address: string
@@ -71,6 +72,7 @@ type HotelForm = {
 const EMPTY_HOTEL: HotelForm = {
   id: '',
   propertyId: '',
+  rateTigerHotelCode: '',
   name: '',
   locationId: '',
   address: '',
@@ -260,6 +262,7 @@ export default function HotelsPage() {
     setHotelForm({
       id: hotel.id,
       propertyId: hotel.propertyId || '',
+      rateTigerHotelCode: hotel.rateTigerHotelCode || '',
       name: hotel.name,
       locationId: hotel.locationId,
       address: hotel.address || '',
@@ -430,6 +433,7 @@ export default function HotelsPage() {
 
       const payload = {
         name: hotelForm.name.trim(),
+        rateTigerHotelCode: hotelForm.rateTigerHotelCode.trim(),
         locationId: hotelForm.locationId,
         address: hotelForm.address.trim(),
         phone: hotelForm.phone.trim(),
@@ -714,6 +718,19 @@ export default function HotelsPage() {
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-gray-400">Auto-generated identifier — read only</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">RateTiger Hotel Code</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono tracking-wider focus:ring-2 focus:ring-primary-500 focus:outline-none placeholder:font-sans placeholder:tracking-normal"
+                    placeholder="e.g. 241588"
+                    value={hotelForm.rateTigerHotelCode}
+                    onChange={field('rateTigerHotelCode')}
+                  />
+                  <p className="mt-1 text-xs text-gray-400">
+                    The hotelCode RateTiger sends for this property. Leave empty if this hotel is not on RateTiger.
+                  </p>
                 </div>
 
                 <div>

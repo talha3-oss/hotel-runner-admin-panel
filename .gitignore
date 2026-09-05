@@ -17,3 +17,6 @@ branch_structure.json
 
 # environment variables
 .env.*.local
+
+# JetBrains IDE
+.idea/

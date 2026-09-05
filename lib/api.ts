@@ -254,6 +254,7 @@ export interface LocationOption {
 export interface Hotel {
   id: string
   propertyId?: string | null
+  rateTigerHotelCode?: string | null
   name: string
   address?: string | null
   phone?: string | null
