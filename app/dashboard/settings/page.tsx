@@ -15,11 +15,101 @@ interface AdminUser {
 interface SmtpForm {
   smtp_host: string; smtp_port: string; smtp_secure: string
   smtp_username: string; smtp_password: string; smtp_from_email: string; smtp_from_name: string
+  system_smtp_host: string; system_smtp_port: string; system_smtp_secure: string
+  system_smtp_username: string; system_smtp_password: string
+  system_smtp_from_email: string; system_smtp_from_name: string
 }
 
 const SMTP_DEFAULTS: SmtpForm = {
   smtp_host: '', smtp_port: '465', smtp_secure: 'true',
   smtp_username: '', smtp_password: '', smtp_from_email: '', smtp_from_name: 'Luxotel Reservations',
+  system_smtp_host: '', system_smtp_port: '465', system_smtp_secure: 'true',
+  system_smtp_username: '', system_smtp_password: '',
+  system_smtp_from_email: '', system_smtp_from_name: 'Luxotel',
+}
+
+// The two mailboxes take the same seven fields, so one group renders both.
+interface SmtpFieldKeys {
+  host: keyof SmtpForm; port: keyof SmtpForm; secure: keyof SmtpForm
+  username: keyof SmtpForm; password: keyof SmtpForm
+  fromEmail: keyof SmtpForm; fromName: keyof SmtpForm
+}
+
+const BOOKING_FIELDS: SmtpFieldKeys = {
+  host: 'smtp_host', port: 'smtp_port', secure: 'smtp_secure',
+  username: 'smtp_username', password: 'smtp_password',
+  fromEmail: 'smtp_from_email', fromName: 'smtp_from_name',
+}
+
+const SYSTEM_FIELDS: SmtpFieldKeys = {
+  host: 'system_smtp_host', port: 'system_smtp_port', secure: 'system_smtp_secure',
+  username: 'system_smtp_username', password: 'system_smtp_password',
+  fromEmail: 'system_smtp_from_email', fromName: 'system_smtp_from_name',
+}
+
+const inputClass = 'w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500'
+
+function SmtpFieldGroup({
+  fields, values, onChange, required, placeholders, passwordStored,
+}: {
+  fields: SmtpFieldKeys
+  values: SmtpForm
+  onChange: (field: keyof SmtpForm, value: string) => void
+  required: boolean
+  placeholders: { host: string; username: string; fromEmail: string; fromName: string }
+  passwordStored: boolean
+}) {
+  const [showPassword, setShowPassword] = useState(false)
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+      <div className="sm:col-span-2">
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">SMTP Host</label>
+        <input type="text" required={required} value={values[fields.host]} onChange={e => onChange(fields.host, e.target.value)} placeholder={placeholders.host} className={inputClass} />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Port</label>
+        <input type="number" required={required} value={values[fields.port]} onChange={e => onChange(fields.port, e.target.value)} placeholder="465" className={inputClass} />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Encryption</label>
+        <select value={values[fields.secure]} onChange={e => onChange(fields.secure, e.target.value)} className={inputClass}>
+          <option value="true">SSL / TLS (port 465)</option>
+          <option value="false">STARTTLS (port 587)</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Username</label>
+        <input type="text" required={required} value={values[fields.username]} onChange={e => onChange(fields.username, e.target.value)} placeholder={placeholders.username} className={inputClass} />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+        <div className="relative">
+          <input
+            type={showPassword ? 'text' : 'password'}
+            value={values[fields.password]}
+            onChange={e => onChange(fields.password, e.target.value)}
+            placeholder="••••••••"
+            className={`${inputClass} pr-10`}
+          />
+          <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            {showPassword ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-gray-400">
+          {passwordStored ? 'A password is saved. Leave blank to keep it.' : 'No password saved yet.'}
+        </p>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">From Email</label>
+        <input type="email" required={required} value={values[fields.fromEmail]} onChange={e => onChange(fields.fromEmail, e.target.value)} placeholder={placeholders.fromEmail} className={inputClass} />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">From Name</label>
+        <input type="text" value={values[fields.fromName]} onChange={e => onChange(fields.fromName, e.target.value)} placeholder={placeholders.fromName} className={inputClass} />
+      </div>
+    </div>
+  )
 }
 
 interface PartnerApiForm {
@@ -50,10 +140,10 @@ export default function SettingsPage() {
   // SMTP form
   const [smtp, setSmtp] = useState<SmtpForm>(SMTP_DEFAULTS)
   const [smtpLoading, setSmtpLoading] = useState(false)
+  const [passwordStored, setPasswordStored] = useState({ booking: false, system: false })
+  const [smtpTestingScope, setSmtpTestingScope] = useState<'booking' | 'system' | null>(null)
   const [smtpSaving, setSmtpSaving] = useState(false)
-  const [smtpTesting, setSmtpTesting] = useState(false)
   const [smtpMsg, setSmtpMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  const [showPassword, setShowPassword] = useState(false)
 
   // Partner API form
   const [partnerApi, setPartnerApi] = useState<PartnerApiForm>(PARTNER_API_DEFAULTS)
@@ -82,7 +172,13 @@ export default function SettingsPage() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
-      .then(data => { if (data.success) setSmtp(prev => ({ ...prev, ...data.settings })) })
+      .then(data => {
+        if (!data.success) return
+        // The *_set flags say whether a password is stored; they are not fields.
+        const { smtp_password_set, system_smtp_password_set, ...settings } = data.settings
+        setPasswordStored({ booking: Boolean(smtp_password_set), system: Boolean(system_smtp_password_set) })
+        setSmtp(prev => ({ ...prev, ...settings }))
+      })
       .catch(() => {})
       .finally(() => setSmtpLoading(false))
   }, [activeTab])
@@ -142,17 +238,20 @@ export default function SettingsPage() {
     finally { setSmtpSaving(false) }
   }
 
-  const handleSmtpTest = async () => {
-    setSmtpMsg(null); setSmtpTesting(true)
+  // Tests what is saved on the server, not what is typed in the form — so save
+  // before testing, or the test still uses the previous credentials.
+  const handleSmtpTest = async (scope: 'booking' | 'system') => {
+    setSmtpMsg(null); setSmtpTestingScope(scope)
     try {
       const token = localStorage.getItem('adminToken') || ''
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/smtp/test`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ scope }),
       }).then(r => r.json())
       setSmtpMsg({ ok: res.success, text: res.message })
     } catch { setSmtpMsg({ ok: false, text: 'Could not reach server.' }) }
-    finally { setSmtpTesting(false) }
+    finally { setSmtpTestingScope(null) }
   }
 
   const sf = (field: keyof SmtpForm, value: string) => setSmtp(prev => ({ ...prev, [field]: value }))
@@ -305,70 +404,80 @@ export default function SettingsPage() {
           {/* Email / SMTP tab */}
           {activeTab === 'email' && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                <div>
-                  <h2 className="text-base font-semibold text-gray-800">Email (SMTP) Settings</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">Used for booking confirmations, OTP, and all outgoing emails.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleSmtpTest}
-                  disabled={smtpTesting}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  {smtpTesting ? 'Testing…' : '⚡ Test Connection'}
-                </button>
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h2 className="text-base font-semibold text-gray-800">Email (SMTP) Settings</h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Two mailboxes: one guests see on booking confirmations, one for verification codes
+                  and password resets.
+                </p>
               </div>
 
               {smtpLoading ? (
                 <div className="flex justify-center py-12"><div className="w-6 h-6 border-4 border-primary-500 border-t-transparent rounded-full animate-spin" /></div>
               ) : (
-                <form onSubmit={handleSmtpSave} className="p-6 space-y-5">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div className="sm:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">SMTP Host</label>
-                      <input type="text" required value={smtp.smtp_host} onChange={e => sf('smtp_host', e.target.value)} placeholder="mail.luxotel.com" className={inp} />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Port</label>
-                      <input type="number" required value={smtp.smtp_port} onChange={e => sf('smtp_port', e.target.value)} placeholder="465" className={inp} />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Encryption</label>
-                      <select value={smtp.smtp_secure} onChange={e => sf('smtp_secure', e.target.value)} className={inp}>
-                        <option value="true">SSL / TLS (port 465)</option>
-                        <option value="false">STARTTLS (port 587)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Username</label>
-                      <input type="text" required value={smtp.smtp_username} onChange={e => sf('smtp_username', e.target.value)} placeholder="bookings@luxotel.com" className={inp} />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? 'text' : 'password'}
-                          value={smtp.smtp_password}
-                          onChange={e => sf('smtp_password', e.target.value)}
-                          placeholder="••••••••"
-                          className={`${inp} pr-10`}
-                        />
-                        <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                          {showPassword ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
-                        </button>
+                <form onSubmit={handleSmtpSave} className="p-6 space-y-8">
+                  <section>
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-800">Booking Emails</h3>
+                        <p className="text-xs text-gray-400 mt-0.5">Confirmations and invoices sent to guests.</p>
                       </div>
-                      <p className="mt-1 text-xs text-gray-400">Leave blank to keep the current password.</p>
+                      <button
+                        type="button"
+                        onClick={() => handleSmtpTest('booking')}
+                        disabled={smtpTestingScope !== null}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {smtpTestingScope === 'booking' ? 'Testing…' : '⚡ Test Connection'}
+                      </button>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">From Email</label>
-                      <input type="email" required value={smtp.smtp_from_email} onChange={e => sf('smtp_from_email', e.target.value)} placeholder="bookings@luxotel.com" className={inp} />
+                    <SmtpFieldGroup
+                      fields={BOOKING_FIELDS}
+                      values={smtp}
+                      onChange={sf}
+                      required
+                      passwordStored={passwordStored.booking}
+                      placeholders={{
+                        host: 'mail.luxotel.com',
+                        username: 'bookings@luxotel.com',
+                        fromEmail: 'bookings@luxotel.com',
+                        fromName: 'Luxotel Reservations',
+                      }}
+                    />
+                  </section>
+
+                  <section className="pt-6 border-t border-gray-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-800">System Emails</h3>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Verification codes and password resets. Optional — leave blank to send
+                          these from the booking mailbox above.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSmtpTest('system')}
+                        disabled={smtpTestingScope !== null}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {smtpTestingScope === 'system' ? 'Testing…' : '⚡ Test Connection'}
+                      </button>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">From Name</label>
-                      <input type="text" value={smtp.smtp_from_name} onChange={e => sf('smtp_from_name', e.target.value)} placeholder="Luxotel Reservations" className={inp} />
-                    </div>
-                  </div>
+                    <SmtpFieldGroup
+                      fields={SYSTEM_FIELDS}
+                      values={smtp}
+                      onChange={sf}
+                      required={false}
+                      passwordStored={passwordStored.system}
+                      placeholders={{
+                        host: 'mail.luxotel.com',
+                        username: 'noreply@luxotel.com',
+                        fromEmail: 'noreply@luxotel.com',
+                        fromName: 'Luxotel',
+                      }}
+                    />
+                  </section>
 
                   {smtpMsg && (
                     <div className={`rounded-lg px-4 py-2.5 text-sm ${smtpMsg.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
