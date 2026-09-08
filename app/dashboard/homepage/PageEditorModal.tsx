@@ -71,14 +71,14 @@ const DEFAULT_OFFERS: OfferItem[] = [
   {
     title: 'Weekend Getaway', badge: 'Popular',
     description: 'Escape the city for a luxurious weekend retreat.',
-    highlight: 'From £149 / night',
+    highlight: 'From JOD 149 / night',
     image: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800',
     includes: ['Breakfast for two', 'Spa access', 'Late checkout until 2 pm'],
   },
   {
     title: 'Corporate Stay', badge: 'Business',
     description: 'Ideal rates for extended business trips with all the essentials.',
-    highlight: 'From £99 / night',
+    highlight: 'From JOD 99 / night',
     image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800',
     includes: ['High-speed Wi-Fi', 'Meeting room access', 'Daily breakfast'],
   },
@@ -398,7 +398,7 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Price Highlight</label>
-                      <input className={inp} value={offer.highlight} onChange={e => updOffer(i, 'highlight', e.target.value)} placeholder="From £149 / night" />
+                      <input className={inp} value={offer.highlight} onChange={e => updOffer(i, 'highlight', e.target.value)} placeholder="From JOD 149 / night" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Card Image</label>

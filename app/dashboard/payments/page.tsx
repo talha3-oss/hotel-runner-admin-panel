@@ -12,6 +12,7 @@ import {
   CurrencyPoundIcon,
 } from '@heroicons/react/24/outline'
 import { fetchAdminBookings, BookingRecord } from '../../../lib/api'
+import { formatMoneyExact } from '../../../lib/currency'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
 
@@ -22,9 +23,7 @@ const PAYMENT_STATUS_STYLES: Record<string, string> = {
   REFUNDED: 'bg-gray-100 text-gray-700',
 }
 
-function fmtCurrency(n: number) {
-  return `£${new Intl.NumberFormat('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}`
-}
+const fmtCurrency = formatMoneyExact
 
 function fmtDate(s: string) {
   return new Date(s).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })

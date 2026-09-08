@@ -8,6 +8,7 @@ import {
   DocumentTextIcon,
 } from '@heroicons/react/24/outline'
 import { fetchAdminInvoices, InvoiceRecord } from '../../../lib/api'
+import { formatMoney } from '../../../lib/currency'
 
 const INVOICE_STATUS_COLORS: Record<string, string> = {
   ISSUED: 'bg-blue-100 text-blue-700',
@@ -15,9 +16,7 @@ const INVOICE_STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-red-100 text-red-700',
 }
 
-function fmt(n: number) {
-  return `JOD ${Math.round(n)}`
-}
+const fmt = formatMoney
 
 function fmtDate(iso: string) {
   try { return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }

@@ -7,6 +7,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { fetchAdminBookings, updateBookingStatus, BookingRecord } from '../../../lib/api'
+import { formatMoney } from '../../../lib/currency'
 
 const STATUS_COLORS: Record<string, string> = {
   CONFIRMED: 'bg-green-100 text-green-700',
@@ -19,9 +20,7 @@ const PAYMENT_COLORS: Record<string, string> = {
   PENDING: 'bg-gray-100 text-gray-600',
 }
 
-function fmt(n: number) {
-  return `JOD ${Math.round(n)}`
-}
+const fmt = formatMoney
 
 function fmtDate(iso: string) {
   try { return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }

@@ -15,6 +15,7 @@ import {
   ArrowTrendingUpIcon,
 } from '@heroicons/react/24/outline'
 import { fetchDashboardStats, fetchHotelCount, fetchRoomCount } from '../../lib/api'
+import { formatMoneyExact, formatMoneyAxis } from '../../lib/currency'
 
 interface DashboardData {
   stats: {
@@ -56,9 +57,7 @@ const STATUS_COLORS: Record<string, string> = {
 function fmt(n: number) {
   return new Intl.NumberFormat('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 }
-function fmtCurrency(n: number) {
-  return `£${new Intl.NumberFormat('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}`
-}
+const fmtCurrency = formatMoneyExact
 
 function StatCard({
   title, value, sub, icon: Icon, iconColor, trend, trendLabel,
@@ -215,7 +214,7 @@ export default function DashboardPage() {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis yAxisId="rev" orientation="left" tickFormatter={(v) => `£${v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}`} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={55} />
+              <YAxis yAxisId="rev" orientation="left" tickFormatter={formatMoneyAxis} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={55} />
               <YAxis yAxisId="bk" orientation="right" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={30} />
               <Tooltip content={<CustomTooltip />} />
               <Legend wrapperStyle={{ fontSize: 12, paddingTop: 16 }} />
@@ -274,7 +273,7 @@ export default function DashboardPage() {
                 tickLine={false}
                 tickFormatter={(v) => v.length > 18 ? v.slice(0, 18) + '…' : v}
               />
-              <YAxis tickFormatter={(v) => `£${v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}`} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={55} />
+              <YAxis tickFormatter={formatMoneyAxis} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={55} />
               <Tooltip
                 formatter={(v: any, name: string) => [name === 'revenue' ? fmtCurrency(v) : v, name === 'revenue' ? 'Revenue' : 'Bookings']}
                 contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
