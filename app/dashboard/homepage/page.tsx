@@ -474,7 +474,11 @@ export default function HomepagePage() {
         setSuccess('Footer created and saved.'); setFooterDirty(false)
         return
       }
-      const r = await updateAdminHomePageSection(token, sectionId, { content: JSON.stringify(footer) } as Parameters<typeof updateAdminHomePageSection>[2])
+      // Send the status too. Saving footer settings means you want them on the
+      // site, but the public sections endpoint only returns ACTIVE rows — so a
+      // section left INACTIVE swallows every save silently, with the admin
+      // panel still showing the content it just stored.
+      const r = await updateAdminHomePageSection(token, sectionId, { status: 'ACTIVE', content: JSON.stringify(footer) } as Parameters<typeof updateAdminHomePageSection>[2])
       if (r.success) { setSuccess('Footer saved.'); setFooterDirty(false) }
       else setError(r.message || 'Failed to save footer.')
     } finally { setFooterSaving(false) }
