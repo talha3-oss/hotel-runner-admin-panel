@@ -114,9 +114,13 @@ function SmtpFieldGroup({
 
 interface PartnerApiForm {
   partner_api_key: string; partner_id: string
+  partner_basic_auth_username: string; partner_basic_auth_password: string
 }
 
-const PARTNER_API_DEFAULTS: PartnerApiForm = { partner_api_key: '', partner_id: '' }
+const PARTNER_API_DEFAULTS: PartnerApiForm = {
+  partner_api_key: '', partner_id: '',
+  partner_basic_auth_username: '', partner_basic_auth_password: '',
+}
 
 export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
@@ -150,6 +154,8 @@ export default function SettingsPage() {
   const [partnerApiLoading, setPartnerApiLoading] = useState(false)
   const [partnerApiSaving, setPartnerApiSaving] = useState(false)
   const [partnerApiMsg, setPartnerApiMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [basicAuthPasswordStored, setBasicAuthPasswordStored] = useState(false)
+  const [showBasicAuthPassword, setShowBasicAuthPassword] = useState(false)
   const [showPartnerApiKey, setShowPartnerApiKey] = useState(false)
 
   useEffect(() => {
@@ -191,7 +197,13 @@ export default function SettingsPage() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
-      .then(data => { if (data.success) setPartnerApi(prev => ({ ...prev, ...data.settings })) })
+      .then(data => {
+        if (!data.success) return
+        // A flag, not a field — the password itself never leaves the server.
+        const { partner_basic_auth_password_set, ...settings } = data.settings
+        setBasicAuthPasswordStored(Boolean(partner_basic_auth_password_set))
+        setPartnerApi(prev => ({ ...prev, ...settings }))
+      })
       .catch(() => {})
       .finally(() => setPartnerApiLoading(false))
   }, [activeTab])
@@ -538,6 +550,46 @@ export default function SettingsPage() {
                         placeholder="e.g. 301900"
                         className={`${inp} font-mono`}
                       />
+                    </div>
+                  </div>
+
+                  <div className="pt-5 border-t border-gray-100">
+                    <h3 className="text-sm font-semibold text-gray-800">BasicAuth Header</h3>
+                    <p className="text-xs text-gray-400 mt-0.5 mb-4">
+                      Issued by the partner. They send it as
+                      <code className="mx-1 px-1 py-0.5 rounded bg-gray-100 text-gray-600">BasicAuth: Basic &lt;base64 of username:password&gt;</code>
+                      on the same call. Without a match the request is rejected before the API-Key is even read.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Username</label>
+                        <input
+                          type="text"
+                          required
+                          value={partnerApi.partner_basic_auth_username}
+                          onChange={e => pf('partner_basic_auth_username', e.target.value)}
+                          placeholder="e.g. luxotel"
+                          className={`${inp} font-mono`}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+                        <div className="relative">
+                          <input
+                            type={showBasicAuthPassword ? 'text' : 'password'}
+                            value={partnerApi.partner_basic_auth_password}
+                            onChange={e => pf('partner_basic_auth_password', e.target.value)}
+                            placeholder="••••••••"
+                            className={`${inp} pr-10 font-mono`}
+                          />
+                          <button type="button" onClick={() => setShowBasicAuthPassword(p => !p)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                            {showBasicAuthPassword ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+                          </button>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-400">
+                          {basicAuthPasswordStored ? 'A password is saved. Leave blank to keep it.' : 'No password saved yet.'}
+                        </p>
+                      </div>
                     </div>
                   </div>
 
