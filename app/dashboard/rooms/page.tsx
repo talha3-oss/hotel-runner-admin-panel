@@ -50,9 +50,7 @@ type GroupedRoom = {
 type RoomFormData = {
   hotelId: string
   name: string
-  roomCount: string
   roomNumber: string
-  roomNumbers: string
   selectedRatePlans: string[]
   ratePlanPrices: Record<string, string>
   discount: string
@@ -74,9 +72,7 @@ const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1631049307264-da0ec9d70
 const EMPTY_FORM: RoomFormData = {
   hotelId: '',
   name: '',
-  roomCount: '1',
   roomNumber: '',
-  roomNumbers: '',
   selectedRatePlans: [],
   ratePlanPrices: {},
   discount: '10',
@@ -112,15 +108,6 @@ const parseCsvInput = (value: string): string[] =>
 // no punctuation there. Restricting it here is what keeps the code shown in this
 // dashboard and the code they receive identical.
 const ROOM_CODE_PATTERN = /^[A-Za-z0-9]+$/
-
-const invalidRoomCodes = (codes: string[]): string[] =>
-  codes.filter((code) => !ROOM_CODE_PATTERN.test(code))
-
-const parseRoomNumbersInput = (value: string): string[] =>
-  value
-    .split(/[\n,]+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
 
 type RatePlanMeta = { code: string; key: string; label: string }
 
@@ -273,9 +260,7 @@ export default function RoomsPage() {
     setFormData({
       hotelId: group.hotelId,
       name: group.name,
-      roomCount: '1',
       roomNumber: group.roomNumber,
-      roomNumbers: group.roomNumber,
       selectedRatePlans: selectedPlans,
       ratePlanPrices: planPrices,
       discount: String(group.discount ?? 10),
@@ -500,27 +485,19 @@ export default function RoomsPage() {
       }
     }
 
-    const roomCount = Number(formData.roomCount)
-    const roomNumbers = parseRoomNumbersInput(formData.roomNumbers)
-
-    if (!Number.isInteger(roomCount) || roomCount <= 0) {
-      setFormError('Number of rooms must be at least 1.')
-      return
-    }
-
-    if (roomNumbers.length !== roomCount) {
-      setFormError(`Please provide exactly ${roomCount} room number${roomCount === 1 ? '' : 's'}.`)
-      return
-    }
-
-    const badCodes = invalidRoomCodes(roomNumbers)
-    if (badCodes.length > 0) {
+    const roomCode = formData.roomNumber.trim()
+    if (!ROOM_CODE_PATTERN.test(roomCode)) {
       setFormError(
-        `Room codes may use letters and numbers only — no spaces, hyphens or symbols. ` +
-        `Fix: ${badCodes.join(', ')}`
+        'Room code may use letters and numbers only — no spaces, hyphens or symbols. ' +
+        'RateTiger receives this code exactly as typed.'
       )
       return
     }
+
+    // One room type, one code. The API still takes a list, from when a room
+    // entry meant a physical room rather than a sellable type.
+    const roomCount = 1
+    const roomNumbers = [roomCode]
 
     setFormLoading(true)
     setFormError('')
@@ -776,23 +753,19 @@ export default function RoomsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Number of Rooms</label>
-                    {editingGroup ? (
-                      <div className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-800 font-semibold">
-                        {groupedFilteredRooms.filter(g => g.hotelId === editingGroup.hotelId && g.name === editingGroup.name).length}
-                        <span className="ml-2 text-xs font-normal text-gray-400">rooms of this type in hotel</span>
-                      </div>
-                    ) : (
-                      <input
-                        type="number"
-                        required
-                        min="1"
-                        value={formData.roomCount}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, roomCount: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        placeholder="How many rooms of this type?"
-                      />
-                    )}
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Room Code</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.roomNumber}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, roomNumber: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      placeholder="e.g. KNG01"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Letters and numbers only. RateTiger receives this as the room type code,
+                      exactly as typed.
+                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Capacity</label>
@@ -951,39 +924,11 @@ export default function RoomsPage() {
                   </div>
                 </div>
 
-                {editingGroup ? (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Room Code</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.roomNumber}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, roomNumber: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      placeholder="e.g. KNG01"
-                    />
-                    <p className="mt-1 text-xs text-gray-500">
-                      Letters and numbers only. RateTiger receives this as the room type code, exactly
-                      as typed — changing it here changes it on their side too, so tell them first if
-                      the room is already mapped.
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Room Codes</label>
-                    <textarea
-                      required
-                      rows={4}
-                      value={formData.roomNumbers}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, roomNumbers: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      placeholder="Enter one room code per line or separate them with commas"
-                    />
-                    <p className="mt-1 text-xs text-gray-500">
-                      One unique code per physical room of this type in the selected hotel. Letters and
-                      numbers only — RateTiger receives these as room type codes, exactly as typed.
-                    </p>
-                  </div>
+                {editingGroup && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                    Changing the room code changes it on RateTiger&apos;s side too. If this room is
+                    already mapped there, tell them before you save.
+                  </p>
                 )}
 
                 <div>
