@@ -758,13 +758,15 @@ export default function RoomsPage() {
                       type="text"
                       required
                       value={formData.roomNumber}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, roomNumber: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, roomNumber: e.target.value.toUpperCase() }))
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
                       placeholder="e.g. KNG01"
                     />
                     <p className="mt-1 text-xs text-gray-500">
-                      Letters and numbers only. RateTiger receives this as the room type code,
-                      exactly as typed.
+                      Letters and numbers only, stored in capitals. RateTiger receives this as
+                      the room type code, exactly as shown here.
                     </p>
                   </div>
                   <div>
