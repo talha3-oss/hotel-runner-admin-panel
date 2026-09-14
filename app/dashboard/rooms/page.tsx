@@ -108,6 +108,14 @@ const parseCsvInput = (value: string): string[] =>
     .map((item) => item.trim())
     .filter(Boolean)
 
+// The room code travels to RateTiger verbatim as roomTypeCode, and they accept
+// no punctuation there. Restricting it here is what keeps the code shown in this
+// dashboard and the code they receive identical.
+const ROOM_CODE_PATTERN = /^[A-Za-z0-9]+$/
+
+const invalidRoomCodes = (codes: string[]): string[] =>
+  codes.filter((code) => !ROOM_CODE_PATTERN.test(code))
+
 const parseRoomNumbersInput = (value: string): string[] =>
   value
     .split(/[\n,]+/)
@@ -372,6 +380,15 @@ export default function RoomsPage() {
         return
       }
 
+      const roomCode = formData.roomNumber.trim()
+      if (!ROOM_CODE_PATTERN.test(roomCode)) {
+        setFormError(
+          'Room code may use letters and numbers only — no spaces, hyphens or symbols. ' +
+          'RateTiger receives this code exactly as typed.'
+        )
+        return
+      }
+
       for (const plan of formData.selectedRatePlans) {
         const planPrice = formData.ratePlanPrices[plan]
         if (!planPrice || isNaN(Number(planPrice)) || Number(planPrice) < 0) {
@@ -493,6 +510,15 @@ export default function RoomsPage() {
 
     if (roomNumbers.length !== roomCount) {
       setFormError(`Please provide exactly ${roomCount} room number${roomCount === 1 ? '' : 's'}.`)
+      return
+    }
+
+    const badCodes = invalidRoomCodes(roomNumbers)
+    if (badCodes.length > 0) {
+      setFormError(
+        `Room codes may use letters and numbers only — no spaces, hyphens or symbols. ` +
+        `Fix: ${badCodes.join(', ')}`
+      )
       return
     }
 
@@ -925,19 +951,37 @@ export default function RoomsPage() {
                   </div>
                 </div>
 
-                {!editingGroup && (
+                {editingGroup ? (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Room Numbers</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Room Code</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.roomNumber}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, roomNumber: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      placeholder="e.g. KNG01"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Letters and numbers only. RateTiger receives this as the room type code, exactly
+                      as typed — changing it here changes it on their side too, so tell them first if
+                      the room is already mapped.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Room Codes</label>
                     <textarea
                       required
                       rows={4}
                       value={formData.roomNumbers}
                       onChange={(e) => setFormData((prev) => ({ ...prev, roomNumbers: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      placeholder="Enter one room number per line or separate them with commas"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      placeholder="Enter one room code per line or separate them with commas"
                     />
                     <p className="mt-1 text-xs text-gray-500">
-                      Add one unique room number for each physical room of this type in the selected hotel.
+                      One unique code per physical room of this type in the selected hotel. Letters and
+                      numbers only — RateTiger receives these as room type codes, exactly as typed.
                     </p>
                   </div>
                 )}
