@@ -44,6 +44,7 @@ type GroupedRoom = {
   childrenPrice: number
   childrenAllowed: boolean
   adultMinAge: number
+  totalRooms: number | null
   plans: Array<{ id: string; roomType: string; price: number }>
 }
 
@@ -59,6 +60,7 @@ type RoomFormData = {
   adultMinAge: string
   roomType: string
   capacity: string
+  totalRooms: string
   bedType: string
   size: string
   price: string
@@ -81,6 +83,7 @@ const EMPTY_FORM: RoomFormData = {
   adultMinAge: '0',
   roomType: '',
   capacity: '',
+  totalRooms: '',
   bedType: '',
   size: '',
   price: '',
@@ -227,6 +230,7 @@ export default function RoomsPage() {
           childrenPrice: room.childrenPrice ?? 0,
           childrenAllowed: room.childrenAllowed !== false,
           adultMinAge: room.adultMinAge ?? 0,
+          totalRooms: room.totalRooms ?? null,
           plans: [],
         })
       }
@@ -269,6 +273,7 @@ export default function RoomsPage() {
       adultMinAge: String(group.adultMinAge ?? 0),
       roomType: group.plans[0]?.roomType || '',
       capacity: String(group.capacity),
+      totalRooms: group.totalRooms == null ? '' : String(group.totalRooms),
       bedType: group.bedType,
       size: group.size,
       price: String(group.plans[0]?.price || ''),
@@ -402,6 +407,7 @@ export default function RoomsPage() {
           hotelId: formData.hotelId,
           name: formData.name.trim(),
           capacity: Number(formData.capacity),
+          totalRooms: Number(formData.totalRooms),
           bedType: formData.bedType.trim(),
           size: formData.size.trim(),
           status: formData.status,
@@ -522,6 +528,7 @@ export default function RoomsPage() {
           name: formData.name.trim(),
           roomType: plan,
           capacity: Number(formData.capacity),
+          totalRooms: Number(formData.totalRooms),
           bedType: formData.bedType.trim(),
           size: formData.size.trim(),
           price: Number(formData.ratePlanPrices[plan]),
@@ -652,6 +659,12 @@ export default function RoomsPage() {
 
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600 mb-3">
                   <span><span className="font-medium">Capacity:</span> {group.capacity} guests</span>
+                  <span>
+                    <span className="font-medium">Total Rooms:</span>{' '}
+                    {group.totalRooms == null
+                      ? <span className="text-amber-600">not set</span>
+                      : group.totalRooms}
+                  </span>
                   <span><span className="font-medium">Bed:</span> {group.bedType}</span>
                   <span><span className="font-medium">Size:</span> {group.size}</span>
                 </div>
@@ -780,6 +793,24 @@ export default function RoomsPage() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                       placeholder="Number of guests"
                     />
+                    <p className="mt-1 text-xs text-gray-500">How many guests fit in one room.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Rooms</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      value={formData.totalRooms}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, totalRooms: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      placeholder="e.g. 25"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      How many rooms of this code the property has. Applies to every rate plan on
+                      this room code. This is the property&apos;s total, not how many are free on a
+                      given date.
+                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Bed Type</label>
@@ -1052,6 +1083,12 @@ export default function RoomsPage() {
                         {selectedGroup.locationName || '-'}, {selectedGroup.countryName || '-'}
                       </p>
                       <p><span className="font-medium">Capacity:</span> {selectedGroup.capacity} guests</p>
+                      <p>
+                        <span className="font-medium">Total Rooms:</span>{' '}
+                        {selectedGroup.totalRooms == null
+                          ? <span className="text-amber-600">not set</span>
+                          : selectedGroup.totalRooms}
+                      </p>
                       <p><span className="font-medium">Bed Type:</span> {selectedGroup.bedType}</p>
                       <p><span className="font-medium">Size:</span> {selectedGroup.size}</p>
                       <p><span className="font-medium">Status:</span> {statusLabels[selectedGroup.status]}</p>

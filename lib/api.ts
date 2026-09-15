@@ -98,6 +98,8 @@ export interface Room {
   childrenPrice?: number
   childrenAllowed?: boolean
   adultMinAge?: number
+  // Physical rooms of this room code the property has. Null until someone sets it.
+  totalRooms?: number | null
   createdAt: string
   updatedAt: string
 }
@@ -121,6 +123,7 @@ export interface RoomPayload {
   childrenPrice?: number
   childrenAllowed?: boolean
   adultMinAge?: number
+  totalRooms?: number
 }
 
 export interface UploadImageResult {
