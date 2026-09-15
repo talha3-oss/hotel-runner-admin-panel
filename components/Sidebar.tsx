@@ -20,6 +20,7 @@ import {
   ShieldCheckIcon,
   TicketIcon,
   QuestionMarkCircleIcon,
+  TableCellsIcon,
   NewspaperIcon,
   IdentificationIcon,
 } from '@heroicons/react/24/outline'
@@ -31,6 +32,7 @@ const navigation = [
   { name: 'Homepage Content', href: '/dashboard/homepage', icon: Squares2X2Icon, moduleKey: 'homepage' },
   { name: 'Rooms', href: '/dashboard/rooms', icon: HomeIcon, moduleKey: 'rooms' },
   { name: 'Rate Plans', href: '/dashboard/rate-plans', icon: TagIcon, moduleKey: 'ratePlans' },
+  { name: 'Rates & Availability', href: '/dashboard/rates', icon: TableCellsIcon, moduleKey: 'ari' },
   { name: 'Extras', href: '/dashboard/extras', icon: SparklesIcon, moduleKey: 'extras' },
   { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarDaysIcon, moduleKey: 'bookings' },
   { name: 'Coupons', href: '/dashboard/coupons', icon: TicketIcon, moduleKey: 'coupons' },

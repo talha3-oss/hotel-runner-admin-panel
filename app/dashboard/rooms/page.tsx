@@ -869,6 +869,22 @@ export default function RoomsPage() {
                     </div>
                   </div>
 
+                  {/* Once RateTiger publishes prices, the rates below stop being
+                      the price on most nights. Saying so here is the difference
+                      between a setting that looks broken and one that is
+                      understood. */}
+                  <div className="mb-4 rounded-md bg-white/70 border border-orange-200 px-3 py-2 text-xs text-gray-600 leading-relaxed">
+                    <span className="font-semibold text-orange-800">RateTiger owns the price.</span>{' '}
+                    The rates below apply only on nights RateTiger has not priced. On every other
+                    night their rate is what the site sells at — see{' '}
+                    <a href="/dashboard/rates" className="underline font-medium text-orange-800">
+                      Rates &amp; Availability
+                    </a>{' '}
+                    for what they have published. The <span className="font-semibold">discount</span>{' '}
+                    above is entirely yours: it is applied on top of whichever price applies, and is
+                    never sent to RateTiger.
+                  </div>
+
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm border-collapse">
                       <thead>

@@ -962,6 +962,7 @@ export const TEAM_MODULES = [
   { key: 'homepage', label: 'Homepage Content' },
   { key: 'rooms', label: 'Rooms' },
   { key: 'ratePlans', label: 'Rate Plans' },
+  { key: 'ari', label: 'Rates & Availability' },
   { key: 'extras', label: 'Extras' },
   { key: 'bookings', label: 'Bookings' },
   { key: 'coupons', label: 'Coupons' },
