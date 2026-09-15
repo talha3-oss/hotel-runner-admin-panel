@@ -20,6 +20,30 @@ const PAYMENT_COLORS: Record<string, string> = {
   PENDING: 'bg-gray-100 text-gray-600',
 }
 
+// Whether RateTiger was told about this booking. Until they know, their
+// channels keep offering a room that is already sold — so a booking stuck at
+// Pending is a double-booking waiting to happen, not a cosmetic detail.
+const RT_LABELS: Record<string, string> = {
+  SENT: 'Sent',
+  PENDING: 'Pending',
+  FAILED: 'Failed',
+  SKIPPED: 'Not connected',
+}
+
+const RT_COLORS: Record<string, string> = {
+  SENT: 'bg-emerald-100 text-emerald-700',
+  PENDING: 'bg-amber-100 text-amber-700',
+  FAILED: 'bg-red-100 text-red-700',
+  SKIPPED: 'bg-gray-100 text-gray-500',
+}
+
+const RT_HINTS: Record<string, string> = {
+  SENT: 'RateTiger has this booking.',
+  PENDING: 'Not delivered yet — it is retried automatically every few minutes.',
+  FAILED: 'RateTiger refused it. Retrying will not help; see the reason.',
+  SKIPPED: 'This property has no RateTiger hotel code, so nothing is sent.',
+}
+
 const fmt = formatMoney
 
 function fmtDate(iso: string) {
@@ -144,12 +168,13 @@ export default function BookingsPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">RateTiger</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {bookings.length === 0 ? (
-                  <tr><td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-400">No bookings found.</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-10 text-center text-sm text-gray-400">No bookings found.</td></tr>
                 ) : bookings.map((b) => (
                   <tr key={b.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap font-mono text-sm font-semibold text-primary-700">{b.bookingRef}</td>
@@ -172,6 +197,18 @@ export default function BookingsPage() {
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${PAYMENT_COLORS[b.paymentStatus] || 'bg-gray-100 text-gray-600'}`}>
                         {b.paymentStatus === 'PAID' ? 'Paid' : b.paymentMethod === 'hotel' ? 'Pay at Hotel' : 'Pending'}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {b.rateTigerStatus ? (
+                        <span
+                          title={RT_HINTS[b.rateTigerStatus] || ''}
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${RT_COLORS[b.rateTigerStatus] || 'bg-gray-100 text-gray-600'}`}
+                        >
+                          {RT_LABELS[b.rateTigerStatus] || b.rateTigerStatus}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <button
@@ -297,6 +334,40 @@ export default function BookingsPage() {
                   <span>{selectedBooking.paymentMethod === 'hotel' ? 'Pay at Hotel' : 'Paid Online'} · {selectedBooking.paymentStatus}</span>
                 </div>
               </div>
+
+              {selectedBooking.rateTigerStatus && (
+                <div className="border-t border-gray-100 pt-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">RateTiger</span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${RT_COLORS[selectedBooking.rateTigerStatus] || 'bg-gray-100 text-gray-600'}`}>
+                      {RT_LABELS[selectedBooking.rateTigerStatus] || selectedBooking.rateTigerStatus}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {RT_HINTS[selectedBooking.rateTigerStatus] || ''}
+                  </p>
+                  {selectedBooking.rateTigerResId && (
+                    <p className="mt-1 text-xs text-gray-400">
+                      Their reference: <span className="font-mono">{selectedBooking.rateTigerResId}</span>
+                    </p>
+                  )}
+                  {selectedBooking.rateTigerSentAt && (
+                    <p className="mt-1 text-xs text-gray-400">
+                      Delivered {fmtDate(selectedBooking.rateTigerSentAt)}
+                    </p>
+                  )}
+                  {selectedBooking.rateTigerLastError && selectedBooking.rateTigerStatus !== 'SENT' && (
+                    <p className="mt-1 text-xs text-red-600 break-words">
+                      {selectedBooking.rateTigerLastError}
+                    </p>
+                  )}
+                  {(selectedBooking.rateTigerAttempts ?? 0) > 1 && (
+                    <p className="mt-1 text-xs text-gray-400">
+                      {selectedBooking.rateTigerAttempts} attempts
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div className="text-xs text-gray-400">Booked on {fmtDate(selectedBooking.createdAt)}</div>
             </div>

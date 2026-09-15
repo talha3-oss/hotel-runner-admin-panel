@@ -649,6 +649,14 @@ export interface BookingRecord {
   paymentMethod: string
   paymentStatus: string
   invoice: { id: string; invoiceRef: string; status: string; sentAt: string | null } | null
+  // Whether RateTiger was told about this booking. SENT / PENDING / FAILED /
+  // SKIPPED; null on bookings made before delivery existed.
+  rateTigerStatus?: string | null
+  rateTigerResId?: string | null
+  rateTigerAttempts?: number
+  rateTigerLastError?: string | null
+  rateTigerSentAt?: string | null
+  childrenAges?: string[]
 }
 
 export interface InvoiceRecord {
