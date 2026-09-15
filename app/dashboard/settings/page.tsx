@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import {
   UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, KeyIcon,
+  PaperAirplaneIcon,
 } from '@heroicons/react/24/outline'
 import { getAdminMe, updateAdminMe } from '../../../lib/api'
 
@@ -122,11 +123,29 @@ const PARTNER_API_DEFAULTS: PartnerApiForm = {
   partner_basic_auth_username: '', partner_basic_auth_password: '',
 }
 
+// Where our bookings are sent. Every other RateTiger message arrives here; this
+// is the one that leaves, so it needs their address rather than ours.
+interface RtResForm {
+  ratetiger_reservation_url: string
+  ratetiger_channel_code: string
+  ratetiger_channel_name: string
+  ratetiger_auth_header_name: string
+  ratetiger_auth_header_value: string
+}
+
+const RT_RES_DEFAULTS: RtResForm = {
+  ratetiger_reservation_url: '',
+  ratetiger_channel_code: '',
+  ratetiger_channel_name: '',
+  ratetiger_auth_header_name: '',
+  ratetiger_auth_header_value: '',
+}
+
 export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'email' | 'partner-api'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'email' | 'partner-api' | 'ratetiger'>('profile')
 
   // Profile form
   const [fullName, setFullName] = useState('')
@@ -154,6 +173,13 @@ export default function SettingsPage() {
   const [partnerApiLoading, setPartnerApiLoading] = useState(false)
   const [partnerApiSaving, setPartnerApiSaving] = useState(false)
   const [partnerApiMsg, setPartnerApiMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const [rtRes, setRtRes] = useState<RtResForm>(RT_RES_DEFAULTS)
+  const [rtResLoading, setRtResLoading] = useState(false)
+  const [rtResSaving, setRtResSaving] = useState(false)
+  const [rtResRetrying, setRtResRetrying] = useState(false)
+  const [rtAuthValueStored, setRtAuthValueStored] = useState(false)
+  const [rtResMsg, setRtResMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [basicAuthPasswordStored, setBasicAuthPasswordStored] = useState(false)
   const [showBasicAuthPassword, setShowBasicAuthPassword] = useState(false)
   const [showPartnerApiKey, setShowPartnerApiKey] = useState(false)
@@ -206,6 +232,26 @@ export default function SettingsPage() {
       })
       .catch(() => {})
       .finally(() => setPartnerApiLoading(false))
+  }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'ratetiger') return
+    const token = localStorage.getItem('adminToken') || ''
+    setRtResLoading(true)
+    fetch(`${API_BASE_URL}/api/v1/admin/settings/ratetiger-reservation`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) return
+        // A flag, not a field — the auth value can be a credential and never
+        // leaves the server.
+        const { ratetiger_auth_header_value_set, ...settings } = data.settings
+        setRtAuthValueStored(Boolean(ratetiger_auth_header_value_set))
+        setRtRes(prev => ({ ...prev, ...settings }))
+      })
+      .catch(() => {})
+      .finally(() => setRtResLoading(false))
   }, [activeTab])
 
   const handleProfileSave = async (e: FormEvent) => {
@@ -285,11 +331,52 @@ export default function SettingsPage() {
 
   const pf = (field: keyof PartnerApiForm, value: string) => setPartnerApi(prev => ({ ...prev, [field]: value }))
 
+  const handleRtResSave = async (e: FormEvent) => {
+    e.preventDefault(); setRtResMsg(null); setRtResSaving(true)
+    try {
+      const token = localStorage.getItem('adminToken') || ''
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/ratetiger-reservation`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(rtRes),
+      }).then(r => r.json())
+      if (res.success) {
+        setRtResMsg({ ok: true, text: 'RateTiger reservation settings saved.' })
+        if (rtRes.ratetiger_auth_header_value.trim()) setRtAuthValueStored(true)
+        setRtRes(prev => ({ ...prev, ratetiger_auth_header_value: '' }))
+      } else setRtResMsg({ ok: false, text: res.message || 'Failed to save.' })
+    } catch { setRtResMsg({ ok: false, text: 'Server error.' }) }
+    finally { setRtResSaving(false) }
+  }
+
+  const handleRtResRetry = async () => {
+    setRtResMsg(null); setRtResRetrying(true)
+    try {
+      const token = localStorage.getItem('adminToken') || ''
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/ratetiger-reservation/retry`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).then(r => r.json())
+      if (res.success) {
+        setRtResMsg({
+          ok: true,
+          text: res.attempted
+            ? `Retried ${res.attempted} booking(s); ${res.sent ?? 0} delivered.`
+            : 'Nothing is waiting to be sent.',
+        })
+      } else setRtResMsg({ ok: false, text: res.message || 'Retry failed.' })
+    } catch { setRtResMsg({ ok: false, text: 'Server error.' }) }
+    finally { setRtResRetrying(false) }
+  }
+
+  const rf = (field: keyof RtResForm, value: string) => setRtRes(prev => ({ ...prev, [field]: value }))
+
   const tabs = [
     { id: 'profile' as const, name: 'Profile', icon: UserIcon },
     { id: 'security' as const, name: 'Security', icon: ShieldCheckIcon },
     { id: 'email' as const, name: 'Email (SMTP)', icon: EnvelopeIcon },
     { id: 'partner-api' as const, name: 'Partner API', icon: KeyIcon },
+    { id: 'ratetiger' as const, name: 'RateTiger', icon: PaperAirplaneIcon },
   ]
 
   const inp = 'w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500'
@@ -602,6 +689,127 @@ export default function SettingsPage() {
                   <div className="flex justify-end pt-2">
                     <button type="submit" disabled={partnerApiSaving} className="px-5 py-2 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
                       {partnerApiSaving ? 'Saving…' : 'Save Partner API Settings'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'ratetiger' && (
+            <div className="p-6 space-y-6">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Reservation Delivery</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  Where bookings made on the Luxotel site are sent. Everything else RateTiger asks
+                  for, they come and fetch — this is the one message that leaves us, so it needs
+                  their address. Until it is filled in, bookings are saved and held, and they go out
+                  automatically once it is set. Nothing is lost in the meantime.
+                </p>
+              </div>
+
+              {rtResLoading ? (
+                <div className="py-8 text-center text-sm text-gray-400">Loading…</div>
+              ) : (
+                <form onSubmit={handleRtResSave} className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Reservation endpoint URL</label>
+                    <input
+                      type="url"
+                      className={inp}
+                      value={rtRes.ratetiger_reservation_url}
+                      onChange={e => rf('ratetiger_reservation_url', e.target.value)}
+                      placeholder="https://…ratetiger.com/…/hotelReservation"
+                    />
+                    <p className="mt-1 text-xs text-gray-400">
+                      Ask RateTiger for this. New bookings, changes and cancellations all go to this
+                      one address.
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-gray-100">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-1">Channel identity</h3>
+                    <p className="text-xs text-gray-500 mb-3">
+                      RateTiger issues these; they identify Luxotel as the source of the booking.
+                      Every reservation message must carry them.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">channelCode</label>
+                        <input
+                          type="text"
+                          className={inp}
+                          value={rtRes.ratetiger_channel_code}
+                          onChange={e => rf('ratetiger_channel_code', e.target.value)}
+                          placeholder="e.g. 259010"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">channelName</label>
+                        <input
+                          type="text"
+                          className={inp}
+                          value={rtRes.ratetiger_channel_name}
+                          onChange={e => rf('ratetiger_channel_name', e.target.value)}
+                          placeholder="e.g. Luxotel-Website"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-gray-100">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-1">Authentication</h3>
+                    <p className="text-xs text-gray-500 mb-3">
+                      However RateTiger asks us to authenticate, it is one header. Put its name on
+                      the left and the whole value on the right — for example
+                      <span className="font-mono"> Authorization</span> and
+                      <span className="font-mono"> Bearer abc123…</span>. Leave both blank if they
+                      do not require one.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Header name</label>
+                        <input
+                          type="text"
+                          className={inp}
+                          value={rtRes.ratetiger_auth_header_name}
+                          onChange={e => rf('ratetiger_auth_header_name', e.target.value)}
+                          placeholder="Authorization"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Header value</label>
+                        <input
+                          type="password"
+                          className={inp}
+                          value={rtRes.ratetiger_auth_header_value}
+                          onChange={e => rf('ratetiger_auth_header_value', e.target.value)}
+                          placeholder={rtAuthValueStored ? '••••••••' : ''}
+                        />
+                        <p className="mt-1 text-xs text-gray-400">
+                          {rtAuthValueStored ? 'A value is saved. Leave blank to keep it.' : 'No value saved yet.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {rtResMsg && (
+                    <div className={`rounded-lg px-4 py-2.5 text-sm ${rtResMsg.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                      {rtResMsg.text}
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center pt-2">
+                    <button
+                      type="button"
+                      onClick={handleRtResRetry}
+                      disabled={rtResRetrying}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {rtResRetrying ? 'Sending…' : 'Send held bookings now'}
+                    </button>
+                    <button type="submit" disabled={rtResSaving} className="px-5 py-2 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+                      {rtResSaving ? 'Saving…' : 'Save RateTiger Settings'}
                     </button>
                   </div>
                 </form>
