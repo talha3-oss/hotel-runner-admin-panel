@@ -9,6 +9,9 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
 
 interface RateCell {
   amounts: Record<string, number>
+  // A rate RateTiger sent with no numberOfGuests on it, which is how they
+  // actually send them. Absent from `amounts`, and the only price on most rows.
+  baseAmount: number | null
   childAmount: number | null
   extraAdultAmount: number | null
   extraChildAmount: number | null
@@ -62,9 +65,13 @@ const displayAmount = (cell: RateCell | undefined) => {
   const tiers = Object.entries(cell.amounts)
     .map(([guests, amount]) => [Number(guests), Number(amount)] as const)
     .sort((a, b) => a[0] - b[0])
-  if (tiers.length === 0) return null
-  const two = tiers.find(([g]) => g === 2)
-  return two ? two[1] : tiers[0][1]
+  if (tiers.length > 0) {
+    const two = tiers.find(([g]) => g === 2)
+    return two ? two[1] : tiers[0][1]
+  }
+  // RateTiger's updates carry no occupancy, so this is the usual case rather
+  // than the exception: one price for the room whoever is in it.
+  return cell.baseAmount ?? null
 }
 
 export default function RatesPage() {
@@ -242,16 +249,23 @@ export default function RatesPage() {
                         </td>
                         {calendar.dates.map(day => {
                           const free = calendar.availability[`${room.code}|${day}`]
+                          // More rooms on sale than the property has is not a
+                          // display quirk — it is the room being oversold, and
+                          // it comes from whoever published the count.
+                          const over = free !== undefined && room.totalRooms != null && free > room.totalRooms
                           return (
                             <td
                               key={day}
+                              title={over ? `${free} on sale, but this property has only ${room.totalRooms} ${room.code} rooms` : ''}
                               className={`px-2 py-2 text-center border-b border-gray-100 font-medium ${
                                 free === undefined ? 'text-gray-300'
+                                  : over ? 'bg-orange-100 text-orange-800'
                                   : free <= 0 ? 'bg-red-50 text-red-700'
                                   : free <= 2 ? 'text-amber-700' : 'text-gray-700'
                               }`}
                             >
                               {free === undefined ? '—' : free}
+                              {over && <div className="text-[10px] leading-none">over</div>}
                             </td>
                           )
                         })}
@@ -308,6 +322,7 @@ export default function RatesPage() {
             <span>Amounts in {CURRENCY}, per night.</span>
             <span><span className="text-gray-300">Grey</span> — not published, the room&apos;s own price applies.</span>
             <span><span className="text-red-700 font-semibold">STOP</span> — closed by RateTiger.</span>
+            <span><span className="text-orange-800 bg-orange-100 px-1">over</span> — more rooms on sale than the property has.</span>
             <span><span className="text-amber-600">A</span> closed to arrival · <span className="text-amber-600">D</span> closed to departure · <span className="text-amber-600">≥n</span> minimum nights.</span>
           </div>
         </div>
