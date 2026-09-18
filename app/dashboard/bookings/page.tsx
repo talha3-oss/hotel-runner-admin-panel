@@ -44,6 +44,8 @@ const RT_HINTS: Record<string, string> = {
   SKIPPED: 'This property has no RateTiger hotel code, so nothing is sent.',
 }
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
+
 const fmt = formatMoney
 
 function fmtDate(iso: string) {
@@ -63,6 +65,42 @@ export default function BookingsPage() {
 
   const [selectedBooking, setSelectedBooking] = useState<BookingRecord | null>(null)
   const [statusUpdating, setStatusUpdating] = useState(false)
+  const [rtSending, setRtSending] = useState(false)
+  const [rtResult, setRtResult] = useState<{ ok: boolean; text: string } | null>(null)
+
+  // Sending a reservation by hand is how the first one gets checked: it happens
+  // in the background on a real booking, so without this there is nothing to
+  // press and nothing to read but a badge that may take a sweep to change.
+  const sendToRateTiger = async (booking: BookingRecord, resStatus = 'Commit') => {
+    setRtSending(true)
+    setRtResult(null)
+    try {
+      const token = localStorage.getItem('adminToken') || ''
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/ratetiger-reservation/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ bookingId: booking.id, resStatus }),
+      }).then(r => r.json())
+
+      if (res.success) {
+        setRtResult({
+          ok: true,
+          text: res.resId ? `Delivered. Their reference: ${res.resId}` : 'Delivered to RateTiger.',
+        })
+      } else {
+        setRtResult({ ok: false, text: res.reason || res.message || 'RateTiger did not accept it.' })
+      }
+
+      if (res.booking) {
+        setSelectedBooking(prev => (prev ? { ...prev, ...res.booking } : prev))
+      }
+      load(search, statusFilter, page)
+    } catch {
+      setRtResult({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setRtSending(false)
+    }
+  }
 
   const load = useCallback(async (q = '', s = 'all', p = 1) => {
     const token = localStorage.getItem('adminToken')
@@ -212,7 +250,7 @@ export default function BookingsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <button
-                        onClick={() => setSelectedBooking(b)}
+                        onClick={() => { setRtResult(null); setSelectedBooking(b) }}
                         className="text-gray-400 hover:text-primary-600 transition-colors"
                         title="View details"
                       >
@@ -246,7 +284,7 @@ export default function BookingsPage() {
                 <h2 className="text-lg font-bold text-gray-900">{selectedBooking.bookingRef}</h2>
                 <p className="text-xs text-gray-400 mt-0.5">Invoice: {selectedBooking.invoice?.invoiceRef || '—'}</p>
               </div>
-              <button onClick={() => setSelectedBooking(null)} className="text-gray-400 hover:text-gray-700">
+              <button onClick={() => { setRtResult(null); setSelectedBooking(null) }} className="text-gray-400 hover:text-gray-700">
                 <XMarkIcon className="h-6 w-6" />
               </button>
             </div>
@@ -365,6 +403,33 @@ export default function BookingsPage() {
                     <p className="mt-1 text-xs text-gray-400">
                       {selectedBooking.rateTigerAttempts} attempts
                     </p>
+                  )}
+
+                  {rtResult && (
+                    <div className={`mt-2 rounded-md px-3 py-2 text-xs ${rtResult.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                      {rtResult.text}
+                    </div>
+                  )}
+
+                  {selectedBooking.rateTigerStatus !== 'SKIPPED' && (
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={() => sendToRateTiger(selectedBooking, 'Commit')}
+                        disabled={rtSending}
+                        className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {rtSending ? 'Sending…' : selectedBooking.rateTigerStatus === 'SENT' ? 'Send again' : 'Send to RateTiger'}
+                      </button>
+                      {selectedBooking.status === 'CANCELLED' && (
+                        <button
+                          onClick={() => sendToRateTiger(selectedBooking, 'Cancel')}
+                          disabled={rtSending}
+                          className="px-3 py-1.5 text-xs font-medium text-red-700 bg-white border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-50"
+                        >
+                          Send cancellation
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
