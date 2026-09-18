@@ -133,6 +133,11 @@ interface RtResForm {
   ratetiger_auth_header_value: string
   ratetiger_auth_header2_name: string
   ratetiger_auth_header2_value: string
+  ratetiger_auth_url: string
+  ratetiger_auth_basic_username: string
+  ratetiger_auth_basic_password: string
+  ratetiger_api_key: string
+  ratetiger_partner_id: string
 }
 
 const RT_RES_DEFAULTS: RtResForm = {
@@ -143,6 +148,11 @@ const RT_RES_DEFAULTS: RtResForm = {
   ratetiger_auth_header_value: '',
   ratetiger_auth_header2_name: '',
   ratetiger_auth_header2_value: '',
+  ratetiger_auth_url: '',
+  ratetiger_auth_basic_username: '',
+  ratetiger_auth_basic_password: '',
+  ratetiger_api_key: '',
+  ratetiger_partner_id: '',
 }
 
 export default function SettingsPage() {
@@ -184,6 +194,7 @@ export default function SettingsPage() {
   const [rtResRetrying, setRtResRetrying] = useState(false)
   const [rtAuthValueStored, setRtAuthValueStored] = useState(false)
   const [rtAuth2ValueStored, setRtAuth2ValueStored] = useState(false)
+  const [rtBasicPasswordStored, setRtBasicPasswordStored] = useState(false)
   const [rtResMsg, setRtResMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [basicAuthPasswordStored, setBasicAuthPasswordStored] = useState(false)
   const [showBasicAuthPassword, setShowBasicAuthPassword] = useState(false)
@@ -254,8 +265,10 @@ export default function SettingsPage() {
         const {
           ratetiger_auth_header_value_set,
           ratetiger_auth_header2_value_set,
+          ratetiger_auth_basic_password_set,
           ...settings
         } = data.settings
+        setRtBasicPasswordStored(Boolean(ratetiger_auth_basic_password_set))
         setRtAuthValueStored(Boolean(ratetiger_auth_header_value_set))
         setRtAuth2ValueStored(Boolean(ratetiger_auth_header2_value_set))
         setRtRes(prev => ({ ...prev, ...settings }))
@@ -354,10 +367,12 @@ export default function SettingsPage() {
         setRtResMsg({ ok: true, text: 'RateTiger reservation settings saved.' })
         if (rtRes.ratetiger_auth_header_value.trim()) setRtAuthValueStored(true)
         if (rtRes.ratetiger_auth_header2_value.trim()) setRtAuth2ValueStored(true)
+        if (rtRes.ratetiger_auth_basic_password.trim()) setRtBasicPasswordStored(true)
         setRtRes(prev => ({
           ...prev,
           ratetiger_auth_header_value: '',
           ratetiger_auth_header2_value: '',
+          ratetiger_auth_basic_password: '',
         }))
       } else setRtResMsg({ ok: false, text: res.message || 'Failed to save.' })
     } catch { setRtResMsg({ ok: false, text: 'Server error.' }) }
@@ -775,67 +790,106 @@ export default function SettingsPage() {
                   <div className="pt-2 border-t border-gray-100">
                     <h3 className="text-sm font-semibold text-gray-800 mb-1">Authentication</h3>
                     <p className="text-xs text-gray-500 mb-3">
-                      The ChannelConnect spec only describes how RateTiger authenticates to{' '}
-                      <em>us</em> — it never says what we must send when posting a reservation to{' '}
-                      <em>them</em>. So this cannot be filled in automatically; it is whatever they
-                      tell you. Put a header&apos;s name on the left and its whole value on the
-                      right, for example <span className="font-mono">Authorization</span> and{' '}
-                      <span className="font-mono">Bearer abc123…</span>. Leave everything blank to
-                      send none — if that comes back 401, they do want one.
+                      RateTiger authenticates the same way we do, in reverse: we post the
+                      credentials they issued to their <span className="font-mono">/authenticate</span>,
+                      they return a token, and the reservation carries it. That is why there is no
+                      single value to paste — a token is fetched per hour and refreshed on its own.
+                      These default to the credentials already saved under Partner API, so normally
+                      there is nothing to fill in here.
                     </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                    <div className="grid grid-cols-1 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Header name</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Authenticate URL</label>
                         <input
-                          type="text"
+                          type="url"
                           className={inp}
-                          value={rtRes.ratetiger_auth_header_name}
-                          onChange={e => rf('ratetiger_auth_header_name', e.target.value)}
-                          placeholder="Authorization"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Header value</label>
-                        <input
-                          type="password"
-                          className={inp}
-                          value={rtRes.ratetiger_auth_header_value}
-                          onChange={e => rf('ratetiger_auth_header_value', e.target.value)}
-                          placeholder={rtAuthValueStored ? '••••••••' : ''}
+                          value={rtRes.ratetiger_auth_url}
+                          onChange={e => rf('ratetiger_auth_url', e.target.value)}
+                          placeholder="derived from the reservation URL"
                         />
                         <p className="mt-1 text-xs text-gray-400">
-                          {rtAuthValueStored ? 'A value is saved. Leave blank to keep it.' : 'No value saved yet.'}
+                          Worked out from the reservation URL above; set it only if theirs sits elsewhere.
                         </p>
                       </div>
                     </div>
 
-                    {/* Their own §4.3 authenticates with two headers, API-Key
-                        alongside Authorization, so one pair may not be enough. */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Second header name <span className="text-gray-400 font-normal">(optional)</span></label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">BasicAuth username</label>
                         <input
                           type="text"
                           className={inp}
-                          value={rtRes.ratetiger_auth_header2_name}
-                          onChange={e => rf('ratetiger_auth_header2_name', e.target.value)}
-                          placeholder="API-Key"
+                          value={rtRes.ratetiger_auth_basic_username}
+                          onChange={e => rf('ratetiger_auth_basic_username', e.target.value)}
+                          placeholder="from Partner API"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Second header value</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">BasicAuth password</label>
                         <input
                           type="password"
                           className={inp}
-                          value={rtRes.ratetiger_auth_header2_value}
-                          onChange={e => rf('ratetiger_auth_header2_value', e.target.value)}
-                          placeholder={rtAuth2ValueStored ? '••••••••' : ''}
+                          value={rtRes.ratetiger_auth_basic_password}
+                          onChange={e => rf('ratetiger_auth_basic_password', e.target.value)}
+                          placeholder={rtBasicPasswordStored ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : 'from Partner API'}
                         />
                         <p className="mt-1 text-xs text-gray-400">
-                          {rtAuth2ValueStored ? 'A value is saved. Leave blank to keep it.' : 'No value saved yet.'}
+                          {rtBasicPasswordStored ? 'A password is available. Leave blank to keep it.' : 'None saved — the Partner API one is used.'}
                         </p>
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">API-Key</label>
+                        <input
+                          type="text"
+                          className={inp}
+                          value={rtRes.ratetiger_api_key}
+                          onChange={e => rf('ratetiger_api_key', e.target.value)}
+                          placeholder="from Partner API"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">partner_id</label>
+                        <input
+                          type="text"
+                          className={inp}
+                          value={rtRes.ratetiger_partner_id}
+                          onChange={e => rf('ratetiger_partner_id', e.target.value)}
+                          placeholder="from Partner API"
+                        />
+                      </div>
                     </div>
+
+                    <details className="mt-4">
+                      <summary className="text-xs text-gray-500 cursor-pointer">Extra headers (rarely needed)</summary>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1.5">Header name</label>
+                          <input type="text" className={inp} value={rtRes.ratetiger_auth_header_name}
+                            onChange={e => rf('ratetiger_auth_header_name', e.target.value)} placeholder="API-Key" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1.5">Header value</label>
+                          <input type="password" className={inp} value={rtRes.ratetiger_auth_header_value}
+                            onChange={e => rf('ratetiger_auth_header_value', e.target.value)}
+                            placeholder={rtAuthValueStored ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : ''} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1.5">Second header name</label>
+                          <input type="text" className={inp} value={rtRes.ratetiger_auth_header2_name}
+                            onChange={e => rf('ratetiger_auth_header2_name', e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1.5">Second header value</label>
+                          <input type="password" className={inp} value={rtRes.ratetiger_auth_header2_value}
+                            onChange={e => rf('ratetiger_auth_header2_value', e.target.value)}
+                            placeholder={rtAuth2ValueStored ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : ''} />
+                        </div>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-400">
+                        Sent alongside the token, for anything their endpoint asks for on top of it.
+                      </p>
+                    </details>
                   </div>
 
                   {rtResMsg && (
