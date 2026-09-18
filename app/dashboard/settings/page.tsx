@@ -131,6 +131,8 @@ interface RtResForm {
   ratetiger_channel_name: string
   ratetiger_auth_header_name: string
   ratetiger_auth_header_value: string
+  ratetiger_auth_header2_name: string
+  ratetiger_auth_header2_value: string
 }
 
 const RT_RES_DEFAULTS: RtResForm = {
@@ -139,6 +141,8 @@ const RT_RES_DEFAULTS: RtResForm = {
   ratetiger_channel_name: '',
   ratetiger_auth_header_name: '',
   ratetiger_auth_header_value: '',
+  ratetiger_auth_header2_name: '',
+  ratetiger_auth_header2_value: '',
 }
 
 export default function SettingsPage() {
@@ -179,6 +183,7 @@ export default function SettingsPage() {
   const [rtResSaving, setRtResSaving] = useState(false)
   const [rtResRetrying, setRtResRetrying] = useState(false)
   const [rtAuthValueStored, setRtAuthValueStored] = useState(false)
+  const [rtAuth2ValueStored, setRtAuth2ValueStored] = useState(false)
   const [rtResMsg, setRtResMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [basicAuthPasswordStored, setBasicAuthPasswordStored] = useState(false)
   const [showBasicAuthPassword, setShowBasicAuthPassword] = useState(false)
@@ -246,8 +251,13 @@ export default function SettingsPage() {
         if (!data.success) return
         // A flag, not a field — the auth value can be a credential and never
         // leaves the server.
-        const { ratetiger_auth_header_value_set, ...settings } = data.settings
+        const {
+          ratetiger_auth_header_value_set,
+          ratetiger_auth_header2_value_set,
+          ...settings
+        } = data.settings
         setRtAuthValueStored(Boolean(ratetiger_auth_header_value_set))
+        setRtAuth2ValueStored(Boolean(ratetiger_auth_header2_value_set))
         setRtRes(prev => ({ ...prev, ...settings }))
       })
       .catch(() => {})
@@ -343,7 +353,12 @@ export default function SettingsPage() {
       if (res.success) {
         setRtResMsg({ ok: true, text: 'RateTiger reservation settings saved.' })
         if (rtRes.ratetiger_auth_header_value.trim()) setRtAuthValueStored(true)
-        setRtRes(prev => ({ ...prev, ratetiger_auth_header_value: '' }))
+        if (rtRes.ratetiger_auth_header2_value.trim()) setRtAuth2ValueStored(true)
+        setRtRes(prev => ({
+          ...prev,
+          ratetiger_auth_header_value: '',
+          ratetiger_auth_header2_value: '',
+        }))
       } else setRtResMsg({ ok: false, text: res.message || 'Failed to save.' })
     } catch { setRtResMsg({ ok: false, text: 'Server error.' }) }
     finally { setRtResSaving(false) }
@@ -760,11 +775,13 @@ export default function SettingsPage() {
                   <div className="pt-2 border-t border-gray-100">
                     <h3 className="text-sm font-semibold text-gray-800 mb-1">Authentication</h3>
                     <p className="text-xs text-gray-500 mb-3">
-                      However RateTiger asks us to authenticate, it is one header. Put its name on
-                      the left and the whole value on the right — for example
-                      <span className="font-mono"> Authorization</span> and
-                      <span className="font-mono"> Bearer abc123…</span>. Leave both blank if they
-                      do not require one.
+                      The ChannelConnect spec only describes how RateTiger authenticates to{' '}
+                      <em>us</em> — it never says what we must send when posting a reservation to{' '}
+                      <em>them</em>. So this cannot be filled in automatically; it is whatever they
+                      tell you. Put a header&apos;s name on the left and its whole value on the
+                      right, for example <span className="font-mono">Authorization</span> and{' '}
+                      <span className="font-mono">Bearer abc123…</span>. Leave everything blank to
+                      send none — if that comes back 401, they do want one.
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
@@ -788,6 +805,34 @@ export default function SettingsPage() {
                         />
                         <p className="mt-1 text-xs text-gray-400">
                           {rtAuthValueStored ? 'A value is saved. Leave blank to keep it.' : 'No value saved yet.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Their own §4.3 authenticates with two headers, API-Key
+                        alongside Authorization, so one pair may not be enough. */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Second header name <span className="text-gray-400 font-normal">(optional)</span></label>
+                        <input
+                          type="text"
+                          className={inp}
+                          value={rtRes.ratetiger_auth_header2_name}
+                          onChange={e => rf('ratetiger_auth_header2_name', e.target.value)}
+                          placeholder="API-Key"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Second header value</label>
+                        <input
+                          type="password"
+                          className={inp}
+                          value={rtRes.ratetiger_auth_header2_value}
+                          onChange={e => rf('ratetiger_auth_header2_value', e.target.value)}
+                          placeholder={rtAuth2ValueStored ? '••••••••' : ''}
+                        />
+                        <p className="mt-1 text-xs text-gray-400">
+                          {rtAuth2ValueStored ? 'A value is saved. Leave blank to keep it.' : 'No value saved yet.'}
                         </p>
                       </div>
                     </div>
