@@ -32,6 +32,7 @@ type HotelForm = {
   id: string
   propertyId: string
   rateTigerHotelCode: string
+  rateTigerReservationCode: string
   name: string
   locationId: string
   address: string
@@ -73,6 +74,7 @@ const EMPTY_HOTEL: HotelForm = {
   id: '',
   propertyId: '',
   rateTigerHotelCode: '',
+  rateTigerReservationCode: '',
   name: '',
   locationId: '',
   address: '',
@@ -263,6 +265,7 @@ export default function HotelsPage() {
       id: hotel.id,
       propertyId: hotel.propertyId || '',
       rateTigerHotelCode: hotel.rateTigerHotelCode || '',
+      rateTigerReservationCode: hotel.rateTigerReservationCode || '',
       name: hotel.name,
       locationId: hotel.locationId,
       address: hotel.address || '',
@@ -434,6 +437,7 @@ export default function HotelsPage() {
       const payload = {
         name: hotelForm.name.trim(),
         rateTigerHotelCode: hotelForm.rateTigerHotelCode.trim(),
+        rateTigerReservationCode: hotelForm.rateTigerReservationCode.trim(),
         locationId: hotelForm.locationId,
         address: hotelForm.address.trim(),
         phone: hotelForm.phone.trim(),
@@ -730,6 +734,20 @@ export default function HotelsPage() {
                   />
                   <p className="mt-1 text-xs text-gray-400">
                     The hotelCode RateTiger sends for this property. Leave empty if this hotel is not on RateTiger.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">RateTiger Reservation Code</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono tracking-wider focus:ring-2 focus:ring-primary-500 focus:outline-none placeholder:font-sans placeholder:tracking-normal"
+                    placeholder="e.g. luxotel_test"
+                    value={hotelForm.rateTigerReservationCode}
+                    onChange={field('rateTigerReservationCode')}
+                  />
+                  <p className="mt-1 text-xs text-gray-400">
+                    The property code RateTiger expects on a reservation. It is often different from
+                    the hotel code above — ask them for it. Leave empty to reuse the hotel code.
                   </p>
                 </div>
 
