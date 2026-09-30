@@ -542,6 +542,29 @@ export default function BookingsPage() {
                         <div className="text-gray-900 font-semibold">{fmt(quote.after.total)}</div>
                       </div>
 
+                      {quote.detail && (
+                        <div className="text-xs text-gray-500 border-t border-gray-100 pt-2">
+                          {quote.detail.repriced
+                            ? 'The stay moved, so the rooms are priced at today’s rates.'
+                            : 'The rooms keep the rate the guest booked at — only the stay itself is priced afresh.'}
+                        </div>
+                      )}
+
+                      {/* Where the rate was held but today's is different, say so, or
+                          the admin cannot tell they are honouring an old price. */}
+                      {quote.detail && !quote.detail.repriced &&
+                        quote.detail.lines.some((l) => l.currentRate !== l.publicRate) && (
+                        <div className="text-xs text-gray-500">
+                          {quote.detail.lines
+                            .filter((l) => l.currentRate !== l.publicRate)
+                            .map((l, i) => (
+                              <div key={i}>
+                                {l.name}: booked at {fmt(l.publicRate)} a night, today’s rate is {fmt(l.currentRate)}.
+                              </div>
+                            ))}
+                        </div>
+                      )}
+
                       {typeof quote.difference === 'number' && quote.difference !== 0 && (
                         <div className={`text-xs font-medium ${quote.difference > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
                           {quote.difference > 0

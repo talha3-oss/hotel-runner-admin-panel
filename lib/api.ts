@@ -738,7 +738,10 @@ export interface BookingChangeQuote {
     total: number
   }
   detail?: {
-    lines: { id: string; name: string; publicRate: number; pricedByChannel: boolean }[]
+    // Whether the room rates were taken afresh or held at what the guest
+    // agreed when they booked.
+    repriced: boolean
+    lines: { id: string; name: string; publicRate: number; currentRate: number; pricedByChannel: boolean }[]
     roomsTotal: number
     childrenTotal: number
     extrasTotal: number
