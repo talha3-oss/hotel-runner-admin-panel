@@ -54,6 +54,10 @@ type RoomFormData = {
   roomNumber: string
   selectedRatePlans: string[]
   ratePlanPrices: Record<string, string>
+  // What a newly ticked rate plan starts at. This figure only ever applies on
+  // nights RateTiger has not priced, so it is a floor rather than a rate — but
+  // it is what the site sells at on those nights, and a leftover 10 has been
+  // offered to guests before.
   discount: string
   childrenPrice: string
   childrenAllowed: boolean
@@ -70,6 +74,13 @@ type RoomFormData = {
 }
 
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400'
+
+// Where a newly ticked rate plan starts. It is only a floor — RateTiger's
+// price wins on every night they have published one — but on the nights they
+// have not, it is what a guest is charged. Starting at nothing invites a
+// placeholder to be typed and left, which is how rooms came to be on sale at
+// JOD 10 a night.
+const DEFAULT_PLAN_PRICE = 100
 
 const EMPTY_FORM: RoomFormData = {
   hotelId: '',
@@ -916,7 +927,10 @@ export default function RoomsPage() {
                                       setFormData((prev) => ({
                                         ...prev,
                                         selectedRatePlans: [...prev.selectedRatePlans, plan.key],
-                                        ratePlanPrices: { ...prev.ratePlanPrices, [plan.key]: '' },
+                                        ratePlanPrices: {
+                                          ...prev.ratePlanPrices,
+                                          [plan.key]: String(DEFAULT_PLAN_PRICE),
+                                        },
                                       }))
                                     } else {
                                       setFormData((prev) => ({
@@ -947,7 +961,7 @@ export default function RoomsPage() {
                                       }))
                                     }
                                     className="w-full px-2 py-1 text-sm border border-orange-300 rounded-md bg-white font-bold text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-400"
-                                    placeholder="0.00"
+                                    placeholder={String(DEFAULT_PLAN_PRICE)}
                                   />
                                 ) : (
                                   <span className="text-gray-300 text-xs pl-2">—</span>
