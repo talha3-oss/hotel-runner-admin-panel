@@ -6,7 +6,11 @@ import {
   EyeIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
-import { fetchAdminBookings, updateBookingStatus, BookingRecord } from '../../../lib/api'
+import {
+  fetchAdminBookings, updateBookingStatus, fetchAdminRooms,
+  previewBookingChange, applyBookingChange,
+  BookingRecord, BookingChange, BookingChangeQuote,
+} from '../../../lib/api'
 import { formatMoney } from '../../../lib/currency'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -67,6 +71,16 @@ export default function BookingsPage() {
   const [statusUpdating, setStatusUpdating] = useState(false)
   const [rtSending, setRtSending] = useState(false)
   const [rtResult, setRtResult] = useState<{ ok: boolean; text: string } | null>(null)
+
+  // Changing a booking. The form holds what the admin has typed; the quote is
+  // the server's answer to it. Nothing is written until Apply, and the quote
+  // is what Apply sends — so the figure approved is the figure stored.
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState<BookingChange>({})
+  const [roomOptions, setRoomOptions] = useState<{ id: string; name: string; roomNumber: string }[]>([])
+  const [quote, setQuote] = useState<BookingChangeQuote | null>(null)
+  const [quoting, setQuoting] = useState(false)
+  const [applying, setApplying] = useState(false)
 
   // Sending a reservation by hand is how the first one gets checked: it happens
   // in the background on a real booking, so without this there is nothing to
@@ -149,6 +163,73 @@ export default function BookingsPage() {
       setStatusUpdating(false)
     }
   }
+
+  const openEditor = async (b: BookingRecord) => {
+    setQuote(null)
+    setForm({
+      checkIn: b.checkIn,
+      checkOut: b.checkOut,
+      adults: b.adults,
+      childrenAges: Array.isArray(b.childrenAges) ? b.childrenAges : [],
+      roomIds: (Array.isArray(b.rooms) ? b.rooms : []).map((r) => r.id),
+      firstName: b.firstName, lastName: b.lastName, email: b.email, phone: b.phone,
+    })
+    setEditing(true)
+
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    try {
+      const result = await fetchAdminRooms(token, { limit: '200' })
+      const list = (result?.data || result?.rooms || []) as { id: string; name: string; roomNumber: string; hotelName?: string }[]
+      setRoomOptions(list.map((r) => ({ id: r.id, name: r.name, roomNumber: r.roomNumber })))
+    } catch {
+      setRoomOptions([])
+    }
+  }
+
+  const closeEditor = () => { setEditing(false); setQuote(null); setForm({}) }
+
+  const runQuote = async () => {
+    if (!selectedBooking) return
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setQuoting(true)
+    try {
+      setQuote(await previewBookingChange(token, selectedBooking.id, form))
+    } catch {
+      setQuote({ success: false, message: 'Unable to reach the server.' })
+    } finally {
+      setQuoting(false)
+    }
+  }
+
+  const runApply = async () => {
+    if (!selectedBooking) return
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setApplying(true)
+    try {
+      const result = await applyBookingChange(token, selectedBooking.id, form)
+      if (result.success) {
+        setBookings((prev) => prev.map((b) => b.id === result.booking.id ? result.booking : b))
+        setSelectedBooking(result.booking)
+        closeEditor()
+      } else {
+        setQuote({ success: false, message: result.message || 'The change was refused.' })
+      }
+    } catch {
+      setQuote({ success: false, message: 'Unable to reach the server.' })
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  const setChildren = (band: '0-5' | '6-12', count: number) => {
+    const others = (form.childrenAges || []).filter((a) => a !== band)
+    setForm({ ...form, childrenAges: [...others, ...Array(Math.max(0, count)).fill(band)] })
+    setQuote(null)
+  }
+  const childCount = (band: string) => (form.childrenAges || []).filter((a) => a === band).length
 
   const totalPages = Math.ceil(total / limit)
 
@@ -304,6 +385,189 @@ export default function BookingsPage() {
                   <option value="CANCELLED">Cancelled</option>
                 </select>
               </div>
+
+              {/* Change booking */}
+              {selectedBooking.status !== 'CANCELLED' && !editing && (
+                <button
+                  onClick={() => openEditor(selectedBooking)}
+                  className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Change booking
+                </button>
+              )}
+
+              {editing && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-900">Change booking</h3>
+                    <button onClick={closeEditor} className="text-xs text-gray-500 hover:text-gray-800">Cancel</button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="text-xs text-gray-600">
+                      Check-in
+                      <input
+                        type="date" value={form.checkIn || ''}
+                        onChange={(e) => { setForm({ ...form, checkIn: e.target.value }); setQuote(null) }}
+                        className="mt-1 w-full border border-gray-300 rounded-md text-sm px-2 py-1.5"
+                      />
+                    </label>
+                    <label className="text-xs text-gray-600">
+                      Check-out
+                      <input
+                        type="date" value={form.checkOut || ''}
+                        onChange={(e) => { setForm({ ...form, checkOut: e.target.value }); setQuote(null) }}
+                        className="mt-1 w-full border border-gray-300 rounded-md text-sm px-2 py-1.5"
+                      />
+                    </label>
+                    <label className="text-xs text-gray-600">
+                      Adults
+                      <input
+                        type="number" min={1} value={form.adults ?? 1}
+                        onChange={(e) => { setForm({ ...form, adults: Number(e.target.value) }); setQuote(null) }}
+                        className="mt-1 w-full border border-gray-300 rounded-md text-sm px-2 py-1.5"
+                      />
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-xs text-gray-600">
+                        Children 0–5
+                        <input
+                          type="number" min={0} value={childCount('0-5')}
+                          onChange={(e) => setChildren('0-5', Number(e.target.value))}
+                          className="mt-1 w-full border border-gray-300 rounded-md text-sm px-2 py-1.5"
+                        />
+                      </label>
+                      <label className="text-xs text-gray-600">
+                        Children 6–12
+                        <input
+                          type="number" min={0} value={childCount('6-12')}
+                          onChange={(e) => setChildren('6-12', Number(e.target.value))}
+                          className="mt-1 w-full border border-gray-300 rounded-md text-sm px-2 py-1.5"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Rooms. The same room twice means two of it. */}
+                  <div>
+                    <div className="text-xs text-gray-600 mb-1">Rooms</div>
+                    <div className="space-y-1">
+                      {(form.roomIds || []).map((id, i) => (
+                        <div key={`${id}-${i}`} className="flex gap-2">
+                          <select
+                            value={id}
+                            onChange={(e) => {
+                              const next = [...(form.roomIds || [])]
+                              next[i] = e.target.value
+                              setForm({ ...form, roomIds: next }); setQuote(null)
+                            }}
+                            className="flex-1 border border-gray-300 rounded-md text-sm px-2 py-1.5"
+                          >
+                            {roomOptions.length === 0 && <option value={id}>{id}</option>}
+                            {roomOptions.map((r) => (
+                              <option key={r.id} value={r.id}>{r.roomNumber} — {r.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => {
+                              setForm({ ...form, roomIds: (form.roomIds || []).filter((_, j) => j !== i) })
+                              setQuote(null)
+                            }}
+                            className="px-2 text-xs text-red-600 hover:bg-red-50 rounded"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => {
+                        const first = roomOptions[0]?.id || (form.roomIds || [])[0]
+                        if (first) { setForm({ ...form, roomIds: [...(form.roomIds || []), first] }); setQuote(null) }
+                      }}
+                      className="mt-1 text-xs text-primary-600 hover:underline"
+                    >
+                      + Add room
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {([['firstName', 'First name'], ['lastName', 'Last name'], ['email', 'Email'], ['phone', 'Phone']] as const).map(([key, label]) => (
+                      <label key={key} className="text-xs text-gray-600">
+                        {label}
+                        <input
+                          value={(form[key] as string) || ''}
+                          onChange={(e) => { setForm({ ...form, [key]: e.target.value }); setQuote(null) }}
+                          className="mt-1 w-full border border-gray-300 rounded-md text-sm px-2 py-1.5"
+                        />
+                      </label>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={runQuote}
+                    disabled={quoting}
+                    className="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    {quoting ? 'Checking…' : 'Check what this costs'}
+                  </button>
+
+                  {quote && !quote.success && (
+                    <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+                      {quote.message}
+                    </div>
+                  )}
+
+                  {quote?.success && quote.after && quote.before && (
+                    <div className="rounded-md border border-gray-200 bg-white p-3 space-y-2">
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="text-gray-400">&nbsp;</div>
+                        <div className="text-gray-400 font-medium">Now</div>
+                        <div className="text-gray-400 font-medium">After</div>
+
+                        <div className="text-gray-500">Dates</div>
+                        <div className="text-gray-700">{quote.before.checkIn} → {quote.before.checkOut}</div>
+                        <div className="text-gray-900 font-medium">{quote.after.checkIn} → {quote.after.checkOut}</div>
+
+                        <div className="text-gray-500">Nights</div>
+                        <div className="text-gray-700">{quote.before.nights}</div>
+                        <div className="text-gray-900 font-medium">{quote.after.nights}</div>
+
+                        <div className="text-gray-500">Rooms</div>
+                        <div className="text-gray-700">{quote.before.rooms?.length ?? 0}</div>
+                        <div className="text-gray-900 font-medium">{quote.after.rooms.length}</div>
+
+                        <div className="text-gray-500">Total</div>
+                        <div className="text-gray-700">{fmt(quote.before.total)}</div>
+                        <div className="text-gray-900 font-semibold">{fmt(quote.after.total)}</div>
+                      </div>
+
+                      {typeof quote.difference === 'number' && quote.difference !== 0 && (
+                        <div className={`text-xs font-medium ${quote.difference > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                          {quote.difference > 0
+                            ? `The guest owes ${fmt(quote.difference)} more.`
+                            : `${fmt(Math.abs(quote.difference))} is due back to the guest.`}
+                          {' '}Payment is not taken or refunded here — settle it separately.
+                        </div>
+                      )}
+
+                      {quote.blocked && quote.blocked.length > 0 ? (
+                        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+                          {quote.blocked.map((b, i) => <div key={i}>{b}</div>)}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={runApply}
+                          disabled={applying}
+                          className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          {applying ? 'Applying…' : 'Apply this change'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Guest */}
               <div>

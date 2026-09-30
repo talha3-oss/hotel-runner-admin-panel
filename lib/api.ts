@@ -706,6 +706,68 @@ export async function updateBookingStatus(token: string, id: string, status: str
   return res.json()
 }
 
+// Changing a booking is two calls on purpose. The preview works out what the
+// change would cost and what would stand in its way; nothing is written until
+// the second call. The money comes back from the server rather than being
+// worked out here, so what the admin approves is what gets stored.
+export interface BookingChange {
+  checkIn?: string
+  checkOut?: string
+  adults?: number
+  childrenAges?: string[]
+  roomIds?: string[]
+  firstName?: string
+  lastName?: string
+  email?: string
+  phone?: string
+}
+
+export interface BookingChangeQuote {
+  success: boolean
+  message?: string
+  before?: BookingRecord
+  after?: {
+    checkIn: string
+    checkOut: string
+    nights: number
+    adults: number
+    children: number
+    rooms: { id: string; name: string; publicRate: number; claytonRate: number }[]
+    subtotal: number
+    discount: number
+    total: number
+  }
+  detail?: {
+    lines: { id: string; name: string; publicRate: number; pricedByChannel: boolean }[]
+    roomsTotal: number
+    childrenTotal: number
+    extrasTotal: number
+    couponHeld: number
+  }
+  // Anything that would stop the change: no room left, or a night RateTiger
+  // has closed. Empty means it can go ahead.
+  blocked?: string[]
+  difference?: number
+}
+
+export async function previewBookingChange(token: string, id: string, changes: BookingChange): Promise<BookingChangeQuote> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/bookings/${id}/preview-change`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(changes),
+  })
+  return res.json()
+}
+
+export async function applyBookingChange(token: string, id: string, changes: BookingChange) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/bookings/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(changes),
+  })
+  return res.json()
+}
+
 export async function fetchCookieStats(
   token: string,
   query: { page?: number; limit?: number } = {}
