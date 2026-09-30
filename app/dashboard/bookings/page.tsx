@@ -7,7 +7,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import {
-  fetchAdminBookings, updateBookingStatus, fetchAdminRooms,
+  fetchAdminBookings, updateBookingStatus, fetchAdminRooms, fetchAdminRoomTypes,
   previewBookingChange, applyBookingChange,
   BookingRecord, BookingChange, BookingChangeQuote,
 } from '../../../lib/api'
@@ -77,7 +77,13 @@ export default function BookingsPage() {
   // is what Apply sends — so the figure approved is the figure stored.
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<BookingChange>({})
-  const [roomOptions, setRoomOptions] = useState<{ id: string; name: string; roomNumber: string }[]>([])
+  // A Room row is one (room, rate plan) pair, so the same room appears once
+  // per plan under the same name and code. Without the plan beside it the
+  // dropdown is eighteen identical-looking lines, and a booking's rooms do not
+  // say which rate the guest is on.
+  const [roomOptions, setRoomOptions] = useState<
+    { id: string; name: string; roomNumber: string; planName: string; planCode: string }[]
+  >([])
   const [quote, setQuote] = useState<BookingChangeQuote | null>(null)
   const [quoting, setQuoting] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -164,6 +170,42 @@ export default function BookingsPage() {
     }
   }
 
+  const loadRooms = useCallback(async () => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    try {
+      const [roomsResult, typesResult] = await Promise.all([
+        fetchAdminRooms(token, { limit: '200' }),
+        fetchAdminRoomTypes(token),
+      ])
+
+      // Plan name to the code RateTiger knows it by.
+      const codes = new Map<string, string>()
+      for (const t of (typesResult?.roomTypes || typesResult?.data || []) as { name: string; key?: string }[]) {
+        const name = String(t.name || '').trim().toLowerCase()
+        const key = String(t.key || '').trim()
+        if (!name || !key) continue
+        const held = codes.get(name)
+        if (!held || key.length < held.length) codes.set(name, key)
+      }
+
+      const list = (roomsResult?.rooms || roomsResult?.data || []) as
+        { id: string; name: string; roomNumber: string; roomType: string }[]
+      setRoomOptions(list.map((r) => ({
+        id: r.id,
+        name: r.name,
+        roomNumber: r.roomNumber,
+        planName: r.roomType || '',
+        planCode: codes.get(String(r.roomType || '').trim().toLowerCase()) || '',
+      })))
+    } catch {
+      setRoomOptions([])
+    }
+  }, [])
+
+  // What rate plan a booked room is on. The booking stores only the room id.
+  const planOf = (roomId: string) => roomOptions.find((r) => r.id === roomId)
+
   const openEditor = async (b: BookingRecord) => {
     setQuote(null)
     setForm({
@@ -175,16 +217,7 @@ export default function BookingsPage() {
       firstName: b.firstName, lastName: b.lastName, email: b.email, phone: b.phone,
     })
     setEditing(true)
-
-    const token = localStorage.getItem('adminToken')
-    if (!token) return
-    try {
-      const result = await fetchAdminRooms(token, { limit: '200' })
-      const list = (result?.data || result?.rooms || []) as { id: string; name: string; roomNumber: string; hotelName?: string }[]
-      setRoomOptions(list.map((r) => ({ id: r.id, name: r.name, roomNumber: r.roomNumber })))
-    } catch {
-      setRoomOptions([])
-    }
+    if (roomOptions.length === 0) await loadRooms()
   }
 
   const closeEditor = () => { setEditing(false); setQuote(null); setForm({}) }
@@ -234,7 +267,9 @@ export default function BookingsPage() {
   const totalPages = Math.ceil(total / limit)
 
   const displayName = (b: BookingRecord) => `${b.firstName} ${b.lastName}`
-  const rooms = Array.isArray(selectedBooking?.rooms) ? (selectedBooking!.rooms as { name: string; publicRate: number; claytonRate: number }[]) : []
+  const rooms = Array.isArray(selectedBooking?.rooms)
+    ? (selectedBooking!.rooms as { id: string; name: string; publicRate: number; claytonRate: number }[])
+    : []
   const extras = Array.isArray(selectedBooking?.extras) ? (selectedBooking!.extras as { name: string; price: number; total: number }[]) : []
 
   return (
@@ -331,7 +366,7 @@ export default function BookingsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <button
-                        onClick={() => { setRtResult(null); setSelectedBooking(b) }}
+                        onClick={() => { setRtResult(null); setSelectedBooking(b); if (roomOptions.length === 0) loadRooms() }}
                         className="text-gray-400 hover:text-primary-600 transition-colors"
                         title="View details"
                       >
@@ -465,7 +500,10 @@ export default function BookingsPage() {
                           >
                             {roomOptions.length === 0 && <option value={id}>{id}</option>}
                             {roomOptions.map((r) => (
-                              <option key={r.id} value={r.id}>{r.roomNumber} — {r.name}</option>
+                              <option key={r.id} value={r.id}>
+                                {r.roomNumber} — {r.name}
+                                {r.planName ? ` · ${r.planCode ? `${r.planCode} ` : ''}${r.planName}` : ''}
+                              </option>
                             ))}
                           </select>
                           <button
@@ -618,12 +656,24 @@ export default function BookingsPage() {
                 <div>
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Rooms</h3>
                   <div className="space-y-1">
-                    {rooms.map((r, i) => (
-                      <div key={i} className="flex justify-between text-sm">
-                        <span className="text-gray-700">{r.name}</span>
-                        <span className="text-gray-500">{fmt(r.claytonRate)} / night</span>
-                      </div>
-                    ))}
+                    {rooms.map((r, i) => {
+                      const plan = planOf(r.id)
+                      return (
+                        <div key={i} className="flex justify-between text-sm gap-4">
+                          <span className="text-gray-700">
+                            {r.name}
+                            {plan?.planName && (
+                              <span className="text-gray-400">
+                                {' · '}
+                                {plan.planCode && <span className="font-mono text-xs">{plan.planCode}</span>}
+                                {plan.planCode ? ' ' : ''}{plan.planName}
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-gray-500 whitespace-nowrap">{fmt(r.claytonRate)} / night</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
