@@ -38,7 +38,28 @@ interface SectionForm {
   secondaryTitle: string           // TEXT
   secondaryDescription: string     // TEXT
   cards: CardItem[]               // LOCATION
+  // Typography, stored under content.style. One size each: it is the size on a
+  // wide screen, and the site scales it down on narrow ones, so there is no
+  // second field to fill in for phones.
+  headingSize: number
+  headingWeight: number
+  bodySize: number
 }
+
+// Roughly what the reference design runs to. Shown as a count, never enforced:
+// a section that genuinely needs more should not be blocked by a guideline.
+const DESCRIPTION_TARGET_WORDS = 56
+
+const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
+
+const HEADING_WEIGHTS = [
+  { value: 300, label: '300 · Light' },
+  { value: 400, label: '400 · Regular' },
+  { value: 500, label: '500 · Medium' },
+  { value: 600, label: '600 · Semibold' },
+  { value: 700, label: '700 · Bold' },
+  { value: 900, label: '900 · Black' },
+]
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -56,6 +77,7 @@ const EMPTY_FORM: SectionForm = {
   badge:'', eyebrow:'', title:'', subtitle:'', description:'',
   buttonLabel:'', buttonLink:'', secondaryButtonLabel:'', secondaryButtonLink:'', buttonEnabled:true, imageAlt:'',
   locationPlaceholder:'', secondaryTitle:'', secondaryDescription:'', cards:[],
+  headingSize:60, headingWeight:300, bodySize:18,
 }
 
 const DEFAULT_FOOTER: FooterData = {
@@ -99,6 +121,9 @@ function sectionToForm(section: HomePageSection): SectionForm {
   const c = (section.content && typeof section.content === 'object' && !Array.isArray(section.content))
     ? section.content as Record<string, unknown>
     : {}
+  const style = (c.style && typeof c.style === 'object' && !Array.isArray(c.style))
+    ? c.style as Record<string, unknown>
+    : {}
   const cards: CardItem[] = Array.isArray(c.cards)
     ? (c.cards as Record<string,unknown>[]).map(card => ({
         title: String(card.title || ''), link: String(card.link || ''),
@@ -119,10 +144,28 @@ function sectionToForm(section: HomePageSection): SectionForm {
     secondaryDescription: String(c.secondaryDescription || ''),
     buttonEnabled: c.buttonEnabled !== false,
     cards,
+    headingSize: numOr(style.headingSize, 60),
+    headingWeight: numOr(style.headingWeight, 300),
+    bodySize: numOr(style.bodySize, 18),
   }
 }
 
+const numOr = (value: unknown, fallback: number) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+
 function buildContent(form: SectionForm): Record<string, unknown> {
+  // The style rides alongside whatever the section type stores, rather than
+  // inside the switch, so adding a type cannot quietly drop it.
+  return { ...typeContent(form), style: {
+    headingSize: form.headingSize,
+    headingWeight: form.headingWeight,
+    bodySize: form.bodySize,
+  } }
+}
+
+function typeContent(form: SectionForm): Record<string, unknown> {
   switch (form.sectionType) {
     case 'HERO':
       return { locationPlaceholder: form.locationPlaceholder, buttonEnabled: form.buttonEnabled }
@@ -790,7 +833,56 @@ export default function HomepagePage() {
                     )}
                     <Field label="Description" span2>
                       <textarea rows={3} className={textarea} value={form.description} onChange={e => sf({ description: e.target.value })} placeholder="Body text shown in this section" />
+                      {(() => {
+                        const words = countWords(form.description)
+                        const over = words > DESCRIPTION_TARGET_WORDS
+                        return (
+                          <p className={`mt-1 text-xs ${over ? 'text-red-600' : 'text-gray-500'}`}>
+                            {words} / {DESCRIPTION_TARGET_WORDS} words
+                            {over && ' — longer than the design allows for; it will still save, but the section grows taller.'}
+                          </p>
+                        )
+                      })()}
                     </Field>
+
+                    {/* Typography */}
+                    <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                      <p className="text-sm font-medium text-gray-700">Typography</p>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        Sizes are for a wide screen. The site scales them down on phones, so there is nothing to set twice.
+                      </p>
+                      <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            Heading size — {form.headingSize}px
+                          </label>
+                          <input type="range" min={16} max={120} step={2} className="w-full"
+                            value={form.headingSize}
+                            onChange={e => sf({ headingSize: Number(e.target.value) })} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Heading weight</label>
+                          <select className={inp} value={form.headingWeight}
+                            onChange={e => sf({ headingWeight: Number(e.target.value) })}>
+                            {HEADING_WEIGHTS.map(w => <option key={w.value} value={w.value}>{w.label}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            Body size — {form.bodySize}px
+                          </label>
+                          <input type="range" min={12} max={32} step={1} className="w-full"
+                            value={form.bodySize}
+                            onChange={e => sf({ bodySize: Number(e.target.value) })} />
+                        </div>
+                      </div>
+                      <p className="mt-3 text-gray-900" style={{ fontSize: form.headingSize, fontWeight: form.headingWeight, lineHeight: 1.1 }}>
+                        {form.title || 'Heading preview'}
+                      </p>
+                      <p className="mt-1 text-gray-600" style={{ fontSize: form.bodySize }}>
+                        {form.description ? form.description.slice(0, 90) : 'Body text preview'}
+                      </p>
+                    </div>
                   </>)}
 
                   {/* TEXT — secondary block */}
