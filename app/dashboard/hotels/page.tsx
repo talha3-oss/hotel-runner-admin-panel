@@ -64,6 +64,9 @@ type HotelForm = {
   businessImage: string
   accessibilityText: string
   accessibilityImage: string
+  bookDirectTitle: string
+  bookDirectSubtitle: string
+  bookDirectButtonLabel: string
   childrenAllowed: boolean
   childrenPrice: string
   adultMinAge: string
@@ -106,6 +109,9 @@ const EMPTY_HOTEL: HotelForm = {
   businessImage: '',
   accessibilityText: '',
   accessibilityImage: '',
+  bookDirectTitle: '',
+  bookDirectSubtitle: '',
+  bookDirectButtonLabel: '',
   childrenAllowed: true,
   childrenPrice: '0',
   adultMinAge: '13',
@@ -297,6 +303,9 @@ export default function HotelsPage() {
       businessImage: typeof detailContent?.businessImage === 'string' ? detailContent.businessImage : '',
       accessibilityText: typeof detailContent?.accessibilityText === 'string' ? detailContent.accessibilityText : '',
       accessibilityImage: typeof detailContent?.accessibilityImage === 'string' ? detailContent.accessibilityImage : '',
+      bookDirectTitle: typeof detailContent?.bookDirectTitle === 'string' ? detailContent.bookDirectTitle : '',
+      bookDirectSubtitle: typeof detailContent?.bookDirectSubtitle === 'string' ? detailContent.bookDirectSubtitle : '',
+      bookDirectButtonLabel: typeof detailContent?.bookDirectButtonLabel === 'string' ? detailContent.bookDirectButtonLabel : '',
       childrenAllowed: hotel.childrenAllowed !== false,
       childrenPrice: String(hotel.childrenPrice ?? 0),
       adultMinAge: String(hotel.adultMinAge ?? 13),
@@ -467,6 +476,9 @@ export default function HotelsPage() {
           businessImage: businessImagePath || null,
           accessibilityText: hotelForm.accessibilityText.trim() || null,
           accessibilityImage: accessibilityImagePath || null,
+          bookDirectTitle: hotelForm.bookDirectTitle.trim() || null,
+          bookDirectSubtitle: hotelForm.bookDirectSubtitle.trim() || null,
+          bookDirectButtonLabel: hotelForm.bookDirectButtonLabel.trim() || null,
         },
         childrenAllowed: hotelForm.childrenAllowed,
         childrenPrice: Number(hotelForm.childrenPrice) || 0,
@@ -1022,6 +1034,32 @@ export default function HotelsPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Section Description</label>
                   <textarea rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="Short introductory text for the rooms section" value={hotelForm.roomsDescription} onChange={field('roomsDescription')} />
+                </div>
+
+                {/* ── Book Direct Section ── */}
+                <SectionHeading>Book Direct Section</SectionHeading>
+
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-400 -mt-2 mb-2">
+                    The band that invites guests to book with you directly. Leave a field blank to use the
+                    standard wording. The button opens the booking form on this hotel&apos;s page.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="Book Direct with Luxotel" value={hotelForm.bookDirectTitle} onChange={field('bookDirectTitle')} />
+                  <p className="mt-1 text-xs text-gray-400">The first word is shown in the brand colour.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Button Label</label>
+                  <input className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="Explore Offer" value={hotelForm.bookDirectButtonLabel} onChange={field('bookDirectButtonLabel')} />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Subtitle</label>
+                  <textarea rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="Save on every room, every night when you book with us directly" value={hotelForm.bookDirectSubtitle} onChange={field('bookDirectSubtitle')} />
                 </div>
 
                 {/* ── Dining Section ── */}
