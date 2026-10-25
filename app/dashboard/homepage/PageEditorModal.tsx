@@ -274,13 +274,21 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
           {/* ══ HERO ══ */}
           {s.type === 'hero' && (<>
             <SectionHeading>Hero Content</SectionHeading>
+            <p className="-mt-2 text-xs text-gray-500">
+              Shows as a full-screen banner: the small line sits above the large gold heading,
+              the same way the homepage reads &ldquo;Welcome to&rdquo; above &ldquo;Luxotel&rdquo;.
+            </p>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Heading</label>
-              <input className={inp} value={s.title || ''} onChange={e => set({ title: e.target.value })} placeholder="e.g. Welcome to Luxotel" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Small Line Above <span className="font-normal text-gray-400">(optional)</span>
+              </label>
+              <input className={inp} value={s.subtitle || ''} onChange={e => set({ subtitle: e.target.value })} placeholder="e.g. General Reservations" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Subheading</label>
-              <input className={inp} value={s.subtitle || ''} onChange={e => set({ subtitle: e.target.value })} placeholder="e.g. Luxury redefined across the world" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Heading <span className="font-normal text-gray-400">(large, gold)</span>
+              </label>
+              <input className={inp} value={s.title || ''} onChange={e => set({ title: e.target.value })} placeholder="e.g. Terms &amp; Conditions" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
