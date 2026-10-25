@@ -11,12 +11,10 @@
 body {
   color: rgb(var(--foreground-rgb));
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  /* Matches the dashboard's own background. It used to be a grey gradient
+     used nowhere else, so the instant before the page painted looked like a
+     dead screen instead of the panel still loading. */
+  background: #f3f4f6;
 }
 
 .scrollbar-hide {
