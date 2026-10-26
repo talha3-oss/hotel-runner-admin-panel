@@ -1044,6 +1044,7 @@ export const TEAM_MODULES = [
   { key: 'locations', label: 'Countries & Locations' },
   { key: 'homepage', label: 'Homepage Content' },
   { key: 'pages', label: 'Pages' },
+  { key: 'gallery', label: 'Gallery' },
   { key: 'rooms', label: 'Rooms' },
   { key: 'ratePlans', label: 'Rate Plans' },
   { key: 'ari', label: 'Rates & Availability' },
@@ -1184,4 +1185,63 @@ export async function createAdminContentPage(token: string, name: string, slug: 
     body: JSON.stringify({ name, slug, sections: [] }),
   })
   return res.json()
+}
+
+// ─── Gallery ──────────────────────────────────────────────────────────────────
+
+export interface GalleryFile {
+  folder: string
+  name: string
+  url: string
+  size: number
+  uploadedAt: string
+  inUse: boolean
+}
+
+export interface GalleryListResult {
+  success: boolean
+  total: number
+  page: number
+  limit: number
+  pages: number
+  folders: string[]
+  totalBytes: number
+  files: GalleryFile[]
+  message?: string
+}
+
+export async function fetchGallery(
+  token: string,
+  params: { search?: string; page?: number; limit?: number; folder?: string } = {}
+): Promise<GalleryListResult> {
+  const query = new URLSearchParams()
+  if (params.search) query.set('search', params.search)
+  if (params.page) query.set('page', String(params.page))
+  if (params.limit) query.set('limit', String(params.limit))
+  if (params.folder) query.set('folder', params.folder)
+
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/gallery?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function deleteGalleryImage(
+  token: string,
+  folder: string,
+  name: string,
+  force = false
+): Promise<{ success: boolean; message?: string; inUse?: boolean }> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/v1/admin/gallery/${folder}/${name}${force ? '?force=true' : ''}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+  )
+  return res.json()
+}
+
+/** The small copy the grid shows. Public on purpose — the full-size file
+ *  already is, and an <img> cannot carry a token. */
+export function galleryThumbUrl(file: { folder: string; name: string }, width = 320) {
+  return `${API_BASE_URL}/api/v1/admin/gallery/thumb/${file.folder}/${file.name}?w=${width}`
 }

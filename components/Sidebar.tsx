@@ -24,6 +24,7 @@ import {
   NewspaperIcon,
   IdentificationIcon,
   DocumentDuplicateIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline'
 
 const navigation = [
@@ -32,6 +33,7 @@ const navigation = [
   { name: 'Countries & Locations', href: '/dashboard/locations', icon: MapPinIcon, moduleKey: 'locations' },
   { name: 'Homepage Content', href: '/dashboard/homepage', icon: Squares2X2Icon, moduleKey: 'homepage' },
   { name: 'Pages', href: '/dashboard/pages', icon: DocumentDuplicateIcon, moduleKey: 'pages' },
+  { name: 'Gallery', href: '/dashboard/gallery', icon: PhotoIcon, moduleKey: 'gallery' },
   { name: 'Rooms', href: '/dashboard/rooms', icon: HomeIcon, moduleKey: 'rooms' },
   { name: 'Rate Plans', href: '/dashboard/rate-plans', icon: TagIcon, moduleKey: 'ratePlans' },
   { name: 'Rates & Availability', href: '/dashboard/rates', icon: TableCellsIcon, moduleKey: 'ari' },
