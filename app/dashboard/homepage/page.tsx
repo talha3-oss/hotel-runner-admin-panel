@@ -12,6 +12,7 @@ import {
   deleteAdminHomePageSection, fetchNavMenu, saveNavMenu, getApiAssetUrl,
   uploadHomepageSectionImage,
   HomePageSection, HomePageSectionType, HomePageSectionStatus, HomePageSectionPayload,
+  MenuButtons, DEFAULT_MENU_BUTTONS,
 } from '../../../lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -258,6 +259,7 @@ export default function HomepagePage() {
   const [editingNav, setEditingNav] = useState<NavItem | null>(null)
   const [navForm, setNavForm] = useState({ label:'', href:'', visible:true, openInNewTab:false })
   const [showNavModal, setShowNavModal] = useState(false)
+  const [buttons, setButtons] = useState<MenuButtons>(DEFAULT_MENU_BUTTONS)
 
   // Footer
   const [footerSection, setFooterSection] = useState<HomePageSection | null>(null)
@@ -368,7 +370,11 @@ export default function HomepagePage() {
     setLoadingNav(true)
     try {
       const r = await fetchNavMenu()
-      if (r.success) { setNavItems(r.items || []); setNavDirty(false) }
+      if (r.success) {
+        setNavItems(r.items || [])
+        setButtons(r.buttons ? { ...DEFAULT_MENU_BUTTONS, ...r.buttons } : DEFAULT_MENU_BUTTONS)
+        setNavDirty(false)
+      }
     } finally { setLoadingNav(false) }
   }, [])
 
@@ -484,8 +490,13 @@ export default function HomepagePage() {
     if (!token) return
     setNavSaving(true); setError('')
     try {
-      const r = await saveNavMenu(token, navItems.map((item, i) => ({ ...item, order: i })))
-      if (r.success) { setNavItems(r.items || navItems); setSuccess('Navigation menu saved.'); setNavDirty(false) }
+      const r = await saveNavMenu(token, navItems.map((item, i) => ({ ...item, order: i })), buttons)
+      if (r.success) {
+        setNavItems(r.items || navItems)
+        if (r.buttons) setButtons({ ...DEFAULT_MENU_BUTTONS, ...r.buttons })
+        setSuccess('Navigation menu saved.')
+        setNavDirty(false)
+      }
       else setError(r.message || 'Failed to save.')
     } finally { setNavSaving(false) }
   }
@@ -628,6 +639,7 @@ export default function HomepagePage() {
       {/* ── NAV TAB ── */}
       {tab === 'nav' && (
         loadingNav ? <div className="py-12 text-center text-sm text-gray-400">Loading…</div> : (
+          <div className="space-y-6">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             {navItems.length === 0 ? <div className="py-16 text-center text-sm text-gray-400">No nav items yet.</div> : (
               <table className="min-w-full divide-y divide-gray-200">
@@ -675,6 +687,77 @@ export default function HomepagePage() {
               </table>
             )}
             <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-400">Reorder with arrows · toggle visibility with the eye icon · click <strong>Save Menu</strong> to publish. These are links only — the pages themselves live under <strong>Pages</strong>.</div>
+          </div>
+
+          {/* The two buttons under the menu. They are not links in the list --
+              they never reordered with it, and Book Now does not go to an
+              address at all. Until now nothing here could change them and
+              neither of them did anything on the site. */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="border-b border-gray-200 px-4 py-3">
+              <h3 className="text-sm font-semibold text-gray-900">Menu Buttons</h3>
+              <p className="mt-0.5 text-xs text-gray-500">The two buttons below the menu on the site.</p>
+            </div>
+
+            <div className="divide-y divide-gray-100">
+              <div className="p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Manage Booking</span>
+                  <button
+                    onClick={() => { setButtons(p => ({ ...p, manageBooking: { ...p.manageBooking, visible: !p.manageBooking.visible } })); setNavDirty(true) }}
+                    title={buttons.manageBooking.visible ? 'Showing on the site' : 'Hidden'}
+                    className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800"
+                  >
+                    {buttons.manageBooking.visible
+                      ? <><EyeIcon className="h-4 w-4 text-green-500" /> Showing</>
+                      : <><EyeSlashIcon className="h-4 w-4 text-gray-300" /> Hidden</>}
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Button Text</label>
+                    <input className={inp} value={buttons.manageBooking.label}
+                      onChange={e => { setButtons(p => ({ ...p, manageBooking: { ...p.manageBooking, label: e.target.value } })); setNavDirty(true) }} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Goes To</label>
+                    <input className={inp} value={buttons.manageBooking.href} placeholder="/account/bookings"
+                      onChange={e => { setButtons(p => ({ ...p, manageBooking: { ...p.manageBooking, href: e.target.value } })); setNavDirty(true) }} />
+                    <p className="mt-1 text-xs text-gray-400">
+                      A path on the site, such as <code className="font-mono">/account/bookings</code> — the guest&apos;s own bookings. A guest who is not signed in is asked to sign in first and then sent on.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Book Now</span>
+                  <button
+                    onClick={() => { setButtons(p => ({ ...p, bookNow: { ...p.bookNow, visible: !p.bookNow.visible } })); setNavDirty(true) }}
+                    title={buttons.bookNow.visible ? 'Showing on the site' : 'Hidden'}
+                    className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800"
+                  >
+                    {buttons.bookNow.visible
+                      ? <><EyeIcon className="h-4 w-4 text-green-500" /> Showing</>
+                      : <><EyeSlashIcon className="h-4 w-4 text-gray-300" /> Hidden</>}
+                  </button>
+                </div>
+                <div className="sm:w-1/2">
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Button Text</label>
+                  <input className={inp} value={buttons.bookNow.label}
+                    onChange={e => { setButtons(p => ({ ...p, bookNow: { ...p.bookNow, label: e.target.value } })); setNavDirty(true) }} />
+                  <p className="mt-1 text-xs text-gray-400">
+                    This one has no address: it opens the booking panel on the right of whichever page the guest is on.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-400">
+              Click <strong>Save Menu</strong> to publish these too.
+            </div>
+          </div>
           </div>
         )
       )}

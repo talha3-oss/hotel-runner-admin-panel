@@ -917,11 +917,24 @@ export async function fetchNavMenu(_token?: string) {
   return res.json()
 }
 
-export async function saveNavMenu(token: string, items: NavItem[]) {
+// The two buttons under the menu on the site. They are not links in the list
+// -- they do not reorder with it, and Book Now does not go to an address at
+// all, it opens the booking panel on the right of the page.
+export interface MenuButtons {
+  manageBooking: { label: string; href: string; visible: boolean }
+  bookNow: { label: string; visible: boolean }
+}
+
+export const DEFAULT_MENU_BUTTONS: MenuButtons = {
+  manageBooking: { label: 'Manage Booking', href: '/account/bookings', visible: true },
+  bookNow: { label: 'Book Now', visible: true },
+}
+
+export async function saveNavMenu(token: string, items: NavItem[], buttons?: MenuButtons) {
   const res = await fetch(`${API_BASE_URL}/api/v1/pages/admin/nav-menu`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ items }),
+    body: JSON.stringify(buttons ? { items, buttons } : { items }),
   })
   return res.json()
 }
