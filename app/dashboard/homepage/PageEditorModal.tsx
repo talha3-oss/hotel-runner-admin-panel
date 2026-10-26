@@ -33,6 +33,8 @@ interface ContentSection {
   buttonLabel?: string
   buttonHref?: string
   contactNote?: string
+  /** Contact form only: where its enquiries are emailed, comma separated. */
+  recipients?: string
   items?: (CardItem | OfferItem | ContactItem)[]
   columns?: SitemapColumn[]
 }
@@ -120,7 +122,7 @@ function buildEmpty(type: SectionType): ContentSection {
   if (type === 'offers')       return { type, title: 'Current Offers', subtitle: 'Exclusive deals for every occasion', items: DEFAULT_OFFERS }
   if (type === 'cta')          return { type, title: 'Ready to Experience Luxury?', subtitle: 'Book your stay today and enjoy exclusive benefits.', buttonLabel: 'Book Now', buttonHref: '/booking', contactNote: '' }
   if (type === 'contact-info') return { type, title: 'Get in Touch', items: DEFAULT_CONTACTS }
-  if (type === 'form')         return { type, title: 'Send Us a Message', content: '' }
+  if (type === 'form')         return { type, title: 'Send Us a Message', content: '', recipients: '' }
   if (type === 'sitemap')      return { type, title: 'Site Map', columns: DEFAULT_SITEMAP_COLS }
   return { type }
 }
@@ -524,8 +526,26 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
               <textarea rows={3} className={inp + ' resize-none'} value={s.content || ''} onChange={e => set({ content: e.target.value })}
                 placeholder="We'd love to hear from you. Fill in the form and we'll get back within 24 hours." />
             </div>
+            {/* Until now the form showed "we'll be in touch" and threw the
+                message away -- there was nowhere for it to go and nothing
+                here to say where. */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Send Enquiries To</label>
+              <input
+                className={inp}
+                value={s.recipients || ''}
+                onChange={e => set({ recipients: e.target.value })}
+                placeholder="reservations@luxotel.com, aqaba@luxotel.com"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Who receives what this form sends. Separate several addresses with commas — useful when a page belongs
+                to one hotel and its enquiries should go to that hotel. Up to five. Replying to the email answers the
+                guest directly.
+              </p>
+            </div>
             <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3 text-sm text-blue-700">
-              The form fields (name, email, message, submit) are rendered automatically on the frontend.
+              The form fields (name, email, phone, subject, message, submit) are rendered automatically on the frontend.
+              Leave the address above empty and the form tells the guest to call instead, rather than losing the message.
             </div>
           </>)}
 
