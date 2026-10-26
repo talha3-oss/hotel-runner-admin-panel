@@ -7,6 +7,7 @@ import {
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline'
 import { resolveSiteHref } from '../../../lib/siteUrl'
+import { SOCIAL_PLATFORMS, socialLabel, socialPath } from '../../../lib/socialPlatforms'
 import {
   fetchAdminHomePageSections, createAdminHomePageSection, updateAdminHomePageSection,
   deleteAdminHomePageSection, fetchNavMenu, saveNavMenu, getApiAssetUrl,
@@ -20,12 +21,14 @@ import {
 interface NavItem { id: string; label: string; href: string; visible: boolean; openInNewTab: boolean; order: number }
 type LinkItem = { label: string; href: string }
 interface CardItem { title: string; link: string; image: string; imageAlt: string; linkLabel: string; _file?: File }
+interface SocialLink { platform: string; href: string }
 interface FooterData {
   newsletterTitle: string; subscribeButtonLabel: string; consentText: string
   privacyLabel: string; privacyLink: string; leftColumnTitle: string
   leftLinks: LinkItem[]; rightColumnTitle: string; rightLinks: LinkItem[]
   copyrightText: string; partnerLogos: string[]
   partnerGroupTitle: string; partnerGroupSubtitle: string
+  socialLinks: SocialLink[]
 }
 interface SectionForm {
   name: string; sectionKey: string; groupKey: string
@@ -90,6 +93,7 @@ const DEFAULT_FOOTER: FooterData = {
   rightLinks:[{label:'Special Offers',href:'/special-offers'},{label:'Sitemap',href:'/sitemap'},{label:'Corporate Rates',href:'/corporate-rates'}],
   copyrightText:`© ${new Date().getFullYear()} Luxotel. All rights reserved.`,
   partnerLogos:[], partnerGroupTitle:'Dalata Hotel Group', partnerGroupSubtitle:'Part of the',
+  socialLinks:[],
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -115,6 +119,15 @@ function parseFooterContent(c: Record<string, unknown>): Partial<FooterData> {
     partnerLogos: Array.isArray(c.partnerLogos) ? (c.partnerLogos as unknown[]).filter(x => typeof x === 'string') as string[] : [],
     partnerGroupTitle: str(c.partnerGroupTitle, DEFAULT_FOOTER.partnerGroupTitle),
     partnerGroupSubtitle: str(c.partnerGroupSubtitle, DEFAULT_FOOTER.partnerGroupSubtitle),
+    socialLinks: Array.isArray(c.socialLinks)
+      ? (c.socialLinks as unknown[])
+          .filter(x => x && typeof x === 'object' && !Array.isArray(x))
+          .map(x => ({
+            platform: String((x as Record<string, unknown>).platform || ''),
+            href: String((x as Record<string, unknown>).href || ''),
+          }))
+          .filter(x => x.platform)
+      : [],
   }
 }
 
@@ -776,6 +789,134 @@ export default function HomepagePage() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Social Links — the footer left a gap between its two rules for
+              these and there was no way to say what went in it. */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Social Links</h3>
+                <p className="mt-0.5 text-xs text-gray-400">
+                  Shown as icons in the middle of the footer. Leave this empty and no icons appear.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setFooter(prev => ({ ...prev, socialLinks: [...prev.socialLinks, { platform: 'facebook', href: '' }] }))
+                  setFooterDirty(true)
+                }}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <PlusIcon className="h-4 w-4" /> Add Account
+              </button>
+            </div>
+
+            {footer.socialLinks.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-gray-400">
+                No accounts yet. Click <strong>Add Account</strong> to list one.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {footer.socialLinks.map((social, idx) => (
+                  <div key={idx} className="flex items-center gap-3">
+                    {/* The icon the guest will see, so a wrong pick is caught
+                        here rather than on the live site. */}
+                    <span
+                      title={socialLabel(social.platform)}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-white"
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className="h-4 w-4">
+                        <path d={socialPath(social.platform)} />
+                      </svg>
+                    </span>
+
+                    <select
+                      value={social.platform}
+                      onChange={e => {
+                        const platform = e.target.value
+                        setFooter(prev => ({
+                          ...prev,
+                          socialLinks: prev.socialLinks.map((s, i) => i === idx ? { ...s, platform } : s),
+                        }))
+                        setFooterDirty(true)
+                      }}
+                      className="w-40 shrink-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      {SOCIAL_PLATFORMS.map(p => (
+                        <option key={p.key} value={p.key}>{p.label}</option>
+                      ))}
+                    </select>
+
+                    <input
+                      className={inp}
+                      placeholder={SOCIAL_PLATFORMS.find(p => p.key === social.platform)?.example || 'https://'}
+                      value={social.href}
+                      onChange={e => {
+                        const href = e.target.value
+                        setFooter(prev => ({
+                          ...prev,
+                          socialLinks: prev.socialLinks.map((s, i) => i === idx ? { ...s, href } : s),
+                        }))
+                        setFooterDirty(true)
+                      }}
+                    />
+
+                    <div className="flex shrink-0 flex-col gap-0.5">
+                      <button
+                        onClick={() => {
+                          setFooter(prev => {
+                            if (idx === 0) return prev
+                            const arr = [...prev.socialLinks]
+                            ;[arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]]
+                            return { ...prev, socialLinks: arr }
+                          })
+                          setFooterDirty(true)
+                        }}
+                        disabled={idx === 0}
+                        title="Move up"
+                        className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-20"
+                      >
+                        <ArrowUpIcon className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setFooter(prev => {
+                            if (idx === prev.socialLinks.length - 1) return prev
+                            const arr = [...prev.socialLinks]
+                            ;[arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]]
+                            return { ...prev, socialLinks: arr }
+                          })
+                          setFooterDirty(true)
+                        }}
+                        disabled={idx === footer.socialLinks.length - 1}
+                        title="Move down"
+                        className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-20"
+                      >
+                        <ArrowDownIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setFooter(prev => ({ ...prev, socialLinks: prev.socialLinks.filter((_, i) => i !== idx) }))
+                        setFooterDirty(true)
+                      }}
+                      title="Remove"
+                      className="shrink-0 rounded-md border border-red-200 bg-red-50 p-2 text-red-600 hover:bg-red-100"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="mt-4 text-xs text-gray-400">
+              Paste the full web address, starting with <code className="font-mono">https://</code> — a row without one is left
+              off the site. LinkedIn is not in the list: its logo was withdrawn from the icon set we use, and drawing someone
+              else&apos;s trademark by hand is worse than leaving it out.
+            </p>
           </div>
 
           {/* Partner Logos */}
