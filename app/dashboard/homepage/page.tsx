@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from
 import {
   PlusIcon, PencilIcon, TrashIcon, EyeIcon, EyeSlashIcon,
   ArrowUpIcon, ArrowDownIcon, PhotoIcon, CheckCircleIcon, XCircleIcon,
-  DocumentTextIcon, ArrowTopRightOnSquareIcon,
+  ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline'
 import {
   fetchAdminHomePageSections, createAdminHomePageSection, updateAdminHomePageSection,
@@ -12,7 +12,6 @@ import {
   uploadHomepageSectionImage,
   HomePageSection, HomePageSectionType, HomePageSectionStatus, HomePageSectionPayload,
 } from '../../../lib/api'
-import PageEditorModal from './PageEditorModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -271,9 +270,6 @@ export default function HomepagePage() {
   const [navDirty, setNavDirty] = useState(false)
 
   // Page editor
-  const [showPageEditor, setShowPageEditor] = useState(false)
-  const [pageEditorSlug, setPageEditorSlug] = useState('')
-  const [pageEditorName, setPageEditorName] = useState('')
 
   // Shared
   const [error, setError] = useState('')
@@ -551,13 +547,6 @@ export default function HomepagePage() {
 
   // ── Page editor ─────────────────────────────────────────────────────────────
 
-  const openPageEditor = (href: string, label: string) => {
-    const slug = href.replace(/^\/+/, '').split('?')[0].split('#')[0] || href
-    setPageEditorSlug(slug)
-    setPageEditorName(label || slug)
-    setShowPageEditor(true)
-  }
-
   // ── Cards helpers ───────────────────────────────────────────────────────────
 
   const addCard = () => setForm(p => ({ ...p, cards: [...p.cards, { title:'', link:'', image:'', imageAlt:'', linkLabel:'Discover' }] }))
@@ -671,7 +660,6 @@ export default function HomepagePage() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => openNavEdit(item)} className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><PencilIcon className="h-3.5 w-3.5" /> Edit</button>
-                          <button onClick={() => openPageEditor(item.href, item.label)} title="Edit page content" className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-100"><DocumentTextIcon className="h-3.5 w-3.5" /> Page</button>
                           <a href={`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}${item.href}`} target="_blank" rel="noopener noreferrer" title="View on site" className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"><ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> View</a>
                           <button onClick={() => { setNavItems(prev => prev.filter(i => i.id!==item.id)); setNavDirty(true) }} className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"><TrashIcon className="h-3.5 w-3.5" /></button>
                         </div>
@@ -681,7 +669,7 @@ export default function HomepagePage() {
                 </tbody>
               </table>
             )}
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-400">Reorder with arrows · toggle visibility with the eye icon · click <strong>Save Menu</strong> to publish.</div>
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-400">Reorder with arrows · toggle visibility with the eye icon · click <strong>Save Menu</strong> to publish. These are links only — the pages themselves live under <strong>Pages</strong>.</div>
           </div>
         )
       )}
@@ -749,12 +737,6 @@ export default function HomepagePage() {
                   <div key={idx} className="flex gap-2 items-center">
                     <input className={inp} placeholder="Label" value={link.label} onChange={e => updateLink(side, idx, 'label', e.target.value)} />
                     <input className={monoInp} placeholder="/url" value={link.href} onChange={e => updateLink(side, idx, 'href', e.target.value)} />
-                    {link.href && (
-                      <button type="button" onClick={() => openPageEditor(link.href, link.label)} title="Edit page sections"
-                        className="p-1.5 rounded-lg border border-blue-200 text-blue-500 hover:bg-blue-50 flex-shrink-0" >
-                        <DocumentTextIcon className="h-4 w-4" />
-                      </button>
-                    )}
                     <button onClick={() => removeLink(side, idx)} className="text-red-400 hover:text-red-600 p-1 flex-shrink-0"><TrashIcon className="h-4 w-4" /></button>
                   </div>
                 ))}
@@ -1031,15 +1013,6 @@ export default function HomepagePage() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* ── PAGE EDITOR MODAL ── */}
-      {showPageEditor && (
-        <PageEditorModal
-          slug={pageEditorSlug}
-          pageName={pageEditorName}
-          onClose={() => setShowPageEditor(false)}
-        />
       )}
 
       {/* ── NAV MODAL ── */}

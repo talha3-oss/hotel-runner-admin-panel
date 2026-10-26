@@ -1034,6 +1034,7 @@ export const TEAM_MODULES = [
   { key: 'hotels', label: 'Hotels' },
   { key: 'locations', label: 'Countries & Locations' },
   { key: 'homepage', label: 'Homepage Content' },
+  { key: 'pages', label: 'Pages' },
   { key: 'rooms', label: 'Rooms' },
   { key: 'ratePlans', label: 'Rate Plans' },
   { key: 'ari', label: 'Rates & Availability' },

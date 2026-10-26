@@ -9,6 +9,7 @@ import { getAdminMe } from '../../lib/api'
 const PATH_MODULE_KEYS: { prefix: string; moduleKey: string }[] = [
   { prefix: '/dashboard/hotels', moduleKey: 'hotels' },
   { prefix: '/dashboard/locations', moduleKey: 'locations' },
+  { prefix: '/dashboard/pages', moduleKey: 'pages' },
   { prefix: '/dashboard/homepage', moduleKey: 'homepage' },
   { prefix: '/dashboard/rooms', moduleKey: 'rooms' },
   { prefix: '/dashboard/rate-plans', moduleKey: 'ratePlans' },
