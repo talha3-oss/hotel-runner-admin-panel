@@ -146,7 +146,11 @@ export default function ExtrasPage() {
     try {
       const fd = new FormData()
       fd.append('image', file)
-      const res = await fetch(`${API_BASE_URL}/upload-image-multer`, { method: 'POST', body: fd })
+      const res = await fetch(`${API_BASE_URL}/upload-image-multer`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('adminToken') || ''}` },
+        body: fd,
+      })
       const data = await res.json()
       if (data?.data?.fileUrl) {
         setFormData((prev) => ({ ...prev, image: data.data.fileUrl }))

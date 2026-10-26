@@ -218,8 +218,12 @@ export async function uploadRoomImage(file: File): Promise<UploadImageResult> {
   const formData = new FormData()
   formData.append('image', file)
 
+  // The endpoint is behind the admin check now, so the token has to go with
+  // the file. Content-Type is left to the browser: it has to set the multipart
+  // boundary itself, and naming the header here would break the upload.
   const res = await fetch(`${API_BASE_URL}/upload-image-multer`, {
     method: 'POST',
+    headers: { Authorization: `Bearer ${localStorage.getItem('adminToken') || ''}` },
     body: formData,
   })
 
@@ -555,8 +559,12 @@ export async function uploadHomepageSectionImage(file: File) {
   const formData = new FormData()
   formData.append('image', file)
 
+  // The endpoint is behind the admin check now, so the token has to go with
+  // the file. Content-Type is left to the browser: it has to set the multipart
+  // boundary itself, and naming the header here would break the upload.
   const res = await fetch(`${API_BASE_URL}/upload-image-multer`, {
     method: 'POST',
+    headers: { Authorization: `Bearer ${localStorage.getItem('adminToken') || ''}` },
     body: formData,
   })
 
