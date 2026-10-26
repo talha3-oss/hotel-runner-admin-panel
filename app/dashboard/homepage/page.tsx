@@ -6,6 +6,7 @@ import {
   ArrowUpIcon, ArrowDownIcon, PhotoIcon, CheckCircleIcon, XCircleIcon,
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline'
+import { resolveSiteHref } from '../../../lib/siteUrl'
 import {
   fetchAdminHomePageSections, createAdminHomePageSection, updateAdminHomePageSection,
   deleteAdminHomePageSection, fetchNavMenu, saveNavMenu, getApiAssetUrl,
@@ -660,7 +661,11 @@ export default function HomepagePage() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => openNavEdit(item)} className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><PencilIcon className="h-3.5 w-3.5" /> Edit</button>
-                          <a href={`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}${item.href}`} target="_blank" rel="noopener noreferrer" title="View on site" className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"><ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> View</a>
+                          {resolveSiteHref(item.href) ? (
+                            <a href={resolveSiteHref(item.href)!} target="_blank" rel="noopener noreferrer" title="View on site" className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"><ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> View</a>
+                          ) : (
+                            <span title="This link's URL is not a web address, so there is nothing to open." className="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-300"><ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> View</span>
+                          )}
                           <button onClick={() => { setNavItems(prev => prev.filter(i => i.id!==item.id)); setNavDirty(true) }} className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"><TrashIcon className="h-3.5 w-3.5" /></button>
                         </div>
                       </td>

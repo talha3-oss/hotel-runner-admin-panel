@@ -11,6 +11,7 @@ import {
   Cog6ToothIcon,
 } from '@heroicons/react/24/outline'
 import PageEditorModal from '../homepage/PageEditorModal'
+import { SITE_URL } from '../../../lib/siteUrl'
 import {
   fetchAdminPages,
   createAdminContentPage,
@@ -18,7 +19,6 @@ import {
   deleteLandingPage,
 } from '../../../lib/api'
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
 interface PageRow {
   id: string
