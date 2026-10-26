@@ -266,6 +266,12 @@ export interface Hotel {
   name: string
   slug?: string | null
   address?: string | null
+  // The link pasted from Google Maps, and the pin pulled out of it by the
+  // server. The receipt and the confirmation email draw a map from these.
+  mapUrl?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  directionsUrl?: string | null
   phone?: string | null
   email?: string | null
   status: HotelStatus
@@ -378,6 +384,7 @@ export async function createHotel(
     name: string
     locationId: string
     address?: string
+    mapUrl?: string
     phone?: string
     email?: string
     status?: HotelStatus
@@ -408,6 +415,7 @@ export async function updateHotel(
     name?: string
     locationId?: string
     address?: string
+    mapUrl?: string
     phone?: string
     email?: string
     status?: HotelStatus

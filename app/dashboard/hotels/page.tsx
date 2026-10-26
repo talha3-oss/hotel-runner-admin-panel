@@ -38,6 +38,7 @@ type HotelForm = {
   slug: string
   locationId: string
   address: string
+  mapUrl: string
   phone: string
   email: string
   status: HotelStatus
@@ -96,6 +97,7 @@ const EMPTY_HOTEL: HotelForm = {
   slug: '',
   locationId: '',
   address: '',
+  mapUrl: '',
   phone: '',
   email: '',
   status: 'ACTIVE',
@@ -290,6 +292,7 @@ export default function HotelsPage() {
       slug: hotel.slug || '',
       locationId: hotel.locationId,
       address: hotel.address || '',
+      mapUrl: hotel.mapUrl || '',
       phone: hotel.phone || '',
       email: hotel.email || '',
       status: hotel.status,
@@ -464,6 +467,7 @@ export default function HotelsPage() {
         rateTigerReservationCode: hotelForm.rateTigerReservationCode.trim(),
         locationId: hotelForm.locationId,
         address: hotelForm.address.trim(),
+        mapUrl: hotelForm.mapUrl.trim(),
         phone: hotelForm.phone.trim(),
         email: hotelForm.email.trim(),
         status: hotelForm.status,
@@ -877,6 +881,37 @@ export default function HotelsPage() {
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
                   <input className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="Full street address" value={hotelForm.address} onChange={field('address')} />
+                </div>
+
+                {/* The booking confirmation and its email name the hotel and
+                    stop there. A guest arriving in a country they do not know
+                    has nothing to show a driver. Paste the link and they get a
+                    map and a Directions button on both. */}
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Google Maps Link</label>
+                  <div className="flex gap-2">
+                    <input
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                      placeholder="https://maps.app.goo.gl/..."
+                      value={hotelForm.mapUrl}
+                      onChange={field('mapUrl')}
+                    />
+                    {hotelForm.mapUrl.trim() && (
+                      <a
+                        href={hotelForm.mapUrl.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        Check
+                      </a>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Find the hotel on Google Maps, press <strong>Share</strong>, and paste the link here. The guest sees a map
+                    on their booking confirmation and in the confirmation email, and tapping it opens directions.
+                    Leave empty to show the address only.
+                  </p>
                 </div>
 
                 <div>
