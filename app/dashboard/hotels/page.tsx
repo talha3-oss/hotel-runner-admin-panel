@@ -61,10 +61,16 @@ type HotelForm = {
   diningSubtitle: string
   diningDescription: string
   diningImage: string
+  diningButtonLabel: string
+  diningButtonLink: string
+  diningButtonEnabled: boolean
   businessTitle: string
   businessSubtitle: string
   businessDescription: string
   businessImage: string
+  businessButtonLabel: string
+  businessButtonLink: string
+  businessButtonEnabled: boolean
   accessibilityText: string
   accessibilityImage: string
   bookDirectTitle: string
@@ -120,10 +126,16 @@ const EMPTY_HOTEL: HotelForm = {
   diningSubtitle: '',
   diningDescription: '',
   diningImage: '',
+  diningButtonLabel: '',
+  diningButtonLink: '',
+  diningButtonEnabled: true,
   businessTitle: '',
   businessSubtitle: '',
   businessDescription: '',
   businessImage: '',
+  businessButtonLabel: '',
+  businessButtonLink: '',
+  businessButtonEnabled: true,
   accessibilityText: '',
   accessibilityImage: '',
   bookDirectTitle: '',
@@ -315,10 +327,17 @@ export default function HotelsPage() {
       diningSubtitle: typeof detailContent?.diningSubtitle === 'string' ? detailContent.diningSubtitle : '',
       diningDescription: typeof detailContent?.diningDescription === 'string' ? detailContent.diningDescription : '',
       diningImage: typeof detailContent?.diningImage === 'string' ? detailContent.diningImage : '',
+      diningButtonLabel: typeof detailContent?.diningButtonLabel === 'string' ? detailContent.diningButtonLabel : '',
+      diningButtonLink: typeof detailContent?.diningButtonLink === 'string' ? detailContent.diningButtonLink : '',
+      // Absent means a hotel saved before this existed, which had the button.
+      diningButtonEnabled: detailContent?.diningButtonEnabled !== false,
       businessTitle: typeof detailContent?.businessTitle === 'string' ? detailContent.businessTitle : '',
       businessSubtitle: typeof detailContent?.businessSubtitle === 'string' ? detailContent.businessSubtitle : '',
       businessDescription: typeof detailContent?.businessDescription === 'string' ? detailContent.businessDescription : '',
       businessImage: typeof detailContent?.businessImage === 'string' ? detailContent.businessImage : '',
+      businessButtonLabel: typeof detailContent?.businessButtonLabel === 'string' ? detailContent.businessButtonLabel : '',
+      businessButtonLink: typeof detailContent?.businessButtonLink === 'string' ? detailContent.businessButtonLink : '',
+      businessButtonEnabled: detailContent?.businessButtonEnabled !== false,
       accessibilityText: typeof detailContent?.accessibilityText === 'string' ? detailContent.accessibilityText : '',
       accessibilityImage: typeof detailContent?.accessibilityImage === 'string' ? detailContent.accessibilityImage : '',
       bookDirectTitle: typeof detailContent?.bookDirectTitle === 'string' ? detailContent.bookDirectTitle : '',
@@ -489,10 +508,16 @@ export default function HotelsPage() {
           diningSubtitle: hotelForm.diningSubtitle.trim() || null,
           diningDescription: hotelForm.diningDescription.trim() || null,
           diningImage: diningImagePath || null,
+          diningButtonLabel: hotelForm.diningButtonLabel.trim() || null,
+          diningButtonLink: hotelForm.diningButtonLink.trim() || null,
+          diningButtonEnabled: hotelForm.diningButtonEnabled,
           businessTitle: hotelForm.businessTitle.trim() || null,
           businessSubtitle: hotelForm.businessSubtitle.trim() || null,
           businessDescription: hotelForm.businessDescription.trim() || null,
           businessImage: businessImagePath || null,
+          businessButtonLabel: hotelForm.businessButtonLabel.trim() || null,
+          businessButtonLink: hotelForm.businessButtonLink.trim() || null,
+          businessButtonEnabled: hotelForm.businessButtonEnabled,
           accessibilityText: hotelForm.accessibilityText.trim() || null,
           accessibilityImage: accessibilityImagePath || null,
           bookDirectTitle: hotelForm.bookDirectTitle.trim() || null,
@@ -1168,6 +1193,48 @@ export default function HotelsPage() {
                   </div>
                 </div>
 
+
+                {/* The button on this section was written into the site: every
+                    hotel showed the same words and it went nowhere. */}
+                <div className="col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Button</p>
+                    <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={hotelForm.diningButtonEnabled}
+                        onChange={(e) => setHotelForm((prev) => ({ ...prev, diningButtonEnabled: e.target.checked }))}
+                        className="accent-primary-600"
+                      />
+                      Show this button
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Button Text</label>
+                      <input
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                        placeholder="Explore Dining"
+                        disabled={!hotelForm.diningButtonEnabled}
+                        value={hotelForm.diningButtonLabel}
+                        onChange={field('diningButtonLabel')}
+                      />
+                      <p className="mt-1 text-xs text-gray-400">Leave empty for &ldquo;Explore Dining&rdquo;.</p>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Button Link</label>
+                      <input
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                        placeholder="/hotels/your-hotel/dining"
+                        disabled={!hotelForm.diningButtonEnabled}
+                        value={hotelForm.diningButtonLink}
+                        onChange={field('diningButtonLink')}
+                      />
+                      <p className="mt-1 text-xs text-gray-400">A path on the site or a full web address. Empty and the button goes nowhere, so leave it off instead.</p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* ── Business Section ── */}
                 <SectionHeading>Business &amp; Events Section</SectionHeading>
 
@@ -1202,6 +1269,46 @@ export default function HotelsPage() {
                     <p className="text-xs text-gray-400 mb-2">Full-width background image for the Business & Events section on the hotel page</p>
                     <input type="file" accept="image/*" className="block w-full text-sm text-gray-600 file:mr-3 file:py-1 file:px-3 file:rounded file:border file:border-gray-300 file:bg-white file:text-sm file:text-gray-700 hover:file:bg-gray-50"
                       onChange={(e) => handleSingleImageChange(e, businessImagePreview, setBusinessImageFile, setBusinessImagePreview, hotelForm.businessImage ? getApiAssetUrl(hotelForm.businessImage) : '')} />
+                  </div>
+                </div>
+                {/* The button on this section was written into the site: every
+                    hotel showed the same words and it went nowhere. */}
+                <div className="col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Button</p>
+                    <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={hotelForm.businessButtonEnabled}
+                        onChange={(e) => setHotelForm((prev) => ({ ...prev, businessButtonEnabled: e.target.checked }))}
+                        className="accent-primary-600"
+                      />
+                      Show this button
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Button Text</label>
+                      <input
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                        placeholder="Explore Meeting Rooms"
+                        disabled={!hotelForm.businessButtonEnabled}
+                        value={hotelForm.businessButtonLabel}
+                        onChange={field('businessButtonLabel')}
+                      />
+                      <p className="mt-1 text-xs text-gray-400">Leave empty for &ldquo;Explore Meeting Rooms&rdquo;.</p>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Button Link</label>
+                      <input
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                        placeholder="/hotels/your-hotel/meetings"
+                        disabled={!hotelForm.businessButtonEnabled}
+                        value={hotelForm.businessButtonLink}
+                        onChange={field('businessButtonLink')}
+                      />
+                      <p className="mt-1 text-xs text-gray-400">A path on the site or a full web address. Empty and the button goes nowhere, so leave it off instead.</p>
+                    </div>
                   </div>
                 </div>
 
