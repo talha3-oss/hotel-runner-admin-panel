@@ -1,10 +1,25 @@
 'use client'
 
+import RichTextEditor from '../../../components/RichTextEditor'
+
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ChevronUpDownIcon } from '@heroicons/react/24/outline'
 import { Faq, FaqPayload, createAdminFaq, deleteAdminFaq, fetchAdminFaqs, updateAdminFaq } from '../../../lib/api'
 
 type FormState = FaqPayload & { id: string }
+
+/** The answer is HTML now, and this row wants one line of it — tags and all
+ *  the entities they bring would otherwise be shown as text. */
+function plainText(html: string) {
+  return (html || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 const EMPTY: FormState = { id: '', question: '', answer: '', category: '', sortOrder: 0, isActive: true }
 
@@ -58,6 +73,14 @@ export default function FaqsPage() {
     e.preventDefault()
     const token = localStorage.getItem('adminToken')
     if (!token) return
+
+    // The answer used to be a textarea with `required` on it, which the browser
+    // enforced. The editor is not a form field, so the check belongs here.
+    if (!plainText(form.answer)) {
+      setError('The answer cannot be empty.')
+      return
+    }
+
     setSaving(true)
     setError('')
     try {
@@ -166,7 +189,7 @@ export default function FaqsPage() {
                   <td className="px-4 py-4 text-center text-xs text-gray-400 font-mono">{faq.sortOrder}</td>
                   <td className="px-4 py-4">
                     <p className="text-sm font-medium text-gray-900 line-clamp-1">{faq.question}</p>
-                    <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{faq.answer}</p>
+                    <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{plainText(faq.answer)}</p>
                   </td>
                   <td className="px-4 py-4 hidden md:table-cell">
                     {faq.category ? (
@@ -234,13 +257,10 @@ export default function FaqsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Answer *</label>
-                <textarea
-                  required
-                  rows={5}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-                  placeholder="Provide a clear, helpful answer…"
+                <RichTextEditor
                   value={form.answer}
-                  onChange={e => setForm(p => ({ ...p, answer: e.target.value }))}
+                  onChange={html => setForm(p => ({ ...p, answer: html }))}
+                  placeholder="Provide a clear, helpful answer. Select text to make it bigger, bold, or a link."
                 />
               </div>
 

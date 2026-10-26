@@ -44,3 +44,32 @@ input:-webkit-autofill:active {
   caret-color: #111827 !important;
   transition: background-color 9999s ease-in-out 0s !important;
 }
+
+/* ── Rich text editor ──────────────────────────────────────────────────────
+   Tailwind's preflight strips headings and lists back to plain text, which is
+   right for the app's own markup but leaves the editor showing no difference
+   between a heading and a paragraph. These rules apply inside the editor only,
+   and are mirrored by the public site's own styling of the same HTML. */
+.prose-editor { line-height: 1.6; }
+.prose-editor:focus { outline: none; }
+.prose-editor p { margin: 0 0 0.6em; }
+.prose-editor p:last-child { margin-bottom: 0; }
+.prose-editor h2 { font-size: 1.4em; font-weight: 600; margin: 0.8em 0 0.4em; }
+.prose-editor h3 { font-size: 1.15em; font-weight: 600; margin: 0.8em 0 0.4em; }
+.prose-editor ul { list-style: disc; padding-left: 1.4em; margin: 0 0 0.6em; }
+.prose-editor ol { list-style: decimal; padding-left: 1.4em; margin: 0 0 0.6em; }
+.prose-editor li { margin: 0.15em 0; }
+.prose-editor a { color: #2563eb; text-decoration: underline; }
+.prose-editor strong { font-weight: 700; }
+.prose-editor blockquote {
+  border-left: 3px solid #e5e7eb;
+  padding-left: 0.8em;
+  color: #6b7280;
+  margin: 0 0 0.6em;
+}
+.prose-editor code {
+  background: #f3f4f6;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}

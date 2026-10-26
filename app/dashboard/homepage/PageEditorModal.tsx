@@ -1,5 +1,7 @@
 'use client'
 
+import RichTextEditor from '../../../components/RichTextEditor'
+
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react'
 import {
   PlusIcon, PencilIcon, TrashIcon, XMarkIcon,
@@ -312,8 +314,12 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
-              <textarea rows={7} className={inp + ' resize-none'} value={s.content || ''} onChange={e => set({ content: e.target.value })}
-                placeholder="Write your paragraph here. Use **bold**, *italic*, ## Heading, or - list items." />
+              <RichTextEditor
+                value={s.content || ''}
+                onChange={html => set({ content: html })}
+                placeholder="Write your paragraph here. Select text to make it bigger, bold, or a link."
+                minHeight={200}
+              />
             </div>
           </>)}
 
