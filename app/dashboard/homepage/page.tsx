@@ -29,6 +29,7 @@ interface FooterData {
   copyrightText: string; partnerLogos: string[]
   partnerGroupTitle: string; partnerGroupSubtitle: string
   socialLinks: SocialLink[]
+  socialIconSize: number
 }
 interface SectionForm {
   name: string; sectionKey: string; groupKey: string
@@ -93,7 +94,7 @@ const DEFAULT_FOOTER: FooterData = {
   rightLinks:[{label:'Special Offers',href:'/special-offers'},{label:'Sitemap',href:'/sitemap'},{label:'Corporate Rates',href:'/corporate-rates'}],
   copyrightText:`© ${new Date().getFullYear()} Luxotel. All rights reserved.`,
   partnerLogos:[], partnerGroupTitle:'Dalata Hotel Group', partnerGroupSubtitle:'Part of the',
-  socialLinks:[],
+  socialLinks:[], socialIconSize:20,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -128,6 +129,12 @@ function parseFooterContent(c: Record<string, unknown>): Partial<FooterData> {
           }))
           .filter(x => x.platform)
       : [],
+    socialIconSize: (() => {
+      const n = Number(c.socialIconSize)
+      // Held to a range: a footer saved with 200 instead of 20 would push
+      // everything below it off a phone screen.
+      return Number.isFinite(n) ? Math.min(Math.max(Math.round(n), 14), 48) : DEFAULT_FOOTER.socialIconSize
+    })(),
   }
 }
 
@@ -810,6 +817,33 @@ export default function HomepagePage() {
               >
                 <PlusIcon className="h-4 w-4" /> Add Account
               </button>
+            </div>
+
+            {/* One size for the row. Icons of different sizes next to each
+                other read as a mistake, not a choice. */}
+            <div className="mb-5 flex items-center gap-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+              <label className="shrink-0 text-xs font-medium text-gray-600" htmlFor="socialIconSize">Icon Size</label>
+              <input
+                id="socialIconSize"
+                type="range"
+                min={14}
+                max={48}
+                step={1}
+                value={footer.socialIconSize}
+                onChange={e => { setFooter(prev => ({ ...prev, socialIconSize: Number(e.target.value) })); setFooterDirty(true) }}
+                className="h-1.5 flex-1 cursor-pointer accent-primary-600"
+              />
+              <span className="w-12 shrink-0 text-right font-mono text-xs text-gray-500">{footer.socialIconSize}px</span>
+              <span
+                className="flex shrink-0 items-center justify-center rounded bg-gray-900 p-2"
+                title="What the guest sees, at this size"
+                style={{ width: footer.socialIconSize + 16, height: footer.socialIconSize + 16 }}
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
+                  width={footer.socialIconSize} height={footer.socialIconSize} className="text-white">
+                  <path d={socialPath(footer.socialLinks[0]?.platform || 'facebook')} />
+                </svg>
+              </span>
             </div>
 
             {footer.socialLinks.length === 0 ? (
