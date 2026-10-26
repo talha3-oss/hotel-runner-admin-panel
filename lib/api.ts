@@ -1024,6 +1024,66 @@ export type FaqPayload = {
   isActive?: boolean
 }
 
+// ─── Newsletter / Marketing ───────────────────────────────────────────────────
+
+export interface Subscriber {
+  id: string
+  firstName: string | null
+  email: string
+  consent: boolean
+  source: string | null
+  createdAt: string
+  unsubscribedAt: string | null
+}
+
+export async function fetchSubscribers(
+  token: string,
+  params: { search?: string; page?: number; limit?: number } = {}
+) {
+  const query = new URLSearchParams()
+  if (params.search) query.set('search', params.search)
+  if (params.page) query.set('page', String(params.page))
+  if (params.limit) query.set('limit', String(params.limit))
+
+  const res = await fetch(`${API_BASE_URL}/api/v1/newsletter/admin?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function deleteSubscriber(token: string, id: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/newsletter/admin/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}
+
+/** The export arrives as a file, not JSON, so it is fetched rather than linked:
+ *  a plain link cannot carry the Authorization header. */
+export async function downloadSubscribersCsv(token: string, search = '') {
+  const query = new URLSearchParams()
+  if (search) query.set('search', search)
+  const res = await fetch(`${API_BASE_URL}/api/v1/newsletter/admin/export?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error('Export failed.')
+  return res.blob()
+}
+
+export async function saveFaqCta(
+  token: string,
+  cta: { title: string; text: string; buttonLabel: string; buttonHref: string; enabled: boolean }
+) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/faqs/admin/cta`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(cta),
+  })
+  return res.json()
+}
+
 export async function fetchAdminFaqs(token: string) {
   const res = await fetch(`${API_BASE_URL}/api/v1/faqs/admin`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -1074,6 +1134,7 @@ export const TEAM_MODULES = [
   { key: 'coupons', label: 'Coupons' },
   { key: 'faqs', label: 'FAQs' },
   { key: 'blog', label: 'Blog' },
+  { key: 'marketing', label: 'Marketing' },
   { key: 'customers', label: 'Customers' },
   { key: 'payments', label: 'Payments' },
   { key: 'invoices', label: 'Invoices' },

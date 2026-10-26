@@ -4,7 +4,7 @@ import RichTextEditor from '../../../components/RichTextEditor'
 
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ChevronUpDownIcon } from '@heroicons/react/24/outline'
-import { Faq, FaqPayload, createAdminFaq, deleteAdminFaq, fetchAdminFaqs, updateAdminFaq } from '../../../lib/api'
+import { Faq, FaqPayload, createAdminFaq, deleteAdminFaq, fetchAdminFaqs, updateAdminFaq, saveFaqCta } from '../../../lib/api'
 
 type FormState = FaqPayload & { id: string }
 
@@ -25,6 +25,24 @@ const EMPTY: FormState = { id: '', question: '', answer: '', category: '', sortO
 
 const CATEGORIES = ['Reservations', 'Dining', 'Services', 'Facilities', 'Policies', 'Accessibility', 'General']
 
+interface FaqCta {
+  title: string
+  text: string
+  buttonLabel: string
+  buttonHref: string
+  enabled: boolean
+}
+
+const DEFAULT_CTA: FaqCta = {
+  title: 'Still have questions?',
+  text: 'Our team is available 24/7 to help you with anything you need.',
+  buttonLabel: 'Contact Us',
+  buttonHref: '/contact',
+  enabled: true,
+}
+
+const ctaInput = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500'
+
 export default function FaqsPage() {
   const [faqs, setFaqs] = useState<Faq[]>([])
   const [loading, setLoading] = useState(true)
@@ -37,13 +55,23 @@ export default function FaqsPage() {
   const [form, setForm] = useState<FormState>(EMPTY)
   const [filterCategory, setFilterCategory] = useState('all')
 
+  // The block at the foot of the FAQ page on the site. All three bits of it
+  // were written into that page, and its button pointed at "/" -- so a
+  // Contact Us button took the guest to the home page.
+  const [cta, setCta] = useState(DEFAULT_CTA)
+  const [ctaDirty, setCtaDirty] = useState(false)
+  const [ctaSaving, setCtaSaving] = useState(false)
+
   const load = useCallback(async () => {
     const token = localStorage.getItem('adminToken')
     if (!token) return
     setLoading(true)
     try {
       const result = await fetchAdminFaqs(token)
-      if (result.success) setFaqs(result.faqs || [])
+      if (result.success) {
+        setFaqs(result.faqs || [])
+        if (result.cta) { setCta({ ...DEFAULT_CTA, ...result.cta }); setCtaDirty(false) }
+      }
       else setError(result.message || 'Failed to load FAQs.')
     } finally {
       setLoading(false)
@@ -128,6 +156,33 @@ export default function FaqsPage() {
   const categories = Array.from(new Set(faqs.map(f => f.category).filter(Boolean))) as string[]
   const filtered = filterCategory === 'all' ? faqs : faqs.filter(f => f.category === filterCategory)
 
+  const saveCta = async () => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setCtaSaving(true)
+    setError('')
+    setSuccess('')
+    try {
+      const result = await saveFaqCta(token, cta)
+      if (result.success) {
+        if (result.cta) setCta({ ...DEFAULT_CTA, ...result.cta })
+        setCtaDirty(false)
+        setSuccess('Saved.')
+      } else {
+        setError(result.message || 'Could not save.')
+      }
+    } catch {
+      setError('Could not reach the server.')
+    } finally {
+      setCtaSaving(false)
+    }
+  }
+
+  const editCta = (patch: Partial<FaqCta>) => {
+    setCta((prev) => ({ ...prev, ...patch }))
+    setCtaDirty(true)
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -147,6 +202,61 @@ export default function FaqsPage() {
 
       {error && <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {success && <div className="rounded-md border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
+
+      {/* The block under the questions on the site. */}
+      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">&ldquo;Still have questions?&rdquo; Block</h2>
+            <p className="mt-0.5 text-xs text-gray-400">Shown under the questions at the foot of the FAQ page.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-gray-600">
+              <input
+                type="checkbox"
+                checked={cta.enabled}
+                onChange={(e) => editCta({ enabled: e.target.checked })}
+                className="accent-primary-600"
+              />
+              Show on the site
+            </label>
+            <button
+              onClick={saveCta}
+              disabled={ctaSaving || !ctaDirty}
+              className="rounded-lg bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-40"
+            >
+              {ctaSaving ? 'Saving…' : 'Save Block'}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-gray-600">Heading</label>
+            <input className={ctaInput} value={cta.title} onChange={(e) => editCta({ title: e.target.value })}
+              placeholder="Still have questions?" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-gray-600">Text</label>
+            <textarea rows={2} className={ctaInput + ' resize-none'} value={cta.text}
+              onChange={(e) => editCta({ text: e.target.value })}
+              placeholder="Our team is available 24/7 to help you with anything you need." />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Button Text</label>
+            <input className={ctaInput} value={cta.buttonLabel} onChange={(e) => editCta({ buttonLabel: e.target.value })}
+              placeholder="Contact Us" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Button Link</label>
+            <input className={ctaInput} value={cta.buttonHref} onChange={(e) => editCta({ buttonHref: e.target.value })}
+              placeholder="/contact" />
+            <p className="mt-1 text-xs text-gray-400">
+              A path on the site, such as <code className="font-mono">/contact</code>, or a full web address.
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Filter */}
       <div className="flex items-center gap-3 flex-wrap">

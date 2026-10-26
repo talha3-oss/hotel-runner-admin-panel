@@ -25,6 +25,7 @@ import {
   IdentificationIcon,
   DocumentDuplicateIcon,
   PhotoIcon,
+  MegaphoneIcon,
 } from '@heroicons/react/24/outline'
 
 const navigation = [
@@ -42,6 +43,7 @@ const navigation = [
   { name: 'Coupons', href: '/dashboard/coupons', icon: TicketIcon, moduleKey: 'coupons' },
   { name: 'FAQs', href: '/dashboard/faqs', icon: QuestionMarkCircleIcon, moduleKey: 'faqs' },
   { name: 'Blog', href: '/dashboard/blog', icon: NewspaperIcon, moduleKey: 'blog' },
+  { name: 'Marketing', href: '/dashboard/marketing', icon: MegaphoneIcon, moduleKey: 'marketing' },
   { name: 'Customers', href: '/dashboard/customers', icon: UserGroupIcon, moduleKey: 'customers' },
   { name: 'Payments', href: '/dashboard/payments', icon: CreditCardIcon, moduleKey: 'payments' },
   { name: 'Invoices', href: '/dashboard/invoices', icon: DocumentTextIcon, moduleKey: 'invoices' },
