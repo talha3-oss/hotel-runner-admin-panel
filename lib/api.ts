@@ -260,6 +260,7 @@ export interface Hotel {
   rateTigerHotelCode?: string | null
   rateTigerReservationCode?: string | null
   name: string
+  slug?: string | null
   address?: string | null
   phone?: string | null
   email?: string | null

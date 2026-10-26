@@ -25,6 +25,7 @@ import {
   uploadRoomImage,
   updateHotel,
 } from '../../../lib/api'
+import { SITE_URL } from '../../../lib/siteUrl'
 
 type NearbyPlace = { name: string; distance: string }
 
@@ -34,6 +35,7 @@ type HotelForm = {
   rateTigerHotelCode: string
   rateTigerReservationCode: string
   name: string
+  slug: string
   locationId: string
   address: string
   phone: string
@@ -72,12 +74,26 @@ type HotelForm = {
   allowOlderChildren: boolean
 }
 
+/** Mirrors the backend's rule so the preview under the field is the address
+ *  that will actually be saved, not a guess at it. */
+function slugPreview(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
 const EMPTY_HOTEL: HotelForm = {
   id: '',
   propertyId: '',
   rateTigerHotelCode: '',
   rateTigerReservationCode: '',
   name: '',
+  slug: '',
   locationId: '',
   address: '',
   phone: '',
@@ -271,6 +287,7 @@ export default function HotelsPage() {
       rateTigerHotelCode: hotel.rateTigerHotelCode || '',
       rateTigerReservationCode: hotel.rateTigerReservationCode || '',
       name: hotel.name,
+      slug: hotel.slug || '',
       locationId: hotel.locationId,
       address: hotel.address || '',
       phone: hotel.phone || '',
@@ -442,6 +459,7 @@ export default function HotelsPage() {
 
       const payload = {
         name: hotelForm.name.trim(),
+        slug: hotelForm.slug.trim(),
         rateTigerHotelCode: hotelForm.rateTigerHotelCode.trim(),
         rateTigerReservationCode: hotelForm.rateTigerReservationCode.trim(),
         locationId: hotelForm.locationId,
@@ -730,6 +748,31 @@ export default function HotelsPage() {
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-gray-400">Auto-generated identifier — read only</p>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Permalink</label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm text-gray-400 font-mono whitespace-nowrap">/hotels/</span>
+                    <input
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-primary-500 focus:outline-none placeholder:font-sans placeholder:text-gray-400"
+                      placeholder={slugPreview(hotelForm.name) || 'built from the hotel name'}
+                      value={hotelForm.slug}
+                      onChange={field('slug')}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">
+                    The hotel&apos;s address on the site.{' '}
+                    {(slugPreview(hotelForm.slug) || slugPreview(hotelForm.name)) ? (
+                      <>This page will be at{' '}
+                        <span className="font-mono text-gray-600">
+                          {SITE_URL}/hotels/{slugPreview(hotelForm.slug) || slugPreview(hotelForm.name)}
+                        </span>.{' '}
+                      </>
+                    ) : null}
+                    Leave it empty to build one from the hotel name. Changing it breaks any link
+                    already shared.
+                  </p>
                 </div>
 
                 <div>
