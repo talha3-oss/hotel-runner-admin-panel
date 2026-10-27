@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import {
   PlusIcon, PencilIcon, TrashIcon, EyeIcon, EyeSlashIcon,
   ArrowUpIcon, ArrowDownIcon, PhotoIcon, CheckCircleIcon, XCircleIcon,
@@ -18,7 +18,10 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface NavItem { id: string; label: string; href: string; visible: boolean; openInNewTab: boolean; order: number }
+// One level of nesting: a link can sit under another one, and no deeper. A
+// menu that nests further is a menu nobody can find anything in, and the panel
+// that slides in on the site has no room to show it.
+interface NavItem { id: string; label: string; href: string; visible: boolean; openInNewTab: boolean; order: number; children?: NavItem[] }
 type LinkItem = { label: string; href: string }
 interface CardItem { title: string; link: string; image: string; imageAlt: string; linkLabel: string; _file?: File }
 interface SocialLink { platform: string; href: string }
@@ -490,27 +493,96 @@ export default function HomepagePage() {
 
   // ── Nav ─────────────────────────────────────────────────────────────────────
 
-  const openNavCreate = () => { setEditingNav(null); setNavForm({ label:'', href:'', visible:true, openInNewTab:false }); setShowNavModal(true) }
-  const openNavEdit = (item: NavItem) => { setEditingNav(item); setNavForm({ label:item.label, href:item.href, visible:item.visible, openInNewTab:item.openInNewTab }); setShowNavModal(true) }
+  // Which parent a new sub-link is being added to, or null for a top-level one.
+  const [navParentId, setNavParentId] = useState<string | null>(null)
+
+  const openNavCreate = (parentId: string | null = null) => {
+    setEditingNav(null); setNavParentId(parentId)
+    setNavForm({ label:'', href:'', visible:true, openInNewTab:false }); setShowNavModal(true)
+  }
+  const openNavEdit = (item: NavItem, parentId: string | null = null) => {
+    setEditingNav(item); setNavParentId(parentId)
+    setNavForm({ label:item.label, href:item.href, visible:item.visible, openInNewTab:item.openInNewTab }); setShowNavModal(true)
+  }
+
   const handleNavSave = () => {
-    if (!navForm.label.trim() || !navForm.href.trim()) return
-    if (editingNav) setNavItems(prev => prev.map(i => i.id === editingNav.id ? { ...i, ...navForm } : i))
-    else setNavItems(prev => [...prev, { id: Date.now().toString(), ...navForm, order: prev.length }])
+    // A parent may be a heading rather than a page, so once it has sub-links
+    // it does not need an address of its own -- they are what it is for.
+    if (!navForm.label.trim()) return
+    const isParentWithChildren = !navParentId && !!editingNav?.children?.length
+    if (!isParentWithChildren && !navForm.href.trim()) return
+
+    setNavItems(prev => {
+      if (editingNav) {
+        return prev.map(item => {
+          if (!navParentId) return item.id === editingNav.id ? { ...item, ...navForm } : item
+          if (item.id !== navParentId) return item
+          return {
+            ...item,
+            children: (item.children || []).map(c => c.id === editingNav.id ? { ...c, ...navForm } : c),
+          }
+        })
+      }
+
+      const made = { id: Date.now().toString(), ...navForm, order: 0 }
+      if (!navParentId) return [...prev, { ...made, order: prev.length, children: [] }]
+      return prev.map(item =>
+        item.id === navParentId
+          ? { ...item, children: [...(item.children || []), { ...made, order: (item.children || []).length }] }
+          : item
+      )
+    })
     setNavDirty(true)
     setShowNavModal(false)
   }
-  const moveNav = (idx: number, dir: -1|1) => { setNavItems(prev => {
-    const arr = [...prev]; const swap = idx + dir
-    if (swap < 0 || swap >= arr.length) return arr;
-    [arr[idx], arr[swap]] = [arr[swap], arr[idx]]
-    return arr.map((item, i) => ({ ...item, order: i }))
-  }); setNavDirty(true) }
+
+  const removeNav = (id: string, parentId: string | null = null) => {
+    setNavItems(prev => parentId
+      ? prev.map(item => item.id === parentId
+          ? { ...item, children: (item.children || []).filter(c => c.id !== id) }
+          : item)
+      // Deleting a parent takes its sub-links with it, which is what the
+      // confirm warns about.
+      : prev.filter(item => item.id !== id))
+    setNavDirty(true)
+  }
+
+  const toggleNavVisible = (id: string, parentId: string | null = null) => {
+    setNavItems(prev => prev.map(item => {
+      if (parentId) {
+        return item.id === parentId
+          ? { ...item, children: (item.children || []).map(c => c.id === id ? { ...c, visible: !c.visible } : c) }
+          : item
+      }
+      return item.id === id ? { ...item, visible: !item.visible } : item
+    }))
+    setNavDirty(true)
+  }
+
+  // Reordering happens within a level: a sub-link moves among its siblings,
+  // never out of its parent.
+  const moveNav = (idx: number, dir: -1|1, parentId: string | null = null) => {
+    const swapIn = (arr: NavItem[]) => {
+      const next = [...arr]; const swap = idx + dir
+      if (swap < 0 || swap >= next.length) return next;
+      [next[idx], next[swap]] = [next[swap], next[idx]]
+      return next.map((item, i) => ({ ...item, order: i }))
+    }
+    setNavItems(prev => parentId
+      ? prev.map(item => item.id === parentId ? { ...item, children: swapIn(item.children || []) } : item)
+      : swapIn(prev))
+    setNavDirty(true)
+  }
   const saveNav = async () => {
     const token = localStorage.getItem('adminToken')
     if (!token) return
     setNavSaving(true); setError('')
     try {
-      const r = await saveNavMenu(token, navItems.map((item, i) => ({ ...item, order: i })), buttons)
+      const r = await saveNavMenu(token, navItems.map((item, i) => ({
+        ...item,
+        order: i,
+        children: (item.children || []).map((child, ci) => ({ ...child, order: ci })),
+      })), buttons)
       if (r.success) {
         setNavItems(r.items || navItems)
         if (r.buttons) setButtons({ ...DEFAULT_MENU_BUTTONS, ...r.buttons })
@@ -599,7 +671,7 @@ export default function HomepagePage() {
         <div className="flex gap-2">
           {tab === 'sections' && <button onClick={openCreate} className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 transition-colors"><PlusIcon className="h-4 w-4" /> Add Section</button>}
           {tab === 'nav' && <>
-            <button onClick={openNavCreate} className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"><PlusIcon className="h-4 w-4" /> Add Link</button>
+            <button onClick={() => openNavCreate(null)} className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"><PlusIcon className="h-4 w-4" /> Add Link</button>
             <button onClick={saveNav} disabled={navSaving} className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50 transition-colors">{navSaving ? 'Saving…' : 'Save Menu'}</button>
           </>}
           {tab === 'footer' && <button onClick={saveFooter} disabled={footerSaving} className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50 transition-colors">{footerSaving ? 'Saving…' : 'Save Footer'}</button>}
@@ -674,39 +746,90 @@ export default function HomepagePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {navItems.map((item, idx) => (
-                    <tr key={item.id} className="hover:bg-gray-50">
+                  {navItems.map((item, idx) => {
+                    const children = item.children || []
+                    return (
+                    <Fragment key={item.id}>
+                    <tr className="hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-0.5">
                           <button onClick={() => moveNav(idx,-1)} disabled={idx===0} className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-20"><ArrowUpIcon className="h-3.5 w-3.5" /></button>
                           <button onClick={() => moveNav(idx,1)} disabled={idx===navItems.length-1} className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-20"><ArrowDownIcon className="h-3.5 w-3.5" /></button>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.label}</td>
-                      <td className="px-4 py-3 text-sm text-gray-500 font-mono">{item.href}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                        {item.label}
+                        {children.length > 0 && (
+                          <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                            {children.length} sub-link{children.length === 1 ? '' : 's'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500 font-mono">
+                        {item.href || <span className="font-sans italic text-gray-300">heading only</span>}
+                      </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
-                        <button onClick={() => { setNavItems(prev => prev.map(i => i.id===item.id ? { ...i, visible:!i.visible } : i)); setNavDirty(true) }}>
+                        <button onClick={() => toggleNavVisible(item.id)}>
                           {item.visible ? <EyeIcon className="h-4 w-4 text-green-500" /> : <EyeSlashIcon className="h-4 w-4 text-gray-300" />}
                         </button>
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell"><span className={`text-xs font-medium ${item.openInNewTab ? 'text-blue-600' : 'text-gray-400'}`}>{item.openInNewTab ? 'Yes' : 'No'}</span></td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => openNavCreate(item.id)} title="Add a link under this one" className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><PlusIcon className="h-3.5 w-3.5" /> Sub-link</button>
                           <button onClick={() => openNavEdit(item)} className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><PencilIcon className="h-3.5 w-3.5" /> Edit</button>
                           {resolveSiteHref(item.href) ? (
                             <a href={resolveSiteHref(item.href)!} target="_blank" rel="noopener noreferrer" title="View on site" className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"><ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> View</a>
                           ) : (
                             <span title="This link's URL is not a web address, so there is nothing to open." className="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-300"><ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> View</span>
                           )}
-                          <button onClick={() => { setNavItems(prev => prev.filter(i => i.id!==item.id)); setNavDirty(true) }} className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"><TrashIcon className="h-3.5 w-3.5" /></button>
+                          <button
+                            onClick={() => {
+                              if (children.length && !confirm(`"${item.label}" has ${children.length} sub-link${children.length === 1 ? '' : 's'}. Deleting it removes ${children.length === 1 ? 'that one' : 'those'} too.`)) return
+                              removeNav(item.id)
+                            }}
+                            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"><TrashIcon className="h-3.5 w-3.5" /></button>
                         </div>
                       </td>
                     </tr>
-                  ))}
+
+                    {children.map((child, ci) => (
+                      <tr key={child.id} className="bg-gray-50/60 hover:bg-gray-50">
+                        <td className="px-4 py-2">
+                          <div className="flex flex-col gap-0.5 pl-4">
+                            <button onClick={() => moveNav(ci,-1,item.id)} disabled={ci===0} className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-20"><ArrowUpIcon className="h-3 w-3" /></button>
+                            <button onClick={() => moveNav(ci,1,item.id)} disabled={ci===children.length-1} className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-20"><ArrowDownIcon className="h-3 w-3" /></button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-700">
+                          <span className="mr-2 text-gray-300">└</span>{child.label}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-500 font-mono">{child.href}</td>
+                        <td className="px-4 py-2 hidden sm:table-cell">
+                          <button onClick={() => toggleNavVisible(child.id, item.id)}>
+                            {child.visible ? <EyeIcon className="h-4 w-4 text-green-500" /> : <EyeSlashIcon className="h-4 w-4 text-gray-300" />}
+                          </button>
+                        </td>
+                        <td className="px-4 py-2 hidden md:table-cell"><span className={`text-xs font-medium ${child.openInNewTab ? 'text-blue-600' : 'text-gray-400'}`}>{child.openInNewTab ? 'Yes' : 'No'}</span></td>
+                        <td className="px-4 py-2 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => openNavEdit(child, item.id)} className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"><PencilIcon className="h-3 w-3" /> Edit</button>
+                            {resolveSiteHref(child.href) ? (
+                              <a href={resolveSiteHref(child.href)!} target="_blank" rel="noopener noreferrer" title="View on site" className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-100"><ArrowTopRightOnSquareIcon className="h-3 w-3" /> View</a>
+                            ) : (
+                              <span className="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-300"><ArrowTopRightOnSquareIcon className="h-3 w-3" /> View</span>
+                            )}
+                            <button onClick={() => removeNav(child.id, item.id)} className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-100"><TrashIcon className="h-3 w-3" /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    </Fragment>
+                  )})}
                 </tbody>
               </table>
             )}
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-400">Reorder with arrows · toggle visibility with the eye icon · click <strong>Save Menu</strong> to publish. These are links only — the pages themselves live under <strong>Pages</strong>.</div>
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-400">Reorder with arrows · toggle visibility with the eye icon · <strong>Sub-link</strong> puts a link underneath another one, which opens as a sliding panel on the site · click <strong>Save Menu</strong> to publish. These are links only — the pages themselves live under <strong>Pages</strong>.</div>
           </div>
 
           {/* The two buttons under the menu. They are not links in the list --
@@ -1279,16 +1402,40 @@ export default function HomepagePage() {
       )}
 
       {/* ── NAV MODAL ── */}
-      {showNavModal && (
+      {showNavModal && (() => {
+        // A parent that already has sub-links does not need an address: on the
+        // site, tapping it opens its panel rather than going anywhere.
+        const navHrefOptional = !navParentId && !!editingNav?.children?.length
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-              <h2 className="text-base font-bold text-gray-900">{editingNav ? 'Edit Link' : 'Add Link'}</h2>
+              <div>
+                <h2 className="text-base font-bold text-gray-900">
+                  {editingNav ? 'Edit Link' : navParentId ? 'Add Sub-link' : 'Add Link'}
+                </h2>
+                {navParentId && (
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    Under &ldquo;{navItems.find(i => i.id === navParentId)?.label}&rdquo;
+                  </p>
+                )}
+              </div>
               <button onClick={() => setShowNavModal(false)} className="text-gray-400 hover:text-gray-700 text-xl">&times;</button>
             </div>
             <div className="p-6 space-y-4">
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Label *</label><input className={inp} value={navForm.label} onChange={e => setNavForm(p => ({ ...p, label: e.target.value }))} placeholder="e.g. Hotels" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">URL *</label><input className={monoInp} value={navForm.href} onChange={e => setNavForm(p => ({ ...p, href: e.target.value }))} placeholder="/hotels" /></div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  URL {navHrefOptional ? <span className="text-xs font-normal text-gray-400">(optional)</span> : '*'}
+                </label>
+                <input className={monoInp} value={navForm.href} onChange={e => setNavForm(p => ({ ...p, href: e.target.value }))} placeholder="/hotels" />
+                {navHrefOptional && (
+                  <p className="mt-1 text-xs text-gray-400">
+                    This link has sub-links, so it can be a heading only — tapping it on the site opens its panel.
+                    Give it an address as well and it appears at the top of that panel.
+                  </p>
+                )}
+              </div>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
                   <input type="checkbox" checked={navForm.visible} onChange={e => setNavForm(p => ({ ...p, visible: e.target.checked }))} className="h-4 w-4 rounded border-gray-300 text-primary-600" /> Visible
@@ -1298,13 +1445,14 @@ export default function HomepagePage() {
                 </label>
               </div>
               <div className="flex gap-3 pt-1">
-                <button onClick={handleNavSave} disabled={!navForm.label.trim()||!navForm.href.trim()} className="flex-1 rounded-lg bg-primary-600 hover:bg-primary-700 text-white py-2.5 text-sm font-semibold disabled:opacity-50 transition-colors">{editingNav ? 'Update' : 'Add'}</button>
+                <button onClick={handleNavSave} disabled={!navForm.label.trim() || (!navHrefOptional && !navForm.href.trim())} className="flex-1 rounded-lg bg-primary-600 hover:bg-primary-700 text-white py-2.5 text-sm font-semibold disabled:opacity-50 transition-colors">{editingNav ? 'Update' : 'Add'}</button>
                 <button onClick={() => setShowNavModal(false)} className="flex-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 text-sm font-semibold transition-colors">Cancel</button>
               </div>
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
