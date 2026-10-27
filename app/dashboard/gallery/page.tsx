@@ -18,10 +18,10 @@ import {
   deleteGalleryImage,
   galleryThumbUrl,
   getApiAssetUrl,
-  uploadHomepageSectionImage,
-  uploadHomepageSectionVideo,
+  uploadMedia,
   GalleryFile,
 } from '../../../lib/api'
+import { UploadBar } from '../../../components/MediaPicker'
 
 // The address of the API is not worked out here any more. This file read
 // NEXT_PUBLIC_API_BASE_URL while every other screen in the panel reads
@@ -57,6 +57,8 @@ export default function GalleryPage() {
   const [preview, setPreview] = useState<GalleryFile | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [percent, setPercent] = useState<number | null>(0)
+  const [uploadLabel, setUploadLabel] = useState('')
   const uploadRef = useRef<HTMLInputElement>(null)
 
   // The search box asks the server, so it waits for a pause in typing rather
@@ -101,25 +103,22 @@ export default function GalleryPage() {
   // takes is decided by what it is, not by asking the person to say.
   const upload = async (files: FileList | null) => {
     if (!files || files.length === 0) return
+    const list = Array.from(files)
     setUploading(true)
     setError('')
 
     const failed: string[] = []
-    for (const file of Array.from(files)) {
-      try {
-        const result = file.type.startsWith('video/')
-          ? await uploadHomepageSectionVideo(file)
-          : await uploadHomepageSectionImage(file)
-        if (!result.success) failed.push(`${file.name}: ${result.message || 'refused'}`)
-      } catch {
-        failed.push(`${file.name}: could not reach the server`)
-      }
+    for (let i = 0; i < list.length; i += 1) {
+      const file = list[i]
+      setUploadLabel(list.length > 1 ? `${file.name} (${i + 1} of ${list.length})` : file.name)
+      setPercent(0)
+      const result = await uploadMedia(file, setPercent)
+      if (!result.success) failed.push(`${file.name}: ${result.message || 'refused'}`)
     }
 
     setUploading(false)
+    setUploadLabel('')
     if (failed.length) setError(failed.join(' · '))
-    // The listing is cached for fifteen seconds on the server, so a new file
-    // can be missing from the first reload after it lands.
     setPage(1)
     await load()
   }
@@ -193,6 +192,15 @@ export default function GalleryPage() {
           <p className="mt-1 text-right text-xs text-gray-400">Pictures or videos</p>
         </div>
       </div>
+
+      {uploading && (
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+          {uploadLabel && (
+            <p className="truncate border-b border-gray-100 px-5 pt-3 text-xs font-medium text-gray-700">{uploadLabel}</p>
+          )}
+          <UploadBar percent={percent} />
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>

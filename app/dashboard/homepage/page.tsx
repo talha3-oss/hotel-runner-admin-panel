@@ -6,12 +6,13 @@ import {
   ArrowUpIcon, ArrowDownIcon, PhotoIcon, CheckCircleIcon, XCircleIcon,
   ArrowTopRightOnSquareIcon, VideoCameraIcon,
 } from '@heroicons/react/24/outline'
+import MediaPicker from '../../../components/MediaPicker'
 import { resolveSiteHref } from '../../../lib/siteUrl'
 import { SOCIAL_PLATFORMS, socialLabel, socialPath } from '../../../lib/socialPlatforms'
 import {
   fetchAdminHomePageSections, createAdminHomePageSection, updateAdminHomePageSection,
   deleteAdminHomePageSection, fetchNavMenu, saveNavMenu, getApiAssetUrl,
-  uploadHomepageSectionImage, uploadHomepageSectionVideo,
+  uploadHomepageSectionImage,
   HomePageSection, HomePageSectionType, HomePageSectionStatus, HomePageSectionPayload,
   MenuButtons, DEFAULT_MENU_BUTTONS, MenuText, DEFAULT_MENU_TEXT,
   fetchHotels, updateHotel, Hotel,
@@ -382,7 +383,13 @@ export default function HomepagePage() {
   const [removeImage, setRemoveImage] = useState(false)
   const [sectionSaving, setSectionSaving] = useState(false)
   const [cardImageUploading, setCardImageUploading] = useState<number | null>(null)
-  const [videoUploading, setVideoUploading] = useState(false)
+  // Which picker is open. The library is offered beside every upload button
+  // now: a photograph already uploaded had to be uploaded again to be used
+  // again, which is how four hundred files and three copies of the same
+  // picture got there.
+  const [pickingImage, setPickingImage] = useState(false)
+  const [pickingVideo, setPickingVideo] = useState(false)
+  const [pickingCard, setPickingCard] = useState<number | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   // Nav
@@ -570,6 +577,7 @@ export default function HomepagePage() {
     setForm({ ...EMPTY_FORM, sortOrder: sections.length > 0 ? Math.max(...sections.map(s => s.sortOrder)) + 10 : 10 })
     setSectionImage(null); setSectionImagePreview(''); setRemoveImage(false)
     setError(''); setSuccess(''); setShowModal(true)
+    setPickedImage('')
   }
 
   const openEdit = (section: HomePageSection) => {
@@ -578,6 +586,7 @@ export default function HomepagePage() {
     setSectionImage(null)
     setSectionImagePreview(section.image ? getApiAssetUrl(section.image) : '')
     setRemoveImage(false)
+    setPickedImage('')
     setError(''); setSuccess(''); setShowModal(true)
   }
 
@@ -586,25 +595,6 @@ export default function HomepagePage() {
     setSectionImage(file); setRemoveImage(false)
     if (file) setSectionImagePreview(URL.createObjectURL(file))
     e.target.value = ''
-  }
-
-  // The video is uploaded as soon as it is chosen and its address kept in the
-  // form, rather than riding along with the save the way the image does. A
-  // section save is a small JSON request; attaching sixty megabytes to it
-  // would mean the whole form fails when the upload does, with nothing said
-  // about which half went wrong.
-  const handleSectionVideoChange = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    setVideoUploading(true); setError('')
-    try {
-      const result = await uploadHomepageSectionVideo(file)
-      if (result.success && result.data?.fileUrl) sf({ videoUrl: result.data.fileUrl })
-      else setError(result.message || 'Could not upload that video.')
-    } catch {
-      setError('Could not reach the server.')
-    } finally { setVideoUploading(false) }
   }
 
   const handleCardImageChange = async (idx: number, e: ChangeEvent<HTMLInputElement>) => {
@@ -622,6 +612,18 @@ export default function HomepagePage() {
         })
       }
     } finally { setCardImageUploading(null) }
+  }
+
+  // A picture chosen from the library is an address, not a file to upload, so
+  // it cannot ride along with the save the way a fresh upload does. It is sent
+  // as the section's image instead, and the preview follows it.
+  const [pickedImage, setPickedImage] = useState('')
+
+  const pickSectionImage = (url: string) => {
+    setPickedImage(url)
+    setSectionImage(null)
+    setRemoveImage(false)
+    setSectionImagePreview(getApiAssetUrl(url))
   }
 
   const handleSectionSubmit = async (e: FormEvent) => {
@@ -647,6 +649,7 @@ export default function HomepagePage() {
         imageAlt: form.imageAlt,
         content: JSON.stringify(contentJson),
         ...(sectionImage && { image: sectionImage }),
+        ...(!sectionImage && pickedImage && { image: pickedImage }),
         ...(removeImage && { removeImage: true }),
       }
       const result = editingSection
@@ -1560,11 +1563,24 @@ export default function HomepagePage() {
                                     className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
                                 </div>
                               ) : (
-                                <label className={`flex items-center gap-2 cursor-pointer px-3 py-2 border border-dashed border-gray-300 rounded-lg bg-white text-xs text-gray-500 hover:bg-gray-50 transition-colors ${cardImageUploading === idx ? 'opacity-50 pointer-events-none' : ''}`}>
-                                  <PhotoIcon className="h-4 w-4 text-gray-400" />
-                                  {cardImageUploading === idx ? 'Uploading…' : 'Upload Image'}
-                                  <input type="file" accept="image/*" className="hidden" onChange={e => handleCardImageChange(idx, e)} />
-                                </label>
+                                <div className="flex flex-wrap gap-2">
+                                  <button type="button" onClick={() => setPickingCard(idx)}
+                                    className="inline-flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg bg-white text-xs text-gray-500 hover:bg-gray-50 transition-colors">
+                                    <PhotoIcon className="h-4 w-4 text-gray-400" /> Choose from gallery
+                                  </button>
+                                  <label className={`inline-flex items-center gap-2 cursor-pointer px-3 py-2 border border-dashed border-gray-300 rounded-lg bg-white text-xs text-gray-500 hover:bg-gray-50 transition-colors ${cardImageUploading === idx ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <PhotoIcon className="h-4 w-4 text-gray-400" />
+                                    {cardImageUploading === idx ? 'Uploading…' : 'Upload Image'}
+                                    <input type="file" accept="image/*" className="hidden" onChange={e => handleCardImageChange(idx, e)} />
+                                  </label>
+                                </div>
+                              )}
+                              {pickingCard === idx && (
+                                <MediaPicker
+                                  kind="image"
+                                  onPick={(url) => updateCard(idx, 'image', url)}
+                                  onClose={() => setPickingCard(null)}
+                                />
                               )}
                             </div>
                           </div>
@@ -1631,10 +1647,16 @@ export default function HomepagePage() {
                       )}
                     </div>
                     <div className="flex-1 space-y-2">
-                      <label className="flex items-center gap-2 cursor-pointer w-fit px-4 py-2 border border-dashed border-gray-400 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-sm text-gray-600">
-                        <PhotoIcon className="h-4 w-4 text-gray-400" /> Upload Image
-                        <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleSectionImageChange} />
-                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => setPickingImage(true)}
+                          className="flex items-center gap-2 px-4 py-2 border border-dashed border-gray-400 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-sm text-gray-600">
+                          <PhotoIcon className="h-4 w-4 text-gray-400" /> Choose from gallery
+                        </button>
+                        <label className="flex items-center gap-2 cursor-pointer px-4 py-2 border border-dashed border-gray-400 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-sm text-gray-600">
+                          <PhotoIcon className="h-4 w-4 text-gray-400" /> Upload Image
+                          <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleSectionImageChange} />
+                        </label>
+                      </div>
                       <input className={inp} placeholder="Alt text for accessibility" value={form.imageAlt} onChange={e => sf({ imageAlt: e.target.value })} />
                     </div>
                   </div>
@@ -1671,17 +1693,24 @@ export default function HomepagePage() {
                         )}
                       </div>
                       <div className="flex-1 space-y-2">
-                        <label className={`flex items-center gap-2 cursor-pointer w-fit px-4 py-2 border border-dashed border-gray-400 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-sm text-gray-600 ${videoUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <button type="button" onClick={() => setPickingVideo(true)}
+                          className="flex items-center gap-2 px-4 py-2 border border-dashed border-gray-400 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-sm text-gray-600">
                           <VideoCameraIcon className="h-4 w-4 text-gray-400" />
-                          {videoUploading ? 'Uploading…' : form.videoUrl ? 'Replace Video' : 'Upload Video'}
-                          <input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime" className="hidden" onChange={handleSectionVideoChange} />
-                        </label>
+                          {form.videoUrl ? 'Change video' : 'Choose or upload video'}
+                        </button>
                         {form.videoUrl && (
                           <p className="text-xs text-gray-400 break-all">{form.videoUrl}</p>
                         )}
                       </div>
                     </div>
                   </div>
+
+                  {pickingImage && (
+                    <MediaPicker kind="image" onPick={pickSectionImage} onClose={() => setPickingImage(false)} />
+                  )}
+                  {pickingVideo && (
+                    <MediaPicker kind="video" onPick={(url) => sf({ videoUrl: url })} onClose={() => setPickingVideo(false)} />
+                  )}
                 </div>
               )}
             </form>

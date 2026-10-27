@@ -1,15 +1,16 @@
 'use client'
 
 import RichTextEditor from '../../../components/RichTextEditor'
+import MediaPicker from '../../../components/MediaPicker'
 
-import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   PlusIcon, PencilIcon, TrashIcon, XMarkIcon,
   PhotoIcon, ChevronUpIcon, ChevronDownIcon, CheckCircleIcon, VideoCameraIcon,
 } from '@heroicons/react/24/outline'
 import {
   fetchAdminPages, fetchAdminPageById, updateLandingPage,
-  uploadHomepageSectionImage, uploadHomepageSectionVideo, getApiAssetUrl, createAdminContentPage,
+  getApiAssetUrl, createAdminContentPage,
 } from '../../../lib/api'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
@@ -130,98 +131,58 @@ function buildEmpty(type: SectionType): ContentSection {
   return { type }
 }
 
-// ─── Image Upload Box ─────────────────────────────────────────────────────────
+// ─── Media Box ────────────────────────────────────────────────────────────────
 
-function ImageUploadBox({ value, onChange, label = 'Background Image' }: { value: string; onChange: (url: string) => void; label?: string }) {
-  const [uploading, setUploading] = useState(false)
-  const ref = useRef<HTMLInputElement>(null)
-
-  const handle = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    try {
-      const result = await uploadHomepageSectionImage(file)
-      if (result.success && result.data?.fileUrl) onChange(result.data.fileUrl)
-    } finally { setUploading(false); if (ref.current) ref.current.value = '' }
-  }
-
-  const imgSrc = value ? (value.startsWith('http') ? value : getApiAssetUrl(value)) : ''
-
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
-      <div className="flex items-center gap-4">
-        {imgSrc ? (
-          <img src={imgSrc} alt="" className="h-24 w-40 rounded-xl object-cover border border-gray-200 flex-shrink-0" />
-        ) : (
-          <div className="h-24 w-40 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center flex-shrink-0 bg-gray-50">
-            <PhotoIcon className="h-7 w-7 text-gray-300" />
-          </div>
-        )}
-        <div className="flex flex-col gap-2">
-          <button type="button" onClick={() => ref.current?.click()} disabled={uploading}
-            className="px-4 py-2 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">
-            {uploading ? 'Uploading…' : 'Upload Image'}
-          </button>
-          {value && (
-            <button type="button" onClick={() => onChange('')}
-              className="px-4 py-2 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50">
-              Remove
-            </button>
-          )}
-        </div>
-        <input ref={ref} type="file" accept="image/*" onChange={handle} className="hidden" />
-      </div>
-    </div>
-  )
-}
-
-// ─── Video Upload Box ─────────────────────────────────────────────────────────
-
-/** The same shape as the picture box above it. A section keeps both: the video
- *  is what plays, and the picture is what shows while it loads and on anything
- *  that will not play it. */
-function VideoUploadBox({ value, onChange, label = 'Background Video (optional)' }: { value: string; onChange: (url: string) => void; label?: string }) {
-  const [uploading, setUploading] = useState(false)
-  const [error, setError] = useState('')
-  const ref = useRef<HTMLInputElement>(null)
-
-  const handle = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true); setError('')
-    try {
-      const result = await uploadHomepageSectionVideo(file)
-      if (result.success && result.data?.fileUrl) onChange(result.data.fileUrl)
-      else setError(result.message || 'Could not upload that video.')
-    } catch {
-      setError('Could not reach the server.')
-    } finally { setUploading(false); if (ref.current) ref.current.value = '' }
-  }
-
+/** One field for a picture or a video: pick from the library, or upload.
+ *
+ *  Every one of these could only ever upload. A photograph already in the
+ *  library had to be uploaded a second time to be used a second time, which is
+ *  how the library ended up with three copies of the same quad bike. The
+ *  library comes first now.
+ */
+function MediaBox({
+  value,
+  onChange,
+  kind = 'image',
+  label,
+  hint,
+}: {
+  value: string
+  onChange: (url: string) => void
+  kind?: 'image' | 'video'
+  label?: string
+  hint?: string
+}) {
+  const [picking, setPicking] = useState(false)
   const src = value ? (value.startsWith('http') ? value : getApiAssetUrl(value)) : ''
+  const noun = kind === 'video' ? 'video' : 'image'
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <p className="mb-2 text-xs text-gray-400">
-        Plays muted and on a loop behind this section, instead of the picture above.
-        MP4, WebM, Ogg or MOV, up to 60 MB.
-      </p>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {label || (kind === 'video' ? 'Background Video (optional)' : 'Background Image')}
+      </label>
+      {hint && <p className="mb-2 text-xs text-gray-400">{hint}</p>}
       <div className="flex items-center gap-4">
         {src ? (
-          <video src={src} controls muted playsInline preload="metadata"
-            className="h-24 w-40 rounded-xl border border-gray-200 bg-black object-cover flex-shrink-0" />
+          kind === 'video' ? (
+            <video src={src} controls muted playsInline preload="metadata"
+              className="h-24 w-40 rounded-xl border border-gray-200 bg-black object-cover flex-shrink-0" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={src} alt="" className="h-24 w-40 rounded-xl object-cover border border-gray-200 flex-shrink-0" />
+          )
         ) : (
           <div className="h-24 w-40 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center flex-shrink-0 bg-gray-50">
-            <VideoCameraIcon className="h-7 w-7 text-gray-300" />
+            {kind === 'video'
+              ? <VideoCameraIcon className="h-7 w-7 text-gray-300" />
+              : <PhotoIcon className="h-7 w-7 text-gray-300" />}
           </div>
         )}
         <div className="flex flex-col gap-2">
-          <button type="button" onClick={() => ref.current?.click()} disabled={uploading}
-            className="px-4 py-2 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50">
-            {uploading ? 'Uploading…' : value ? 'Replace Video' : 'Upload Video'}
+          <button type="button" onClick={() => setPicking(true)}
+            className="px-4 py-2 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50">
+            {value ? `Change ${noun}` : `Choose or upload ${noun}`}
           </button>
           {value && (
             <button type="button" onClick={() => onChange('')}
@@ -230,10 +191,11 @@ function VideoUploadBox({ value, onChange, label = 'Background Video (optional)'
             </button>
           )}
         </div>
-        <input ref={ref} type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime"
-          onChange={handle} className="hidden" />
       </div>
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+
+      {picking && (
+        <MediaPicker kind={kind} onPick={onChange} onClose={() => setPicking(false)} />
+      )}
     </div>
   )
 }
@@ -268,17 +230,9 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
   const updOfferIncludes = (i: number, raw: string) => {
     const arr = [...offers]; arr[i] = { ...arr[i], includes: raw.split('\n').map(x => x.trim()).filter(Boolean) }; setOffers(arr)
   }
-  const [offerImgUploading, setOfferImgUploading] = useState<number | null>(null)
-  const offerImgRefs = useRef<(HTMLInputElement | null)[]>([])
-  const handleOfferImg = async (i: number, e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]; e.target.value = ''
-    if (!file) return
-    setOfferImgUploading(i)
-    try {
-      const result = await uploadHomepageSectionImage(file)
-      if (result.success) updOffer(i, 'image', result.data?.fileUrl || '')
-    } finally { setOfferImgUploading(null) }
-  }
+  // Which card is choosing a picture, or null. The library opens here too --
+  // an offer card almost always wants a photograph that already exists.
+  const [offerPicking, setOfferPicking] = useState<number | null>(null)
 
   // ── CONTACT-INFO
   const contacts = (s.items || []) as ContactItem[]
@@ -368,9 +322,10 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
                 <input className={monoInp} value={s.buttonHref || ''} onChange={e => set({ buttonHref: e.target.value })} placeholder="/booking" />
               </div>
             </div>
-            <ImageUploadBox value={s.image || ''} onChange={url => set({ image: url })}
+            <MediaBox value={s.image || ''} onChange={url => set({ image: url })}
               label="Background Image (used when there is no video)" />
-            <VideoUploadBox value={s.videoUrl || ''} onChange={url => set({ videoUrl: url })} />
+            <MediaBox kind="video" value={s.videoUrl || ''} onChange={url => set({ videoUrl: url })}
+              hint="Plays muted and on a loop behind this section, instead of the picture above. MP4, WebM, Ogg or MOV, up to 60 MB." />
           </>)}
 
           {/* ══ TEXT ══ */}
@@ -486,18 +441,25 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
                       <label className="block text-xs font-medium text-gray-600 mb-1">Card Image</label>
                       {offer.image ? (
                         <div className="flex items-center gap-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={offer.image.startsWith('http') ? offer.image : getApiAssetUrl(offer.image)}
                             alt="" className="h-12 w-20 rounded-lg object-cover border border-gray-200" />
+                          <button type="button" onClick={() => setOfferPicking(i)} className="text-xs text-gray-600 hover:text-gray-900">Change</button>
                           <button type="button" onClick={() => updOffer(i, 'image', '')} className="text-xs text-red-500 hover:text-red-700">Remove</button>
                         </div>
                       ) : (
-                        <label className={`flex items-center gap-2 cursor-pointer px-3 py-2 border border-dashed border-gray-300 rounded-lg bg-white text-xs text-gray-500 hover:bg-gray-50 ${offerImgUploading === i ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <button type="button" onClick={() => setOfferPicking(i)}
+                          className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg bg-white text-xs text-gray-500 hover:bg-gray-50">
                           <PhotoIcon className="h-4 w-4 text-gray-400" />
-                          {offerImgUploading === i ? 'Uploading…' : 'Upload Image'}
-                          <input type="file" accept="image/*" className="hidden"
-                            ref={el => { offerImgRefs.current[i] = el }}
-                            onChange={e => handleOfferImg(i, e)} />
-                        </label>
+                          Choose or upload image
+                        </button>
+                      )}
+                      {offerPicking === i && (
+                        <MediaPicker
+                          kind="image"
+                          onPick={(url) => updOffer(i, 'image', url)}
+                          onClose={() => setOfferPicking(null)}
+                        />
                       )}
                     </div>
                   </div>
@@ -538,7 +500,7 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
               <label className="block text-sm font-medium text-gray-700 mb-1">Contact Note <span className="text-xs text-gray-400 font-normal">(optional — shown below button)</span></label>
               <input className={inp} value={s.contactNote || ''} onChange={e => set({ contactNote: e.target.value })} placeholder="Email: info@luxotel.com  |  Phone: +44 20 7123 4567" />
             </div>
-            <ImageUploadBox value={s.image || ''} onChange={url => set({ image: url })} label="Background Image (optional)" />
+            <MediaBox value={s.image || ''} onChange={url => set({ image: url })} label="Background Image (optional)" />
           </>)}
 
           {/* ══ CONTACT-INFO ══ */}

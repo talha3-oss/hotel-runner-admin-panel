@@ -611,20 +611,76 @@ export async function uploadHomepageSectionImage(file: File) {
   return res.json()
 }
 
-/** The same shape as the image upload, so a caller that knows which it is
- *  sending can treat the two alike. Videos are capped at 60 MB by the API --
- *  a background video is decoration, and a guest will not wait for more. */
-export async function uploadHomepageSectionVideo(file: File) {
-  const formData = new FormData()
-  formData.append('video', file)
+export interface UploadResult {
+  success: boolean
+  message?: string
+  data?: { fileUrl: string; filename?: string; size?: number; mimetype?: string }
+}
 
-  const res = await fetch(`${API_BASE_URL}/upload-video-multer`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${localStorage.getItem('adminToken') || ''}` },
-    body: formData,
+/** Which endpoint a file takes is decided by what it is, not by asking. */
+export const isVideoFile = (file: File) =>
+  file.type.startsWith('video/') || /\.(mp4|webm|ogv|mov|m4v)$/i.test(file.name)
+
+/** Uploads a picture or a video and reports how far along it is.
+ *
+ *  XMLHttpRequest rather than fetch: fetch cannot report upload progress at
+ *  all, so a sixty megabyte video sat behind the word "Uploading…" with no
+ *  way to tell a slow upload from a stuck one. That is the whole reason this
+ *  exists -- the request itself is the same one.
+ *
+ *  `onProgress` is given a whole percent, or null when the browser cannot say
+ *  (a request whose length it does not know), so a caller can fall back to an
+ *  indeterminate bar rather than a bar frozen at zero. */
+export function uploadMedia(
+  file: File,
+  onProgress?: (percent: number | null) => void
+): Promise<UploadResult> {
+  const video = isVideoFile(file)
+  const field = video ? 'video' : 'image'
+  const url = `${API_BASE_URL}/${video ? 'upload-video-multer' : 'upload-image-multer'}`
+
+  return new Promise((resolve) => {
+    const form = new FormData()
+    form.append(field, file)
+
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url)
+    xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('adminToken') || ''}`)
+    // Content-Type is left alone on purpose: the browser has to set the
+    // multipart boundary itself.
+
+    xhr.upload.onprogress = (e) => {
+      if (!onProgress) return
+      onProgress(e.lengthComputable ? Math.round((e.loaded / e.total) * 100) : null)
+    }
+
+    // The bytes are gone but the server has not answered yet, which on a big
+    // file is a long wait. Showing 100% is honest about the upload and the
+    // caller says "finishing" rather than implying it is done.
+    xhr.upload.onload = () => onProgress?.(100)
+
+    xhr.onload = () => {
+      try {
+        resolve(JSON.parse(xhr.responseText))
+      } catch {
+        resolve({ success: false, message: `The server replied with ${xhr.status}.` })
+      }
+    }
+
+    // A file over the limit is refused while it is still being sent, and the
+    // browser reports that as a failed request rather than letting the reply
+    // be read -- so the size is named here as well as by the API.
+    xhr.onerror = () =>
+      resolve({
+        success: false,
+        message: video
+          ? 'The upload failed. Videos must be 60 MB or less.'
+          : 'The upload failed. Images must be 5 MB or less.',
+      })
+    xhr.onabort = () => resolve({ success: false, message: 'Upload cancelled.' })
+
+    xhr.send(form)
   })
-
-  return res.json()
 }
 
 export interface AdminUser {
@@ -1407,13 +1463,14 @@ export interface GalleryListResult {
 
 export async function fetchGallery(
   token: string,
-  params: { search?: string; page?: number; limit?: number; folder?: string } = {}
+  params: { search?: string; page?: number; limit?: number; folder?: string; kind?: 'image' | 'video' } = {}
 ): Promise<GalleryListResult> {
   const query = new URLSearchParams()
   if (params.search) query.set('search', params.search)
   if (params.page) query.set('page', String(params.page))
   if (params.limit) query.set('limit', String(params.limit))
   if (params.folder) query.set('folder', params.folder)
+  if (params.kind) query.set('kind', params.kind)
 
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/gallery?${query.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
