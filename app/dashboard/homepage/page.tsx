@@ -4,14 +4,14 @@ import { ChangeEvent, FormEvent, Fragment, useCallback, useEffect, useRef, useSt
 import {
   PlusIcon, PencilIcon, TrashIcon, EyeIcon, EyeSlashIcon,
   ArrowUpIcon, ArrowDownIcon, PhotoIcon, CheckCircleIcon, XCircleIcon,
-  ArrowTopRightOnSquareIcon,
+  ArrowTopRightOnSquareIcon, VideoCameraIcon,
 } from '@heroicons/react/24/outline'
 import { resolveSiteHref } from '../../../lib/siteUrl'
 import { SOCIAL_PLATFORMS, socialLabel, socialPath } from '../../../lib/socialPlatforms'
 import {
   fetchAdminHomePageSections, createAdminHomePageSection, updateAdminHomePageSection,
   deleteAdminHomePageSection, fetchNavMenu, saveNavMenu, getApiAssetUrl,
-  uploadHomepageSectionImage,
+  uploadHomepageSectionImage, uploadHomepageSectionVideo,
   HomePageSection, HomePageSectionType, HomePageSectionStatus, HomePageSectionPayload,
   MenuButtons, DEFAULT_MENU_BUTTONS, MenuText, DEFAULT_MENU_TEXT,
   fetchHotels, updateHotel, Hotel,
@@ -143,6 +143,11 @@ interface SectionForm {
   buttonLabel: string; buttonLink: string; secondaryButtonLabel: string; secondaryButtonLink: string
   buttonEnabled: boolean
   imageAlt: string
+  // A background video for the section. Kept in content rather than as a
+  // column of its own: it is one optional field, and adding a column means a
+  // migration on a live database for something the section's JSON already
+  // holds comfortably.
+  videoUrl: string
   // type-specific content fields
   locationPlaceholder: string      // HERO
   secondaryTitle: string           // TEXT
@@ -186,6 +191,7 @@ const EMPTY_FORM: SectionForm = {
   name:'', sectionKey:'', groupKey:'general', sectionType:'FEATURE', status:'ACTIVE', sortOrder:0,
   badge:'', eyebrow:'', title:'', subtitle:'', description:'',
   buttonLabel:'', buttonLink:'', secondaryButtonLabel:'', secondaryButtonLink:'', buttonEnabled:true, imageAlt:'',
+  videoUrl:'',
   locationPlaceholder:'', secondaryTitle:'', secondaryDescription:'', cards:[],
   headingSize:60, headingWeight:300, bodySize:18,
 }
@@ -265,6 +271,7 @@ function sectionToForm(section: HomePageSection): SectionForm {
     buttonLabel: section.buttonLabel || '', buttonLink: section.buttonLink || '',
     secondaryButtonLabel: section.secondaryButtonLabel || '', secondaryButtonLink: section.secondaryButtonLink || '',
     imageAlt: section.imageAlt || '',
+    videoUrl: String(c.videoUrl || ''),
     locationPlaceholder: String(c.locationPlaceholder || ''),
     secondaryTitle: String(c.secondaryTitle || ''),
     secondaryDescription: String(c.secondaryDescription || ''),
@@ -284,7 +291,7 @@ const numOr = (value: unknown, fallback: number) => {
 function buildContent(form: SectionForm): Record<string, unknown> {
   // The style rides alongside whatever the section type stores, rather than
   // inside the switch, so adding a type cannot quietly drop it.
-  return { ...typeContent(form), style: {
+  return { ...typeContent(form), videoUrl: form.videoUrl, style: {
     headingSize: form.headingSize,
     headingWeight: form.headingWeight,
     bodySize: form.bodySize,
@@ -375,6 +382,7 @@ export default function HomepagePage() {
   const [removeImage, setRemoveImage] = useState(false)
   const [sectionSaving, setSectionSaving] = useState(false)
   const [cardImageUploading, setCardImageUploading] = useState<number | null>(null)
+  const [videoUploading, setVideoUploading] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   // Nav
@@ -578,6 +586,25 @@ export default function HomepagePage() {
     setSectionImage(file); setRemoveImage(false)
     if (file) setSectionImagePreview(URL.createObjectURL(file))
     e.target.value = ''
+  }
+
+  // The video is uploaded as soon as it is chosen and its address kept in the
+  // form, rather than riding along with the save the way the image does. A
+  // section save is a small JSON request; attaching sixty megabytes to it
+  // would mean the whole form fails when the upload does, with nothing said
+  // about which half went wrong.
+  const handleSectionVideoChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setVideoUploading(true); setError('')
+    try {
+      const result = await uploadHomepageSectionVideo(file)
+      if (result.success && result.data?.fileUrl) sf({ videoUrl: result.data.fileUrl })
+      else setError(result.message || 'Could not upload that video.')
+    } catch {
+      setError('Could not reach the server.')
+    } finally { setVideoUploading(false) }
   }
 
   const handleCardImageChange = async (idx: number, e: ChangeEvent<HTMLInputElement>) => {
@@ -1585,8 +1612,8 @@ export default function HomepagePage() {
                       ? 'Dining Section Background Image'
                       : form.sectionKey === 'hotels-business-feature'
                       ? 'Business Section Background Image'
-                      : form.sectionKey === 'hotels-hero-banner'
-                      ? 'Hero Background Image (overrides video)'
+                      : form.sectionType === 'HERO'
+                      ? 'Hero Background Image (used when there is no video)'
                       : form.sectionType === 'LOCATION'
                       ? 'Section Background Image (optional)'
                       : 'Background / Feature Image'}
@@ -1609,6 +1636,50 @@ export default function HomepagePage() {
                         <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleSectionImageChange} />
                       </label>
                       <input className={inp} placeholder="Alt text for accessibility" value={form.imageAlt} onChange={e => sf({ imageAlt: e.target.value })} />
+                    </div>
+                  </div>
+
+                  {/* A background video. Optional, and the picture above is
+                      what shows when there is none -- so a section always has
+                      something behind it, and a phone on a slow connection
+                      still gets the picture. */}
+                  <div className="mt-6">
+                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 pb-2 border-b">
+                      Background Video (optional)
+                    </h3>
+                    <p className="mb-3 text-xs text-gray-400">
+                      Plays muted and on a loop behind this section. Used instead of the picture
+                      above when both are set. MP4, WebM, Ogg or MOV, up to 60 MB.
+                    </p>
+                    <div className="flex gap-4 items-start">
+                      <div className="flex-shrink-0">
+                        {form.videoUrl ? (
+                          <div className="relative">
+                            <video
+                              src={getApiAssetUrl(form.videoUrl)}
+                              className="h-28 w-44 rounded-lg border border-gray-200 bg-black object-cover"
+                              muted
+                              playsInline
+                              preload="metadata"
+                              controls
+                            />
+                            <button type="button" onClick={() => sf({ videoUrl: '' })}
+                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600">&times;</button>
+                          </div>
+                        ) : (
+                          <div className="h-28 w-44 bg-gray-100 rounded-lg border border-dashed border-gray-300 flex items-center justify-center"><VideoCameraIcon className="h-8 w-8 text-gray-300" /></div>
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <label className={`flex items-center gap-2 cursor-pointer w-fit px-4 py-2 border border-dashed border-gray-400 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-sm text-gray-600 ${videoUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                          <VideoCameraIcon className="h-4 w-4 text-gray-400" />
+                          {videoUploading ? 'Uploading…' : form.videoUrl ? 'Replace Video' : 'Upload Video'}
+                          <input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime" className="hidden" onChange={handleSectionVideoChange} />
+                        </label>
+                        {form.videoUrl && (
+                          <p className="text-xs text-gray-400 break-all">{form.videoUrl}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

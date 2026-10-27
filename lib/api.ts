@@ -611,6 +611,22 @@ export async function uploadHomepageSectionImage(file: File) {
   return res.json()
 }
 
+/** The same shape as the image upload, so a caller that knows which it is
+ *  sending can treat the two alike. Videos are capped at 60 MB by the API --
+ *  a background video is decoration, and a guest will not wait for more. */
+export async function uploadHomepageSectionVideo(file: File) {
+  const formData = new FormData()
+  formData.append('video', file)
+
+  const res = await fetch(`${API_BASE_URL}/upload-video-multer`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${localStorage.getItem('adminToken') || ''}` },
+    body: formData,
+  })
+
+  return res.json()
+}
+
 export interface AdminUser {
   id: string
   email: string
@@ -1371,6 +1387,10 @@ export interface GalleryFile {
   size: number
   uploadedAt: string
   inUse: boolean
+  /** Pictures and videos sit in one library. A video has no thumbnail --
+   *  pulling a frame out of one needs ffmpeg, which the server does not have
+   *  -- so the grid plays it instead. */
+  kind: 'image' | 'video'
 }
 
 export interface GalleryListResult {
