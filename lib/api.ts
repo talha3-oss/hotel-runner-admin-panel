@@ -574,6 +574,8 @@ export interface SiteSettings {
   siteTagline: string
   logo: string
   favicon: string
+  /** Height of the logo in the site's header on a wide screen, in pixels. */
+  logoHeight: number
 }
 
 export async function fetchSiteSettings(token: string) {

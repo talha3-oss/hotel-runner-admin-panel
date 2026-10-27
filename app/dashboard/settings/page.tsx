@@ -180,7 +180,7 @@ export default function SettingsPage() {
   }, [searchParams])
 
   // Site settings — the name, logo and favicon the public site uses.
-  const [site, setSite] = useState<SiteSettings>({ siteName: '', siteTagline: '', logo: '', favicon: '' })
+  const [site, setSite] = useState<SiteSettings>({ siteName: '', siteTagline: '', logo: '', favicon: '', logoHeight: 56 })
   const [siteSaving, setSiteSaving] = useState(false)
   const [siteUploading, setSiteUploading] = useState<'logo' | 'favicon' | null>(null)
   const [siteMsg, setSiteMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -600,11 +600,19 @@ export default function SettingsPage() {
 
               {/* Logo */}
               <div className="rounded-xl border border-gray-200 p-4">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                  <div className="flex h-20 w-44 shrink-0 items-center justify-center rounded-lg bg-gray-900 p-3">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  {/* Drawn at the size it will be on the site, on the dark bar
+                      it will sit on — guessing a number and then loading the
+                      site to look is the part worth removing. */}
+                  <div className="flex min-h-[80px] w-56 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-900 p-3">
                     {site.logo ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={getApiAssetUrl(site.logo)} alt="Site logo" className="max-h-full max-w-full object-contain" />
+                      <img
+                        src={getApiAssetUrl(site.logo)}
+                        alt="Site logo"
+                        className="w-auto max-w-full object-contain"
+                        style={{ height: site.logoHeight }}
+                      />
                     ) : (
                       <PhotoIcon className="h-8 w-8 text-gray-600" />
                     )}
@@ -614,6 +622,25 @@ export default function SettingsPage() {
                     <p className="mt-0.5 text-xs text-gray-400">
                       Shown in the middle of the header on every page. A wide PNG with a transparent
                       background works best — it sits on a dark bar, which is why the preview is dark.
+                    </p>
+
+                    <div className="mt-3 flex items-center gap-3">
+                      <label className="shrink-0 text-xs font-medium text-gray-600" htmlFor="logoHeight">Size</label>
+                      <input
+                        id="logoHeight"
+                        type="range"
+                        min={24}
+                        max={140}
+                        step={1}
+                        value={site.logoHeight}
+                        onChange={e => setSite(p => ({ ...p, logoHeight: Number(e.target.value) }))}
+                        className="h-1.5 flex-1 cursor-pointer accent-primary-600"
+                      />
+                      <span className="w-14 shrink-0 text-right font-mono text-xs text-gray-500">{site.logoHeight}px</span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-400">
+                      Its height on a wide screen. Phones scale down from this on their own, so there is no
+                      second number to fill in.
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-3">
                       <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
