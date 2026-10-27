@@ -23,6 +23,18 @@ import {
 // menu that nests further is a menu nobody can find anything in, and the panel
 // that slides in on the site has no room to show it.
 interface NavItem { id: string; label: string; href: string; visible: boolean; openInNewTab: boolean; order: number; children?: NavItem[] }
+
+// Whether a link actually goes anywhere. "#" is what gets typed to get past a
+// box insisting on an address when the link is meant to be a heading; the site
+// treated it as a real one, which is how a parent appeared twice in its own
+// panel. It counts as no address here too, so the two agree.
+const isRealHref = (href?: string) => {
+  const value = (href || '').trim()
+  if (!value) return false
+  if (/^#!?$/.test(value)) return false
+  if (/^javascript:/i.test(value)) return false
+  return true
+}
 type LinkItem = { label: string; href: string }
 interface CardItem { title: string; link: string; image: string; imageAlt: string; linkLabel: string; _file?: File }
 interface SocialLink { platform: string; href: string }
@@ -557,7 +569,7 @@ export default function HomepagePage() {
     // it does not need an address of its own -- they are what it is for.
     if (!navForm.label.trim()) return
     const isParentWithChildren = !navParentId && !!editingNav?.children?.length
-    if (!isParentWithChildren && !navForm.href.trim()) return
+    if (!isParentWithChildren && !isRealHref(navForm.href)) return
 
     setNavItems(prev => {
       if (editingNav) {
@@ -872,7 +884,9 @@ export default function HomepagePage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500 font-mono">
-                        {item.href || <span className="font-sans italic text-gray-300">heading only</span>}
+                        {isRealHref(item.href)
+                          ? item.href
+                          : <span className="font-sans italic text-gray-300">heading only</span>}
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <button onClick={() => toggleNavVisible(item.id)}>
@@ -910,7 +924,11 @@ export default function HomepagePage() {
                         <td className="px-4 py-2 text-sm text-gray-700">
                           <span className="mr-2 text-gray-300">└</span>{child.label}
                         </td>
-                        <td className="px-4 py-2 text-sm text-gray-500 font-mono">{child.href}</td>
+                        <td className="px-4 py-2 text-sm font-mono">
+                          {isRealHref(child.href)
+                            ? <span className="text-gray-500">{child.href}</span>
+                            : <span className="font-sans italic text-amber-600">no address yet — add one</span>}
+                        </td>
                         <td className="px-4 py-2 hidden sm:table-cell">
                           <button onClick={() => toggleNavVisible(child.id, item.id)}>
                             {child.visible ? <EyeIcon className="h-4 w-4 text-green-500" /> : <EyeSlashIcon className="h-4 w-4 text-gray-300" />}
@@ -1511,6 +1529,8 @@ export default function HomepagePage() {
       {showNavModal && (() => {
         // A parent that already has sub-links does not need an address: on the
         // site, tapping it opens its panel rather than going anywhere.
+        // A parent with sub-links does not need an address: on the site,
+        // tapping it opens its panel rather than going anywhere.
         const navHrefOptional = !navParentId && !!editingNav?.children?.length
         return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -1535,6 +1555,12 @@ export default function HomepagePage() {
                   URL {navHrefOptional ? <span className="text-xs font-normal text-gray-400">(optional)</span> : '*'}
                 </label>
                 <input className={monoInp} value={navForm.href} onChange={e => setNavForm(p => ({ ...p, href: e.target.value }))} placeholder="/hotels" />
+                {!navHrefOptional && navForm.href.trim() && !isRealHref(navForm.href) && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    &ldquo;#&rdquo; is not an address — a link with it goes nowhere. Give this one a real path,
+                    or add sub-links to it and it becomes a heading instead.
+                  </p>
+                )}
                 {navHrefOptional && (
                   <p className="mt-1 text-xs text-gray-400">
                     This link has sub-links, so it can be a heading only — tapping it on the site opens its panel.
@@ -1551,7 +1577,7 @@ export default function HomepagePage() {
                 </label>
               </div>
               <div className="flex gap-3 pt-1">
-                <button onClick={handleNavSave} disabled={!navForm.label.trim() || (!navHrefOptional && !navForm.href.trim())} className="flex-1 rounded-lg bg-primary-600 hover:bg-primary-700 text-white py-2.5 text-sm font-semibold disabled:opacity-50 transition-colors">{editingNav ? 'Update' : 'Add'}</button>
+                <button onClick={handleNavSave} disabled={!navForm.label.trim() || (!navHrefOptional && !isRealHref(navForm.href))} className="flex-1 rounded-lg bg-primary-600 hover:bg-primary-700 text-white py-2.5 text-sm font-semibold disabled:opacity-50 transition-colors">{editingNav ? 'Update' : 'Add'}</button>
                 <button onClick={() => setShowNavModal(false)} className="flex-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 text-sm font-semibold transition-colors">Cancel</button>
               </div>
             </div>
