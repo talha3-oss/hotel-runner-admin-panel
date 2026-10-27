@@ -28,6 +28,95 @@ interface NavItem { id: string; label: string; href: string; visible: boolean; o
 // box insisting on an address when the link is meant to be a heading; the site
 // treated it as a real one, which is how a parent appeared twice in its own
 // panel. It counts as no address here too, so the two agree.
+// ── Menu tree helpers ────────────────────────────────────────────────────────
+//
+// A link is addressed by the path of ids from the top of the menu down to it,
+// so the same four functions work whether it is on the first level or the
+// fifth. Each returns a new tree rather than changing the one it is given.
+
+const MAX_MENU_DEPTH = 5
+
+function updateInTree(items: NavItem[], path: string[], patch: Partial<NavItem>): NavItem[] {
+  if (path.length === 0) return items
+  const [head, ...rest] = path
+  return items.map(item => {
+    if (item.id !== head) return item
+    if (rest.length === 0) return { ...item, ...patch }
+    return { ...item, children: updateInTree(item.children || [], rest, patch) }
+  })
+}
+
+function removeFromTree(items: NavItem[], path: string[]): NavItem[] {
+  if (path.length === 0) return items
+  const [head, ...rest] = path
+  if (rest.length === 0) return items.filter(item => item.id !== head)
+  return items.map(item =>
+    item.id === head ? { ...item, children: removeFromTree(item.children || [], rest) } : item
+  )
+}
+
+/** `parentPath` empty adds at the top level. */
+function addToTree(items: NavItem[], parentPath: string[], made: NavItem): NavItem[] {
+  if (parentPath.length === 0) return [...items, { ...made, order: items.length }]
+  const [head, ...rest] = parentPath
+  return items.map(item => {
+    if (item.id !== head) return item
+    const children = item.children || []
+    return {
+      ...item,
+      children: rest.length === 0
+        ? [...children, { ...made, order: children.length }]
+        : addToTree(children, rest, made),
+    }
+  })
+}
+
+function moveInTree(items: NavItem[], path: string[], dir: -1 | 1): NavItem[] {
+  if (path.length === 0) return items
+  const [head, ...rest] = path
+
+  if (rest.length === 0) {
+    const index = items.findIndex(item => item.id === head)
+    const swap = index + dir
+    if (index < 0 || swap < 0 || swap >= items.length) return items
+    const next = [...items]
+    ;[next[index], next[swap]] = [next[swap], next[index]]
+    return next.map((item, i) => ({ ...item, order: i }))
+  }
+
+  return items.map(item =>
+    item.id === head ? { ...item, children: moveInTree(item.children || [], rest, dir) } : item
+  )
+}
+
+/** Numbers each level before saving, so the order on screen is the order
+ *  stored. Depth-first, because that is how the server writes it back. */
+function withOrder(items: NavItem[]): NavItem[] {
+  return items.map((item, index) => ({
+    ...item,
+    order: index,
+    children: withOrder(item.children || []),
+  }))
+}
+
+/** The links along a path, top down — used to say where a new sub-link is
+ *  going when it is several levels in and one name no longer says. */
+function findInTree(items: NavItem[], path: string[]): NavItem[] {
+  const trail: NavItem[] = []
+  let level = items
+  for (const id of path) {
+    const found = level.find(item => item.id === id)
+    if (!found) break
+    trail.push(found)
+    level = found.children || []
+  }
+  return trail
+}
+
+function countLinks(items: NavItem[]): number {
+  return items.reduce((total, item) => total + 1 + countLinks(item.children || []), 0)
+}
+
 const isRealHref = (href?: string) => {
   const value = (href || '').trim()
   if (!value) return false
@@ -552,96 +641,134 @@ export default function HomepagePage() {
 
   // ── Nav ─────────────────────────────────────────────────────────────────────
 
-  // Which parent a new sub-link is being added to, or null for a top-level one.
-  const [navParentId, setNavParentId] = useState<string | null>(null)
+  // Where in the tree a link sits: the ids from the top down to it. One level
+  // of nesting used to be the most there could be, so "which parent" was a
+  // single id; a sub-menu can have sub-menus of its own now, so it takes the
+  // whole path.
+  const [navPath, setNavPath] = useState<string[]>([])
 
-  const openNavCreate = (parentId: string | null = null) => {
-    setEditingNav(null); setNavParentId(parentId)
+  const openNavCreate = (parentPath: string[] = []) => {
+    setEditingNav(null); setNavPath(parentPath)
     setNavForm({ label:'', href:'', visible:true, openInNewTab:false }); setShowNavModal(true)
   }
-  const openNavEdit = (item: NavItem, parentId: string | null = null) => {
-    setEditingNav(item); setNavParentId(parentId)
+  const openNavEdit = (item: NavItem, parentPath: string[] = []) => {
+    setEditingNav(item); setNavPath(parentPath)
     setNavForm({ label:item.label, href:item.href, visible:item.visible, openInNewTab:item.openInNewTab }); setShowNavModal(true)
   }
 
   const handleNavSave = () => {
-    // A parent may be a heading rather than a page, so once it has sub-links
-    // it does not need an address of its own -- they are what it is for.
+    // A link with sub-links does not need an address of its own: on the site,
+    // tapping it opens its panel rather than going anywhere.
     if (!navForm.label.trim()) return
-    const isParentWithChildren = !navParentId && !!editingNav?.children?.length
-    if (!isParentWithChildren && !isRealHref(navForm.href)) return
+    if (!editingNav?.children?.length && !isRealHref(navForm.href)) return
 
-    setNavItems(prev => {
-      if (editingNav) {
-        return prev.map(item => {
-          if (!navParentId) return item.id === editingNav.id ? { ...item, ...navForm } : item
-          if (item.id !== navParentId) return item
-          return {
-            ...item,
-            children: (item.children || []).map(c => c.id === editingNav.id ? { ...c, ...navForm } : c),
-          }
-        })
-      }
-
-      const made = { id: Date.now().toString(), ...navForm, order: 0 }
-      if (!navParentId) return [...prev, { ...made, order: prev.length, children: [] }]
-      return prev.map(item =>
-        item.id === navParentId
-          ? { ...item, children: [...(item.children || []), { ...made, order: (item.children || []).length }] }
-          : item
-      )
-    })
+    setNavItems(prev => editingNav
+      ? updateInTree(prev, [...navPath, editingNav.id], navForm)
+      : addToTree(prev, navPath, { id: Date.now().toString(), ...navForm, order: 0, children: [] }))
     setNavDirty(true)
     setShowNavModal(false)
   }
 
-  const removeNav = (id: string, parentId: string | null = null) => {
-    setNavItems(prev => parentId
-      ? prev.map(item => item.id === parentId
-          ? { ...item, children: (item.children || []).filter(c => c.id !== id) }
-          : item)
-      // Deleting a parent takes its sub-links with it, which is what the
-      // confirm warns about.
-      : prev.filter(item => item.id !== id))
+  const removeNav = (path: string[]) => {
+    setNavItems(prev => removeFromTree(prev, path))
     setNavDirty(true)
   }
 
-  const toggleNavVisible = (id: string, parentId: string | null = null) => {
-    setNavItems(prev => prev.map(item => {
-      if (parentId) {
-        return item.id === parentId
-          ? { ...item, children: (item.children || []).map(c => c.id === id ? { ...c, visible: !c.visible } : c) }
-          : item
-      }
-      return item.id === id ? { ...item, visible: !item.visible } : item
-    }))
+  const toggleNavVisible = (path: string[], visible: boolean) => {
+    setNavItems(prev => updateInTree(prev, path, { visible: !visible }))
     setNavDirty(true)
   }
 
-  // Reordering happens within a level: a sub-link moves among its siblings,
-  // never out of its parent.
-  const moveNav = (idx: number, dir: -1|1, parentId: string | null = null) => {
-    const swapIn = (arr: NavItem[]) => {
-      const next = [...arr]; const swap = idx + dir
-      if (swap < 0 || swap >= next.length) return next;
-      [next[idx], next[swap]] = [next[swap], next[idx]]
-      return next.map((item, i) => ({ ...item, order: i }))
-    }
-    setNavItems(prev => parentId
-      ? prev.map(item => item.id === parentId ? { ...item, children: swapIn(item.children || []) } : item)
-      : swapIn(prev))
+  // Reordering happens among siblings: a link moves within the level it is on,
+  // never out of the one above it.
+  const moveNav = (path: string[], dir: -1 | 1) => {
+    setNavItems(prev => moveInTree(prev, path, dir))
     setNavDirty(true)
   }
+
+  // One function for every level. A link five deep gets the same row as one at
+  // the top, indented to show where it sits.
+  const renderNavRows = (items: NavItem[], parentPath: string[], depth: number): React.ReactNode[] =>
+    items.flatMap((item, index) => {
+      const path = [...parentPath, item.id]
+      const children = item.children || []
+      const canNest = depth + 1 < MAX_MENU_DEPTH
+
+      const row = (
+        <tr key={path.join('/')} className={depth > 0 ? 'bg-gray-50/60 hover:bg-gray-50' : 'hover:bg-gray-50'}>
+          <td className="px-4 py-2.5">
+            <div className="flex flex-col gap-0.5" style={{ paddingLeft: depth * 16 }}>
+              <button onClick={() => moveNav(path, -1)} disabled={index === 0}
+                className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-20"><ArrowUpIcon className="h-3.5 w-3.5" /></button>
+              <button onClick={() => moveNav(path, 1)} disabled={index === items.length - 1}
+                className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-20"><ArrowDownIcon className="h-3.5 w-3.5" /></button>
+            </div>
+          </td>
+          <td className="px-4 py-2.5 text-sm text-gray-900">
+            <span style={{ paddingLeft: depth * 16 }} className="inline-flex items-center">
+              {depth > 0 && <span className="mr-2 text-gray-300">└</span>}
+              <span className={depth === 0 ? 'font-medium' : ''}>{item.label}</span>
+              {children.length > 0 && (
+                <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                  {children.length} sub-link{children.length === 1 ? '' : 's'}
+                </span>
+              )}
+            </span>
+          </td>
+          <td className="px-4 py-2.5 text-sm font-mono">
+            {isRealHref(item.href)
+              ? <span className="text-gray-500">{item.href}</span>
+              : children.length > 0
+                ? <span className="font-sans italic text-gray-300">heading only</span>
+                : <span className="font-sans italic text-amber-600">no address yet — add one</span>}
+          </td>
+          <td className="px-4 py-2.5 hidden sm:table-cell">
+            <button onClick={() => toggleNavVisible(path, item.visible)}>
+              {item.visible ? <EyeIcon className="h-4 w-4 text-green-500" /> : <EyeSlashIcon className="h-4 w-4 text-gray-300" />}
+            </button>
+          </td>
+          <td className="px-4 py-2.5 hidden md:table-cell">
+            <span className={`text-xs font-medium ${item.openInNewTab ? 'text-blue-600' : 'text-gray-400'}`}>{item.openInNewTab ? 'Yes' : 'No'}</span>
+          </td>
+          <td className="px-4 py-2.5 text-right">
+            <div className="flex items-center justify-end gap-2">
+              {canNest ? (
+                <button onClick={() => openNavCreate(path)} title="Add a link under this one"
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><PlusIcon className="h-3.5 w-3.5" /> Sub-link</button>
+              ) : (
+                <span title={`${MAX_MENU_DEPTH} levels is as deep as the menu goes.`}
+                  className="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-300"><PlusIcon className="h-3.5 w-3.5" /> Sub-link</span>
+              )}
+              <button onClick={() => openNavEdit(item, parentPath)}
+                className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><PencilIcon className="h-3.5 w-3.5" /> Edit</button>
+              {resolveSiteHref(item.href) ? (
+                <a href={resolveSiteHref(item.href)!} target="_blank" rel="noopener noreferrer" title="View on site"
+                  className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"><ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> View</a>
+              ) : (
+                <span title="This link has no web address, so there is nothing to open."
+                  className="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-300"><ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> View</span>
+              )}
+              <button
+                onClick={() => {
+                  const under = countLinks(children)
+                  if (under && !confirm(`"${item.label}" has ${under} link${under === 1 ? '' : 's'} under it. Deleting it removes ${under === 1 ? 'that one' : 'those'} too.`)) return
+                  removeNav(path)
+                }}
+                className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"><TrashIcon className="h-3.5 w-3.5" /></button>
+            </div>
+          </td>
+        </tr>
+      )
+
+      return [row, ...renderNavRows(children, path, depth + 1)]
+    })
+
   const saveNav = async () => {
     const token = localStorage.getItem('adminToken')
     if (!token) return
     setNavSaving(true); setError('')
     try {
-      const r = await saveNavMenu(token, navItems.map((item, i) => ({
-        ...item,
-        order: i,
-        children: (item.children || []).map((child, ci) => ({ ...child, order: ci })),
-      })), buttons, scope)
+      const r = await saveNavMenu(token, withOrder(navItems), buttons, scope)
       if (r.success) {
         setNavItems(r.items || navItems)
         if (r.buttons) setButtons({ ...DEFAULT_MENU_BUTTONS, ...r.buttons })
@@ -747,7 +874,7 @@ export default function HomepagePage() {
         <div className="flex gap-2">
           {tab === 'sections' && <button onClick={openCreate} className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 transition-colors"><PlusIcon className="h-4 w-4" /> Add Section</button>}
           {tab === 'nav' && <>
-            <button onClick={() => openNavCreate(null)} className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"><PlusIcon className="h-4 w-4" /> Add Link</button>
+            <button onClick={() => openNavCreate([])} className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"><PlusIcon className="h-4 w-4" /> Add Link</button>
             <button onClick={saveNav} disabled={navSaving} className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50 transition-colors">{navSaving ? 'Saving…' : 'Save Menu'}</button>
           </>}
           {tab === 'footer' && <button onClick={saveFooter} disabled={footerSaving} className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50 transition-colors">{footerSaving ? 'Saving…' : 'Save Footer'}</button>}
@@ -864,96 +991,11 @@ export default function HomepagePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {navItems.map((item, idx) => {
-                    const children = item.children || []
-                    return (
-                    <Fragment key={item.id}>
-                    <tr className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <button onClick={() => moveNav(idx,-1)} disabled={idx===0} className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-20"><ArrowUpIcon className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => moveNav(idx,1)} disabled={idx===navItems.length-1} className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-20"><ArrowDownIcon className="h-3.5 w-3.5" /></button>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                        {item.label}
-                        {children.length > 0 && (
-                          <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
-                            {children.length} sub-link{children.length === 1 ? '' : 's'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500 font-mono">
-                        {isRealHref(item.href)
-                          ? item.href
-                          : <span className="font-sans italic text-gray-300">heading only</span>}
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <button onClick={() => toggleNavVisible(item.id)}>
-                          {item.visible ? <EyeIcon className="h-4 w-4 text-green-500" /> : <EyeSlashIcon className="h-4 w-4 text-gray-300" />}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell"><span className={`text-xs font-medium ${item.openInNewTab ? 'text-blue-600' : 'text-gray-400'}`}>{item.openInNewTab ? 'Yes' : 'No'}</span></td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button onClick={() => openNavCreate(item.id)} title="Add a link under this one" className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><PlusIcon className="h-3.5 w-3.5" /> Sub-link</button>
-                          <button onClick={() => openNavEdit(item)} className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><PencilIcon className="h-3.5 w-3.5" /> Edit</button>
-                          {resolveSiteHref(item.href) ? (
-                            <a href={resolveSiteHref(item.href)!} target="_blank" rel="noopener noreferrer" title="View on site" className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"><ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> View</a>
-                          ) : (
-                            <span title="This link's URL is not a web address, so there is nothing to open." className="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-300"><ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> View</span>
-                          )}
-                          <button
-                            onClick={() => {
-                              if (children.length && !confirm(`"${item.label}" has ${children.length} sub-link${children.length === 1 ? '' : 's'}. Deleting it removes ${children.length === 1 ? 'that one' : 'those'} too.`)) return
-                              removeNav(item.id)
-                            }}
-                            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"><TrashIcon className="h-3.5 w-3.5" /></button>
-                        </div>
-                      </td>
-                    </tr>
-
-                    {children.map((child, ci) => (
-                      <tr key={child.id} className="bg-gray-50/60 hover:bg-gray-50">
-                        <td className="px-4 py-2">
-                          <div className="flex flex-col gap-0.5 pl-4">
-                            <button onClick={() => moveNav(ci,-1,item.id)} disabled={ci===0} className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-20"><ArrowUpIcon className="h-3 w-3" /></button>
-                            <button onClick={() => moveNav(ci,1,item.id)} disabled={ci===children.length-1} className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-20"><ArrowDownIcon className="h-3 w-3" /></button>
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 text-sm text-gray-700">
-                          <span className="mr-2 text-gray-300">└</span>{child.label}
-                        </td>
-                        <td className="px-4 py-2 text-sm font-mono">
-                          {isRealHref(child.href)
-                            ? <span className="text-gray-500">{child.href}</span>
-                            : <span className="font-sans italic text-amber-600">no address yet — add one</span>}
-                        </td>
-                        <td className="px-4 py-2 hidden sm:table-cell">
-                          <button onClick={() => toggleNavVisible(child.id, item.id)}>
-                            {child.visible ? <EyeIcon className="h-4 w-4 text-green-500" /> : <EyeSlashIcon className="h-4 w-4 text-gray-300" />}
-                          </button>
-                        </td>
-                        <td className="px-4 py-2 hidden md:table-cell"><span className={`text-xs font-medium ${child.openInNewTab ? 'text-blue-600' : 'text-gray-400'}`}>{child.openInNewTab ? 'Yes' : 'No'}</span></td>
-                        <td className="px-4 py-2 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button onClick={() => openNavEdit(child, item.id)} className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"><PencilIcon className="h-3 w-3" /> Edit</button>
-                            {resolveSiteHref(child.href) ? (
-                              <a href={resolveSiteHref(child.href)!} target="_blank" rel="noopener noreferrer" title="View on site" className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-100"><ArrowTopRightOnSquareIcon className="h-3 w-3" /> View</a>
-                            ) : (
-                              <span className="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-300"><ArrowTopRightOnSquareIcon className="h-3 w-3" /> View</span>
-                            )}
-                            <button onClick={() => removeNav(child.id, item.id)} className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-100"><TrashIcon className="h-3 w-3" /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    </Fragment>
-                  )})}
+                  {renderNavRows(navItems, [], 0)}
                 </tbody>
               </table>
             )}
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-400">Reorder with arrows · toggle visibility with the eye icon · <strong>Sub-link</strong> puts a link underneath another one, which opens as a sliding panel on the site · click <strong>Save Menu</strong> to publish. These are links only — the pages themselves live under <strong>Pages</strong>.</div>
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-400">Reorder with arrows · toggle visibility with the eye icon · <strong>Sub-link</strong> puts a link underneath another one, which opens as a sliding panel on the site — up to five levels deep · click <strong>Save Menu</strong> to publish. These are links only — the pages themselves live under <strong>Pages</strong>.</div>
           </div>
 
           {/* The two buttons under the menu. They are not links in the list --
@@ -1527,23 +1569,23 @@ export default function HomepagePage() {
 
       {/* ── NAV MODAL ── */}
       {showNavModal && (() => {
-        // A parent that already has sub-links does not need an address: on the
-        // site, tapping it opens its panel rather than going anywhere.
-        // A parent with sub-links does not need an address: on the site,
-        // tapping it opens its panel rather than going anywhere.
-        const navHrefOptional = !navParentId && !!editingNav?.children?.length
+        // A link with sub-links does not need an address: on the site, tapping
+        // it opens its panel rather than going anywhere.
+        const navHrefOptional = !!editingNav?.children?.length
+        // Where this one is being added, for the line under the title.
+        const navParentLabel = navPath.length
+          ? findInTree(navItems, navPath).map(step => step.label).join(' › ')
+          : ''
         return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <div>
                 <h2 className="text-base font-bold text-gray-900">
-                  {editingNav ? 'Edit Link' : navParentId ? 'Add Sub-link' : 'Add Link'}
+                  {editingNav ? 'Edit Link' : navPath.length ? 'Add Sub-link' : 'Add Link'}
                 </h2>
-                {navParentId && (
-                  <p className="mt-0.5 text-xs text-gray-400">
-                    Under &ldquo;{navItems.find(i => i.id === navParentId)?.label}&rdquo;
-                  </p>
+                {navParentLabel && (
+                  <p className="mt-0.5 text-xs text-gray-400">Under {navParentLabel}</p>
                 )}
               </div>
               <button onClick={() => setShowNavModal(false)} className="text-gray-400 hover:text-gray-700 text-xl">&times;</button>
