@@ -266,6 +266,8 @@ export interface Hotel {
   name: string
   slug?: string | null
   address?: string | null
+  // This hotel's own footer, or null when it uses the site-wide one.
+  footerContent?: Record<string, unknown> | null
   // The link pasted from Google Maps, and the pin pulled out of it by the
   // server. The receipt and the confirmation email draw a map from these.
   mapUrl?: string | null
@@ -385,6 +387,7 @@ export async function createHotel(
     locationId: string
     address?: string
     mapUrl?: string
+    footerContent?: Record<string, unknown> | null
     phone?: string
     email?: string
     status?: HotelStatus
@@ -416,6 +419,7 @@ export async function updateHotel(
     locationId?: string
     address?: string
     mapUrl?: string
+    footerContent?: Record<string, unknown> | null
     phone?: string
     email?: string
     status?: HotelStatus
@@ -916,10 +920,17 @@ export interface NavItem {
   order: number
   visible: boolean
   openInNewTab: boolean
+  children?: NavItem[]
 }
 
-export async function fetchNavMenu(_token?: string) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/pages/nav-menu`, {
+/** `hotel` is a hotel id for that hotel's own menu, or empty for the site-wide
+ *  one. `exact` stops a hotel with no menu falling back to the site-wide one,
+ *  which this screen needs so an empty menu shows as empty rather than as a
+ *  copy it is about to save. */
+export async function fetchNavMenu(_token?: string, hotel = '') {
+  const query = new URLSearchParams()
+  if (hotel) { query.set('hotel', hotel); query.set('exact', '1') }
+  const res = await fetch(`${API_BASE_URL}/api/v1/pages/nav-menu?${query.toString()}`, {
     cache: 'no-store',
   })
   return res.json()
@@ -938,11 +949,11 @@ export const DEFAULT_MENU_BUTTONS: MenuButtons = {
   bookNow: { label: 'Book Now', visible: true },
 }
 
-export async function saveNavMenu(token: string, items: NavItem[], buttons?: MenuButtons) {
+export async function saveNavMenu(token: string, items: NavItem[], buttons?: MenuButtons, hotel = '') {
   const res = await fetch(`${API_BASE_URL}/api/v1/pages/admin/nav-menu`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(buttons ? { items, buttons } : { items }),
+    body: JSON.stringify({ items, ...(buttons ? { buttons } : {}), ...(hotel ? { hotel } : {}) }),
   })
   return res.json()
 }

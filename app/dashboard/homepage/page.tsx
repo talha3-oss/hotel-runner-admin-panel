@@ -14,6 +14,7 @@ import {
   uploadHomepageSectionImage,
   HomePageSection, HomePageSectionType, HomePageSectionStatus, HomePageSectionPayload,
   MenuButtons, DEFAULT_MENU_BUTTONS,
+  fetchHotels, updateHotel, Hotel,
 } from '../../../lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -284,6 +285,16 @@ export default function HomepagePage() {
   const [showNavModal, setShowNavModal] = useState(false)
   const [buttons, setButtons] = useState<MenuButtons>(DEFAULT_MENU_BUTTONS)
 
+  // Whose menu and footer are being edited: '' is the site-wide pair, or a
+  // hotel's id for that hotel's own. A hotel with none of its own falls back
+  // to the site-wide ones on the site, so most hotels never need either.
+  const [scope, setScope] = useState('')
+  const [hotels, setHotels] = useState<Hotel[]>([])
+  const [navInherited, setNavInherited] = useState(false)
+  // Whether the footer on screen belongs to the chosen hotel, or is the
+  // site-wide one shown because that hotel has none.
+  const [footerIsOwn, setFooterIsOwn] = useState(true)
+
   // Footer
   const [footerSection, setFooterSection] = useState<HomePageSection | null>(null)
   const [footer, setFooter] = useState<FooterData>(DEFAULT_FOOTER)
@@ -389,19 +400,55 @@ export default function HomepagePage() {
     } finally { setLoadingSections(false) }
   }, [])
 
+  // The footer being edited follows the picker. A hotel with none of its own
+  // shows the site-wide one as a starting point, and saving is what makes it
+  // the hotel's -- looking is not the same as taking a copy.
+  const loadScopedFooter = useCallback(async () => {
+    if (!scope) {
+      const c = footerSection?.content as Record<string, unknown> | null
+      setFooter(c && typeof c === 'object' ? { ...DEFAULT_FOOTER, ...parseFooterContent(c) } : DEFAULT_FOOTER)
+      setFooterDirty(false)
+      setFooterIsOwn(true)
+      return
+    }
+
+    const hotel = hotels.find(h => h.id === scope)
+    const own = hotel?.footerContent
+    if (own && typeof own === 'object' && Object.keys(own).length > 0) {
+      setFooter({ ...DEFAULT_FOOTER, ...parseFooterContent(own as Record<string, unknown>) })
+      setFooterIsOwn(true)
+    } else {
+      const c = footerSection?.content as Record<string, unknown> | null
+      setFooter(c && typeof c === 'object' ? { ...DEFAULT_FOOTER, ...parseFooterContent(c) } : DEFAULT_FOOTER)
+      setFooterIsOwn(false)
+    }
+    setFooterDirty(false)
+  }, [scope, hotels, footerSection])
+
+  useEffect(() => { loadScopedFooter() }, [loadScopedFooter])
+
   const loadNav = useCallback(async () => {
     setLoadingNav(true)
     try {
-      const r = await fetchNavMenu()
+      const r = await fetchNavMenu(undefined, scope)
+      setNavInherited(!!r.inheritedFromSite)
       if (r.success) {
         setNavItems(r.items || [])
         setButtons(r.buttons ? { ...DEFAULT_MENU_BUTTONS, ...r.buttons } : DEFAULT_MENU_BUTTONS)
         setNavDirty(false)
       }
     } finally { setLoadingNav(false) }
-  }, [])
+  }, [scope])
 
   useEffect(() => { loadSections(); loadNav() }, [loadSections, loadNav])
+
+  // The list for the picker. Read-only, so a failure here costs nothing more
+  // than the site-wide menu being the only one on offer.
+  useEffect(() => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    fetchHotels(token).then(r => { if (r.success) setHotels(r.hotels || []) }).catch(() => {})
+  }, [])
 
   // ── Section CRUD ────────────────────────────────────────────────────────────
 
@@ -582,7 +629,7 @@ export default function HomepagePage() {
         ...item,
         order: i,
         children: (item.children || []).map((child, ci) => ({ ...child, order: ci })),
-      })), buttons)
+      })), buttons, scope)
       if (r.success) {
         setNavItems(r.items || navItems)
         if (r.buttons) setButtons({ ...DEFAULT_MENU_BUTTONS, ...r.buttons })
@@ -600,6 +647,23 @@ export default function HomepagePage() {
     if (!token) return
     setFooterSaving(true); setError('')
     try {
+      // A hotel's footer is kept on the hotel, not as another homepage
+      // section: it belongs to that property and goes when it does.
+      if (scope) {
+        const r = await updateHotel(token, scope, { footerContent: footer as unknown as Record<string, unknown> })
+        if (r.success) {
+          setHotels(prev => prev.map(h => h.id === scope
+            ? { ...h, footerContent: footer as unknown as Record<string, unknown> }
+            : h))
+          setFooterIsOwn(true)
+          setFooterDirty(false)
+          setSuccess('Footer saved for this hotel.')
+        } else {
+          setError(r.message || 'Failed to save footer.')
+        }
+        return
+      }
+
       let sectionId = footerSection?.id
       if (!sectionId) {
         // Footer section doesn't exist in this DB yet — create it on first save
@@ -710,6 +774,48 @@ export default function HomepagePage() {
           ))}
         </nav>
       </div>
+
+      {/* Whose menu and footer. The site used to have one of each, shared by
+          every page; a hotel can have its own now, and falls back to the
+          site-wide pair when it has none. */}
+      {(tab === 'nav' || tab === 'footer') && (
+        <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center">
+          <label className="shrink-0 text-sm font-medium text-gray-700" htmlFor="menuScope">
+            {tab === 'nav' ? 'Menu for' : 'Footer for'}
+          </label>
+          <select
+            id="menuScope"
+            value={scope}
+            onChange={e => {
+              if ((navDirty || footerDirty) && !confirm('You have unsaved changes here. Switch anyway?')) return
+              setScope(e.target.value); setError(''); setSuccess('')
+            }}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 sm:w-72"
+          >
+            <option value="">The whole site (home page and everything else)</option>
+            {hotels.map(h => (
+              <option key={h.id} value={h.id}>{h.name}</option>
+            ))}
+          </select>
+
+          {scope ? (
+            (tab === 'nav' ? navInherited : !footerIsOwn) ? (
+              <p className="text-xs text-amber-700">
+                This hotel has no {tab === 'nav' ? 'menu' : 'footer'} of its own, so it uses the site-wide one.
+                What you see is that one — saving here makes it this hotel&apos;s.
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400">
+                Shown on this hotel&apos;s pages, including its rooms.
+              </p>
+            )
+          ) : (
+            <p className="text-xs text-gray-400">
+              Used everywhere a hotel has not set its own.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ── SECTIONS TAB ── */}
       {tab === 'sections' && (
