@@ -972,16 +972,37 @@ export interface MenuButtons {
   bookNow: { label: string; visible: boolean }
 }
 
+// How big the menu's text is on the site. A size per level rather than per
+// link, so four sub-links are four the same.
+export interface MenuText {
+  menuSize: number
+  subSize: number
+  headingSize: number
+}
+
+export const DEFAULT_MENU_TEXT: MenuText = { menuSize: 22, subSize: 18, headingSize: 20 }
+
 export const DEFAULT_MENU_BUTTONS: MenuButtons = {
   manageBooking: { label: 'Manage Booking', href: '/account/bookings', visible: true },
   bookNow: { label: 'Book Now', visible: true },
 }
 
-export async function saveNavMenu(token: string, items: NavItem[], buttons?: MenuButtons, hotel = '') {
+export async function saveNavMenu(
+  token: string,
+  items: NavItem[],
+  buttons?: MenuButtons,
+  hotel = '',
+  text?: MenuText
+) {
   const res = await fetch(`${API_BASE_URL}/api/v1/pages/admin/nav-menu`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ items, ...(buttons ? { buttons } : {}), ...(hotel ? { hotel } : {}) }),
+    body: JSON.stringify({
+      items,
+      ...(buttons ? { buttons } : {}),
+      ...(hotel ? { hotel } : {}),
+      ...(text ? { text } : {}),
+    }),
   })
   return res.json()
 }

@@ -13,7 +13,7 @@ import {
   deleteAdminHomePageSection, fetchNavMenu, saveNavMenu, getApiAssetUrl,
   uploadHomepageSectionImage,
   HomePageSection, HomePageSectionType, HomePageSectionStatus, HomePageSectionPayload,
-  MenuButtons, DEFAULT_MENU_BUTTONS,
+  MenuButtons, DEFAULT_MENU_BUTTONS, MenuText, DEFAULT_MENU_TEXT,
   fetchHotels, updateHotel, Hotel,
 } from '../../../lib/api'
 
@@ -385,6 +385,7 @@ export default function HomepagePage() {
   const [navForm, setNavForm] = useState({ label:'', href:'', visible:true, openInNewTab:false })
   const [showNavModal, setShowNavModal] = useState(false)
   const [buttons, setButtons] = useState<MenuButtons>(DEFAULT_MENU_BUTTONS)
+  const [menuText, setMenuText] = useState<MenuText>(DEFAULT_MENU_TEXT)
 
   // Whose menu and footer are being edited: '' is the site-wide pair, or a
   // hotel's id for that hotel's own. A hotel with none of its own falls back
@@ -536,6 +537,7 @@ export default function HomepagePage() {
       if (r.success) {
         setNavItems(r.items || [])
         setButtons(r.buttons ? { ...DEFAULT_MENU_BUTTONS, ...r.buttons } : DEFAULT_MENU_BUTTONS)
+        setMenuText(r.text ? { ...DEFAULT_MENU_TEXT, ...r.text } : DEFAULT_MENU_TEXT)
         setNavDirty(false)
       }
     } finally { setLoadingNav(false) }
@@ -768,10 +770,11 @@ export default function HomepagePage() {
     if (!token) return
     setNavSaving(true); setError('')
     try {
-      const r = await saveNavMenu(token, withOrder(navItems), buttons, scope)
+      const r = await saveNavMenu(token, withOrder(navItems), buttons, scope, menuText)
       if (r.success) {
         setNavItems(r.items || navItems)
         if (r.buttons) setButtons({ ...DEFAULT_MENU_BUTTONS, ...r.buttons })
+        if (r.text) setMenuText({ ...DEFAULT_MENU_TEXT, ...r.text })
         setSuccess('Navigation menu saved.')
         setNavDirty(false)
       }
@@ -996,6 +999,62 @@ export default function HomepagePage() {
               </table>
             )}
             <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-400">Reorder with arrows · toggle visibility with the eye icon · <strong>Sub-link</strong> puts a link underneath another one, which opens as a sliding panel on the site — up to five levels deep · click <strong>Save Menu</strong> to publish. These are links only — the pages themselves live under <strong>Pages</strong>.</div>
+          </div>
+
+          {/* Text sizes. One per level rather than one per link: nobody should
+              sit choosing a size for each of four sub-links. */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="border-b border-gray-200 px-4 py-3">
+              <h3 className="text-sm font-semibold text-gray-900">Menu Text Size</h3>
+              <p className="mt-0.5 text-xs text-gray-500">
+                One size per level. Every link on the same level is the same size, so there is nothing to set
+                link by link.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 p-4 lg:grid-cols-[1fr,260px]">
+              <div className="space-y-4">
+                {([
+                  ['menuSize', 'Main menu', 'The links on the first panel.'],
+                  ['headingSize', 'Panel heading', 'The name at the top of a sub-menu, beside the back arrow.'],
+                  ['subSize', 'Sub-menu links', 'Every level below the first.'],
+                ] as [keyof MenuText, string, string][]).map(([field, label, hint]) => (
+                  <div key={field}>
+                    <div className="flex items-center gap-3">
+                      <label className="w-32 shrink-0 text-xs font-medium text-gray-600" htmlFor={field}>{label}</label>
+                      <input
+                        id={field}
+                        type="range"
+                        min={12}
+                        max={40}
+                        step={1}
+                        value={menuText[field]}
+                        onChange={e => { setMenuText(p => ({ ...p, [field]: Number(e.target.value) })); setNavDirty(true) }}
+                        className="h-1.5 flex-1 cursor-pointer accent-primary-600"
+                      />
+                      <span className="w-12 shrink-0 text-right font-mono text-xs text-gray-500">{menuText[field]}px</span>
+                    </div>
+                    <p className="mt-0.5 pl-[8.5rem] text-xs text-gray-400">{hint}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Drawn at the sizes being chosen, on the dark panel they will
+                  sit on. */}
+              <div className="rounded-lg bg-[#2b2b2b] p-4">
+                <p className="mb-3 text-[10px] uppercase tracking-wide text-white/30">Preview</p>
+                <p style={{ fontSize: menuText.menuSize }} className="py-1 text-white">Our Hotels</p>
+                <p style={{ fontSize: menuText.headingSize }} className="mt-3 py-1 font-medium text-white">↩ Jordan</p>
+                <div className="mt-1 border-t border-gray-600 pt-2">
+                  <p style={{ fontSize: menuText.subSize }} className="py-1 text-white">Aqaba Luxotel</p>
+                  <p style={{ fontSize: menuText.subSize }} className="py-1 text-white">Petra Panorama</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-400">
+              Click <strong>Save Menu</strong> to publish these too.
+            </div>
           </div>
 
           {/* The two buttons under the menu. They are not links in the list --
