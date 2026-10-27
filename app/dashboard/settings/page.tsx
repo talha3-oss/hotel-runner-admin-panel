@@ -3,9 +3,13 @@
 import { FormEvent, useEffect, useState } from 'react'
 import {
   UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, KeyIcon,
-  PaperAirplaneIcon,
+  PaperAirplaneIcon, GlobeAltIcon, PhotoIcon, TrashIcon,
 } from '@heroicons/react/24/outline'
-import { getAdminMe, updateAdminMe } from '../../../lib/api'
+import {
+  getAdminMe, updateAdminMe,
+  fetchSiteSettings, saveSiteSettings, uploadHomepageSectionImage, getApiAssetUrl,
+  SiteSettings,
+} from '../../../lib/api'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
 
@@ -159,7 +163,13 @@ export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'email' | 'partner-api' | 'ratetiger'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'security' | 'email' | 'partner-api' | 'ratetiger'>('profile')
+
+  // Site settings — the name, logo and favicon the public site uses.
+  const [site, setSite] = useState<SiteSettings>({ siteName: '', siteTagline: '', logo: '', favicon: '' })
+  const [siteSaving, setSiteSaving] = useState(false)
+  const [siteUploading, setSiteUploading] = useState<'logo' | 'favicon' | null>(null)
+  const [siteMsg, setSiteMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   // Profile form
   const [fullName, setFullName] = useState('')
@@ -399,10 +409,59 @@ export default function SettingsPage() {
     finally { setRtResRetrying(false) }
   }
 
+  useEffect(() => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    fetchSiteSettings(token)
+      .then(r => { if (r.success && r.settings) setSite(r.settings) })
+      .catch(() => {})
+  }, [])
+
+  const uploadSiteImage = async (kind: 'logo' | 'favicon', file: File) => {
+    setSiteUploading(kind)
+    setSiteMsg(null)
+    try {
+      const r = await uploadHomepageSectionImage(file)
+      if (r.success && r.data?.fileUrl) {
+        setSite(prev => ({ ...prev, [kind]: r.data.fileUrl }))
+        // Uploaded but not yet the site's — Save is what publishes it.
+        setSiteMsg({ ok: true, text: 'Uploaded. Click Save Site Settings to publish it.' })
+      } else {
+        setSiteMsg({ ok: false, text: r.message || 'Upload failed.' })
+      }
+    } catch {
+      setSiteMsg({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setSiteUploading(null)
+    }
+  }
+
+  const handleSiteSave = async (e: FormEvent) => {
+    e.preventDefault()
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setSiteSaving(true)
+    setSiteMsg(null)
+    try {
+      const r = await saveSiteSettings(token, site)
+      if (r.success) {
+        if (r.settings) setSite(r.settings)
+        setSiteMsg({ ok: true, text: 'Site settings saved.' })
+      } else {
+        setSiteMsg({ ok: false, text: r.message || 'Failed to save.' })
+      }
+    } catch {
+      setSiteMsg({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setSiteSaving(false)
+    }
+  }
+
   const rf = (field: keyof RtResForm, value: string) => setRtRes(prev => ({ ...prev, [field]: value }))
 
   const tabs = [
     { id: 'profile' as const, name: 'Profile', icon: UserIcon },
+    { id: 'site' as const, name: 'Site Settings', icon: GlobeAltIcon },
     { id: 'security' as const, name: 'Security', icon: ShieldCheckIcon },
     { id: 'email' as const, name: 'Email (SMTP)', icon: EnvelopeIcon },
     { id: 'partner-api' as const, name: 'Partner API', icon: KeyIcon },
@@ -497,6 +556,118 @@ export default function SettingsPage() {
           )}
 
           {/* Security tab */}
+          {/* Site Settings tab — the name, logo and favicon the public site
+              uses. The logo used to be a link to a WordPress install on a
+              different site, which nobody here could change. */}
+          {activeTab === 'site' && (
+            <form onSubmit={handleSiteSave} className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-gray-800">Site Settings</h2>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  The name, logo and tab icon used across the public website.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Site Name</label>
+                  <input className={inp} value={site.siteName} placeholder="Luxotel"
+                    onChange={e => setSite(p => ({ ...p, siteName: e.target.value }))} />
+                  <p className="mt-1 text-xs text-gray-400">Shown as the browser tab title.</p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Tagline</label>
+                  <input className={inp} value={site.siteTagline} placeholder="Luxury hotel experience"
+                    onChange={e => setSite(p => ({ ...p, siteTagline: e.target.value }))} />
+                  <p className="mt-1 text-xs text-gray-400">Used as the site description.</p>
+                </div>
+              </div>
+
+              {/* Logo */}
+              <div className="rounded-xl border border-gray-200 p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <div className="flex h-20 w-44 shrink-0 items-center justify-center rounded-lg bg-gray-900 p-3">
+                    {site.logo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={getApiAssetUrl(site.logo)} alt="Site logo" className="max-h-full max-w-full object-contain" />
+                    ) : (
+                      <PhotoIcon className="h-8 w-8 text-gray-600" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-700">Logo</p>
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      Shown in the middle of the header on every page. A wide PNG with a transparent
+                      background works best — it sits on a dark bar, which is why the preview is dark.
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                        {siteUploading === 'logo' ? 'Uploading…' : site.logo ? 'Replace' : 'Upload'}
+                        <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadSiteImage('logo', f) }} />
+                      </label>
+                      {site.logo && (
+                        <button type="button" onClick={() => setSite(p => ({ ...p, logo: '' }))}
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">
+                          <TrashIcon className="h-3.5 w-3.5" /> Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Favicon */}
+              <div className="rounded-xl border border-gray-200 p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white p-2">
+                    {site.favicon ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={getApiAssetUrl(site.favicon)} alt="Favicon" className="max-h-full max-w-full object-contain" />
+                    ) : (
+                      <PhotoIcon className="h-6 w-6 text-gray-300" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-700">Favicon</p>
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      The small icon on the browser tab. A square PNG, 64×64 or larger.
+                      {' '}<strong>.ico and .svg are not accepted</strong> — an SVG can carry a script,
+                      so nothing here serves one. A PNG works in every current browser.
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                        {siteUploading === 'favicon' ? 'Uploading…' : site.favicon ? 'Replace' : 'Upload'}
+                        <input type="file" accept="image/png,image/webp" className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadSiteImage('favicon', f) }} />
+                      </label>
+                      {site.favicon && (
+                        <button type="button" onClick={() => setSite(p => ({ ...p, favicon: '' }))}
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">
+                          <TrashIcon className="h-3.5 w-3.5" /> Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {siteMsg && (
+                <p className={`text-sm ${siteMsg.ok ? 'text-green-600' : 'text-red-600'}`}>{siteMsg.text}</p>
+              )}
+
+              <div className="flex items-center gap-3">
+                <button type="submit" disabled={siteSaving}
+                  className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50">
+                  {siteSaving ? 'Saving…' : 'Save Site Settings'}
+                </button>
+                <p className="text-xs text-gray-400">
+                  Leaving the logo empty keeps the built-in one.
+                </p>
+              </div>
+            </form>
+          )}
+
           {activeTab === 'security' && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
               <div className="px-6 py-4 border-b border-gray-100">

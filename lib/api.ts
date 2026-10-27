@@ -567,6 +567,32 @@ export async function fetchPublicHomePageSections() {
   return res.json()
 }
 
+// ─── Site settings (logo, favicon, name) ─────────────────────────────────────
+
+export interface SiteSettings {
+  siteName: string
+  siteTagline: string
+  logo: string
+  favicon: string
+}
+
+export async function fetchSiteSettings(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/site`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function saveSiteSettings(token: string, settings: SiteSettings) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/site`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(settings),
+  })
+  return res.json()
+}
+
 export async function uploadHomepageSectionImage(file: File) {
   const formData = new FormData()
   formData.append('image', file)
