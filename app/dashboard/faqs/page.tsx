@@ -3,8 +3,20 @@
 import RichTextEditor from '../../../components/RichTextEditor'
 
 import { FormEvent, useCallback, useEffect, useState } from 'react'
-import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ChevronUpDownIcon } from '@heroicons/react/24/outline'
-import { Faq, FaqPayload, createAdminFaq, deleteAdminFaq, fetchAdminFaqs, updateAdminFaq, saveFaqCta } from '../../../lib/api'
+import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ChevronUpDownIcon, ArrowPathIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline'
+import {
+  Faq,
+  FaqPayload,
+  Hotel,
+  copyFaqsFromSite,
+  createAdminFaq,
+  deleteAdminFaq,
+  fetchAdminFaqs,
+  fetchHotels,
+  resetFaqsToSite,
+  updateAdminFaq,
+  saveFaqCta,
+} from '../../../lib/api'
 
 type FormState = FaqPayload & { id: string }
 
@@ -62,23 +74,84 @@ export default function FaqsPage() {
   const [ctaDirty, setCtaDirty] = useState(false)
   const [ctaSaving, setCtaSaving] = useState(false)
 
+  // Whose questions are being edited: '' is the site-wide list, or a hotel's
+  // id for that hotel's own. A hotel with none of its own shows the site-wide
+  // list on its page, so most hotels never need one.
+  const [scope, setScope] = useState('')
+  const [hotels, setHotels] = useState<Hotel[]>([])
+  const [inherited, setInherited] = useState(false)
+  const [scopeBusy, setScopeBusy] = useState(false)
+
+  // The list for the picker. Read-only, so a failure here costs nothing more
+  // than the site-wide list being the only one on offer.
+  useEffect(() => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    fetchHotels(token).then(r => { if (r.success) setHotels(r.hotels || []) }).catch(() => {})
+  }, [])
+
   const load = useCallback(async () => {
     const token = localStorage.getItem('adminToken')
     if (!token) return
     setLoading(true)
     try {
-      const result = await fetchAdminFaqs(token)
+      const result = await fetchAdminFaqs(token, scope)
       if (result.success) {
         setFaqs(result.faqs || [])
+        setInherited(!!result.inheritedFromSite)
         if (result.cta) { setCta({ ...DEFAULT_CTA, ...result.cta }); setCtaDirty(false) }
       }
       else setError(result.message || 'Failed to load FAQs.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [scope])
 
   useEffect(() => { load() }, [load])
+
+  const currentHotel = hotels.find(h => h.id === scope)
+
+  // Where this list is read on the site. Worth showing: the per-hotel page is
+  // new, and nothing else on this screen would say the address exists.
+  const publicPath = scope
+    ? `/hotels/${currentHotel?.slug || scope}/faqs`
+    : '/faqs'
+
+  const copyFromSite = async () => {
+    const token = localStorage.getItem('adminToken')
+    if (!token || !scope) return
+    if (!confirm(`Copy the site-wide questions onto ${currentHotel?.name || 'this hotel'}?\n\nYou can then edit or delete them without touching the site-wide list.`)) return
+    setScopeBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      const r = await copyFaqsFromSite(token, scope)
+      if (r.success) { setSuccess(r.message || 'Copied.'); await load() }
+      else setError(r.message || 'Could not copy.')
+    } catch {
+      setError('Could not reach the server.')
+    } finally {
+      setScopeBusy(false)
+    }
+  }
+
+  const resetToSite = async () => {
+    const token = localStorage.getItem('adminToken')
+    if (!token || !scope) return
+    if (!confirm(`Delete ${currentHotel?.name || 'this hotel'}'s own questions?\n\nIts FAQ page will show the site-wide list again. This cannot be undone.`)) return
+    setScopeBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      const r = await resetFaqsToSite(token, scope)
+      if (r.success) { setSuccess(r.message || 'Done.'); await load() }
+      else setError(r.message || 'Could not reset.')
+    } catch {
+      setError('Could not reach the server.')
+    } finally {
+      setScopeBusy(false)
+    }
+  }
 
   const openCreate = () => {
     setEditing(null)
@@ -121,7 +194,7 @@ export default function FaqsPage() {
       }
       const result = editing?.id
         ? await updateAdminFaq(token, editing.id, payload)
-        : await createAdminFaq(token, payload)
+        : await createAdminFaq(token, payload, scope)
 
       if (result.success) {
         setSuccess(editing?.id ? 'FAQ updated.' : 'FAQ created.')
@@ -163,7 +236,7 @@ export default function FaqsPage() {
     setError('')
     setSuccess('')
     try {
-      const result = await saveFaqCta(token, cta)
+      const result = await saveFaqCta(token, cta, scope)
       if (result.success) {
         if (result.cta) setCta({ ...DEFAULT_CTA, ...result.cta })
         setCtaDirty(false)
@@ -189,7 +262,10 @@ export default function FaqsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">FAQs</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage frequently asked questions shown on the website.</p>
+          <p className="mt-1 text-sm text-gray-500">
+            Questions shown on the website. Read at{' '}
+            <code className="font-mono text-xs text-gray-600">{publicPath}</code>.
+          </p>
         </div>
         <button
           onClick={openCreate}
@@ -203,12 +279,80 @@ export default function FaqsPage() {
       {error && <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {success && <div className="rounded-md border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
 
+      {/* Whose questions. The site used to have one list, shared by every
+          page; a hotel can have its own now, and falls back to the site-wide
+          list when it has none. */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <label className="shrink-0 text-sm font-medium text-gray-700" htmlFor="faqScope">
+            Questions for
+          </label>
+          <select
+            id="faqScope"
+            value={scope}
+            onChange={e => {
+              if (ctaDirty && !confirm('You have unsaved changes to the block below. Switch anyway?')) return
+              setScope(e.target.value); setError(''); setSuccess('')
+            }}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 sm:w-72"
+          >
+            <option value="">The whole site (/faqs)</option>
+            {hotels.map(h => (
+              <option key={h.id} value={h.id}>{h.name}</option>
+            ))}
+          </select>
+
+          {scope ? (
+            inherited || faqs.length === 0 ? (
+              <p className="text-xs text-amber-700">
+                This hotel has no questions of its own, so its FAQ page shows the site-wide list.
+                Add one here, or copy the site-wide questions to start from.
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400">
+                Shown on this hotel&apos;s own FAQ page, in place of the site-wide list.
+              </p>
+            )
+          ) : (
+            <p className="text-xs text-gray-400">
+              Used on /faqs and on every hotel that has not set its own.
+            </p>
+          )}
+        </div>
+
+        {scope && (
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+            <button
+              onClick={copyFromSite}
+              disabled={scopeBusy || faqs.length > 0}
+              title={faqs.length > 0 ? 'This hotel already has its own questions.' : undefined}
+              className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+            >
+              <DocumentDuplicateIcon className="h-3.5 w-3.5" />
+              Copy the site-wide questions
+            </button>
+            <button
+              onClick={resetToSite}
+              disabled={scopeBusy || faqs.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 disabled:opacity-40"
+            >
+              <ArrowPathIcon className="h-3.5 w-3.5" />
+              Go back to the site-wide list
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* The block under the questions on the site. */}
       <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">&ldquo;Still have questions?&rdquo; Block</h2>
-            <p className="mt-0.5 text-xs text-gray-400">Shown under the questions at the foot of the FAQ page.</p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Shown under the questions at the foot of{' '}
+              <code className="font-mono">{publicPath}</code>.
+              {scope && ' A hotel that has not set its own block uses the site-wide one.'}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-gray-600">
@@ -277,7 +421,14 @@ export default function FaqsPage() {
         <div className="rounded-xl bg-white shadow px-6 py-10 text-center text-sm text-gray-500">Loading FAQs…</div>
       ) : filtered.length === 0 ? (
         <div className="rounded-xl bg-white shadow px-6 py-16 text-center text-sm text-gray-400">
-          No FAQs yet. Click <strong>New FAQ</strong> to create one.
+          {scope ? (
+            <>
+              {currentHotel?.name || 'This hotel'} has no questions of its own. Its FAQ page shows
+              the site-wide list until you add one here.
+            </>
+          ) : (
+            <>No FAQs yet. Click <strong>New FAQ</strong> to create one.</>
+          )}
         </div>
       ) : (
         <div className="rounded-xl bg-white shadow overflow-hidden">
@@ -347,7 +498,12 @@ export default function FaqsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 sticky top-0 bg-white z-10">
-              <h2 className="text-base font-bold text-gray-900">{editing?.id ? 'Edit FAQ' : 'New FAQ'}</h2>
+              <div>
+                <h2 className="text-base font-bold text-gray-900">{editing?.id ? 'Edit FAQ' : 'New FAQ'}</h2>
+                <p className="mt-0.5 text-xs text-gray-400">
+                  {scope ? `For ${currentHotel?.name || 'this hotel'} only` : 'For the whole site'}
+                </p>
+              </div>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">&times;</button>
             </div>
 

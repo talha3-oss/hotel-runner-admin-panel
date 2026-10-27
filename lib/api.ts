@@ -1072,6 +1072,8 @@ export interface Faq {
   category: string | null
   sortOrder: number
   isActive: boolean
+  /** Null for the site-wide list, a hotel's id for that hotel's own. */
+  hotelId: string | null
   createdAt: string
   updatedAt: string
 }
@@ -1132,31 +1134,62 @@ export async function downloadSubscribersCsv(token: string, search = '') {
   return res.blob()
 }
 
+/** `hotel` is a hotel id for that hotel's own block, or empty for the
+ *  site-wide one. A hotel that has not set its own shows the site-wide block,
+ *  and saving here is what makes it the hotel's. */
 export async function saveFaqCta(
   token: string,
-  cta: { title: string; text: string; buttonLabel: string; buttonHref: string; enabled: boolean }
+  cta: { title: string; text: string; buttonLabel: string; buttonHref: string; enabled: boolean },
+  hotel = ''
 ) {
   const res = await fetch(`${API_BASE_URL}/api/v1/faqs/admin/cta`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(cta),
+    body: JSON.stringify({ ...cta, ...(hotel ? { hotel } : {}) }),
   })
   return res.json()
 }
 
-export async function fetchAdminFaqs(token: string) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/faqs/admin`, {
+/** `hotel` is a hotel id for that hotel's own questions, or empty for the
+ *  site-wide list. A hotel with none of its own comes back empty rather than
+ *  showing the site-wide questions as though they were its -- the screen says
+ *  so in words instead, and offers to copy them. */
+export async function fetchAdminFaqs(token: string, hotel = '') {
+  const query = new URLSearchParams()
+  if (hotel) query.set('hotel', hotel)
+  const res = await fetch(`${API_BASE_URL}/api/v1/faqs/admin?${query.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
   })
   return res.json()
 }
 
-export async function createAdminFaq(token: string, data: FaqPayload) {
+export async function createAdminFaq(token: string, data: FaqPayload, hotel = '') {
   const res = await fetch(`${API_BASE_URL}/api/v1/faqs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, ...(hotel ? { hotel } : {}) }),
+  })
+  return res.json()
+}
+
+/** Start this hotel off with a copy of the site-wide questions, rather than
+ *  retyping twenty that differ in two words. */
+export async function copyFaqsFromSite(token: string, hotel: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/faqs/admin/copy-from-site`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ hotel }),
+  })
+  return res.json()
+}
+
+/** Delete this hotel's own questions so it goes back to the site-wide list. */
+export async function resetFaqsToSite(token: string, hotel: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/faqs/admin/reset-to-site`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ hotel }),
   })
   return res.json()
 }
