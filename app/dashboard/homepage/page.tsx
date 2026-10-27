@@ -1671,7 +1671,7 @@ export default function HomepagePage() {
                     </h3>
                     <p className="mb-3 text-xs text-gray-400">
                       Plays muted and on a loop behind this section. Used instead of the picture
-                      above when both are set. MP4, WebM, Ogg or MOV, up to 60 MB.
+                      above when both are set. MP4, WebM, Ogg or MOV.
                     </p>
                     <div className="flex gap-4 items-start">
                       <div className="flex-shrink-0">

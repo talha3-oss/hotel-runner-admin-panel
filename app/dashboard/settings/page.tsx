@@ -4,11 +4,12 @@ import { FormEvent, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, KeyIcon,
-  PaperAirplaneIcon, GlobeAltIcon, PhotoIcon, TrashIcon,
+  PaperAirplaneIcon, GlobeAltIcon, PhotoIcon, TrashIcon, ArrowUpTrayIcon, VideoCameraIcon,
 } from '@heroicons/react/24/outline'
 import {
   getAdminMe, updateAdminMe,
   fetchSiteSettings, saveSiteSettings, uploadHomepageSectionImage, getApiAssetUrl,
+  fetchUploadLimits, saveUploadLimits, clearUploadLimitsCache, DEFAULT_UPLOAD_LIMITS, UploadLimits,
   SiteSettings,
 } from '../../../lib/api'
 import { passwordProblem } from '../../../lib/passwordRule'
@@ -165,14 +166,14 @@ export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'security' | 'email' | 'partner-api' | 'ratetiger'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'partner-api' | 'ratetiger'>('profile')
 
   // The header's menu links here with ?tab=..., so Profile and Settings land
   // where they say they will instead of always opening on Profile.
   const searchParams = useSearchParams()
   useEffect(() => {
     const wanted = searchParams.get('tab')
-    const allowed = ['profile', 'site', 'security', 'email', 'partner-api', 'ratetiger']
+    const allowed = ['profile', 'site', 'uploads', 'security', 'email', 'partner-api', 'ratetiger']
     if (wanted && allowed.includes(wanted)) {
       setActiveTab(wanted as typeof activeTab)
     }
@@ -474,9 +475,62 @@ export default function SettingsPage() {
 
   const rf = (field: keyof RtResForm, value: string) => setRtRes(prev => ({ ...prev, [field]: value }))
 
+  // ── Upload limits ──────────────────────────────────────────────────────
+  const [limits, setLimits] = useState<UploadLimits>(DEFAULT_UPLOAD_LIMITS)
+  const [limitsMax, setLimitsMax] = useState(190)
+  const [limitsDirty, setLimitsDirty] = useState(false)
+  const [limitsSaving, setLimitsSaving] = useState(false)
+  const [limitsLoaded, setLimitsLoaded] = useState(false)
+  const [limitsMsg, setLimitsMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    if (activeTab !== 'uploads' || limitsLoaded) return
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    fetchUploadLimits(token)
+      .then(r => {
+        if (r.success && r.limits) setLimits(r.limits)
+        if (r.maxMb) setLimitsMax(r.maxMb)
+        setLimitsLoaded(true)
+        setLimitsDirty(false)
+      })
+      .catch(() => {})
+  }, [activeTab, limitsLoaded])
+
+  const handleLimitsSave = async (e: FormEvent) => {
+    e.preventDefault()
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setLimitsSaving(true)
+    try {
+      const r = await saveUploadLimits(token, limits)
+      if (r.success) {
+        // What came back, not what was typed: a number above what the proxy
+        // allows is brought into range on the way in.
+        if (r.limits) setLimits(r.limits)
+        clearUploadLimitsCache()
+        setLimitsDirty(false)
+        setLimitsMsg({ ok: true, text: 'Saved. New uploads use these sizes straight away.' })
+      } else {
+        setLimitsMsg({ ok: false, text: r.message || 'Could not save the limits.' })
+      }
+    } catch {
+      setLimitsMsg({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setLimitsSaving(false)
+    }
+  }
+
+  const editLimit = (kind: keyof UploadLimits, raw: string) => {
+    const n = Number(raw)
+    setLimits(prev => ({ ...prev, [kind]: Number.isFinite(n) ? n : prev[kind] }))
+    setLimitsDirty(true)
+  }
+
   const tabs = [
     { id: 'profile' as const, name: 'Profile', icon: UserIcon },
     { id: 'site' as const, name: 'Site Settings', icon: GlobeAltIcon },
+    { id: 'uploads' as const, name: 'Uploads', icon: ArrowUpTrayIcon },
     { id: 'security' as const, name: 'Security', icon: ShieldCheckIcon },
     { id: 'email' as const, name: 'Email (SMTP)', icon: EnvelopeIcon },
     { id: 'partner-api' as const, name: 'Partner API', icon: KeyIcon },
@@ -568,6 +622,91 @@ export default function SettingsPage() {
                 </div>
               </form>
             </div>
+          )}
+
+          {/* Uploads tab — how large a picture or a video may be. */}
+          {activeTab === 'uploads' && (
+            <form onSubmit={handleLimitsSave} className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-gray-800">Upload Limits</h2>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  The largest file the panel will accept. These used to be fixed and needed a
+                  developer to change.
+                </p>
+              </div>
+
+              {limitsMsg && (
+                <div className={`rounded-lg border px-4 py-3 text-sm ${limitsMsg.ok
+                  ? 'border-green-200 bg-green-50 text-green-700'
+                  : 'border-red-200 bg-red-50 text-red-700'}`}>
+                  {limitsMsg.text}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <div className="rounded-xl border border-gray-200 p-4">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700" htmlFor="limitImage">
+                    <PhotoIcon className="h-4 w-4 text-gray-400" /> Pictures
+                  </label>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      id="limitImage"
+                      type="number"
+                      min={1}
+                      max={limitsMax}
+                      value={limits.image}
+                      onChange={(e) => editLimit('image', e.target.value)}
+                      className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <span className="text-sm text-gray-500">MB</span>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-400">
+                    JPG, PNG, WebP, GIF and AVIF. A photograph straight off a camera is often
+                    8&ndash;12 MB.
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-4">
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700" htmlFor="limitVideo">
+                    <VideoCameraIcon className="h-4 w-4 text-gray-400" /> Videos
+                  </label>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      id="limitVideo"
+                      type="number"
+                      min={1}
+                      max={limitsMax}
+                      value={limits.video}
+                      onChange={(e) => editLimit('video', e.target.value)}
+                      className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <span className="text-sm text-gray-500">MB</span>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-400">
+                    MP4, WebM, Ogg and MOV. A background video is decoration &mdash; the larger it
+                    is, the longer a guest waits before the page settles.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <p className="font-medium">The most that can be set is {limitsMax} MB.</p>
+                <p className="mt-1 text-xs">
+                  The server in front of the API refuses anything over 200 MB before the upload
+                  ever reaches us, and nothing here could explain that failure &mdash; so a larger
+                  number is brought back into range when you save. Raising it further is a change
+                  to the server itself.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={limitsSaving || !limitsDirty}
+                className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-40"
+              >
+                {limitsSaving ? 'Saving…' : 'Save Limits'}
+              </button>
+            </form>
           )}
 
           {/* Security tab */}

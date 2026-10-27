@@ -19,6 +19,10 @@ import {
   galleryThumbUrl,
   getApiAssetUrl,
   uploadMedia,
+  getUploadLimits,
+  DEFAULT_UPLOAD_LIMITS,
+  isVideoFile,
+  UploadLimits,
   GalleryFile,
 } from '../../../lib/api'
 import { UploadBar } from '../../../components/MediaPicker'
@@ -59,6 +63,7 @@ export default function GalleryPage() {
   const [uploading, setUploading] = useState(false)
   const [percent, setPercent] = useState<number | null>(0)
   const [uploadLabel, setUploadLabel] = useState('')
+  const [limits, setLimits] = useState<UploadLimits>(DEFAULT_UPLOAD_LIMITS)
   const uploadRef = useRef<HTMLInputElement>(null)
 
   // The search box asks the server, so it waits for a pause in typing rather
@@ -97,6 +102,8 @@ export default function GalleryPage() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => { getUploadLimits().then(setLimits).catch(() => {}) }, [])
+
   // The library could only ever be filled from somewhere else -- a section
   // editor, a hotel's photos -- so a video or a picture you wanted on hand
   // before deciding where it went had nowhere to go. Which endpoint a file
@@ -110,9 +117,20 @@ export default function GalleryPage() {
     const failed: string[] = []
     for (let i = 0; i < list.length; i += 1) {
       const file = list[i]
+      const limitMb = isVideoFile(file) ? limits.video : limits.image
+
+      // Refused before it is sent rather than after: on a slow connection a
+      // file that was never going to be kept can take minutes to find that
+      // out.
+      if (file.size > limitMb * 1024 * 1024) {
+        const mb = Math.round((file.size / 1024 / 1024) * 10) / 10
+        failed.push(`${file.name}: ${mb} MB, over the ${limitMb} MB limit`)
+        continue
+      }
+
       setUploadLabel(list.length > 1 ? `${file.name} (${i + 1} of ${list.length})` : file.name)
       setPercent(0)
-      const result = await uploadMedia(file, setPercent)
+      const result = await uploadMedia(file, setPercent, limitMb)
       if (!result.success) failed.push(`${file.name}: ${result.message || 'refused'}`)
     }
 
@@ -189,7 +207,9 @@ export default function GalleryPage() {
             className="hidden"
             onChange={(e) => { upload(e.target.files); e.target.value = '' }}
           />
-          <p className="mt-1 text-right text-xs text-gray-400">Pictures or videos</p>
+          <p className="mt-1 text-right text-xs text-gray-400">
+            Pictures to {limits.image} MB · videos to {limits.video} MB
+          </p>
         </div>
       </div>
 

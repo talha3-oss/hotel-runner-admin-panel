@@ -611,6 +611,66 @@ export async function uploadHomepageSectionImage(file: File) {
   return res.json()
 }
 
+// ── Upload limits ────────────────────────────────────────────────────────────
+
+export interface UploadLimits { image: number; video: number }
+
+export interface UploadLimitsResult {
+  success: boolean
+  message?: string
+  limits?: UploadLimits
+  /** The ceiling the panel cannot raise: the proxy in front of the API
+   *  refuses a larger body before the app ever sees it. */
+  maxMb?: number
+  minMb?: UploadLimits
+  defaults?: UploadLimits
+}
+
+export const DEFAULT_UPLOAD_LIMITS: UploadLimits = { image: 5, video: 60 }
+
+export async function fetchUploadLimits(token: string): Promise<UploadLimitsResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/uploads`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function saveUploadLimits(token: string, limits: UploadLimits): Promise<UploadLimitsResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/uploads`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(limits),
+  })
+  return res.json()
+}
+
+// The limits are a setting, so nothing in the panel should print a number
+// written into its own source. Held for a few minutes rather than fetched
+// every time a picker opens; a change made in Settings is in hand on the next
+// page load at worst.
+let limitsCache: { at: number; limits: UploadLimits } | null = null
+const LIMITS_TTL_MS = 5 * 60 * 1000
+
+export async function getUploadLimits(): Promise<UploadLimits> {
+  if (limitsCache && Date.now() - limitsCache.at < LIMITS_TTL_MS) return limitsCache.limits
+  const token = localStorage.getItem('adminToken')
+  if (!token) return DEFAULT_UPLOAD_LIMITS
+  try {
+    const r = await fetchUploadLimits(token)
+    const limits = r.success && r.limits ? r.limits : DEFAULT_UPLOAD_LIMITS
+    limitsCache = { at: Date.now(), limits }
+    return limits
+  } catch {
+    return DEFAULT_UPLOAD_LIMITS
+  }
+}
+
+/** Saving from Settings has to drop what everything else is holding. */
+export function clearUploadLimitsCache() {
+  limitsCache = null
+}
+
 export interface UploadResult {
   success: boolean
   message?: string
@@ -633,7 +693,8 @@ export const isVideoFile = (file: File) =>
  *  indeterminate bar rather than a bar frozen at zero. */
 export function uploadMedia(
   file: File,
-  onProgress?: (percent: number | null) => void
+  onProgress?: (percent: number | null) => void,
+  limitMb?: number
 ): Promise<UploadResult> {
   const video = isVideoFile(file)
   const field = video ? 'video' : 'image'
@@ -673,9 +734,9 @@ export function uploadMedia(
     xhr.onerror = () =>
       resolve({
         success: false,
-        message: video
-          ? 'The upload failed. Videos must be 60 MB or less.'
-          : 'The upload failed. Images must be 5 MB or less.',
+        message: limitMb
+          ? `The upload failed. ${video ? 'Videos' : 'Pictures'} must be ${limitMb} MB or less.`
+          : 'The upload failed. The file may be too large.',
       })
     xhr.onabort = () => resolve({ success: false, message: 'Upload cancelled.' })
 

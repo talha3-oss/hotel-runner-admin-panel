@@ -325,7 +325,7 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
             <MediaBox value={s.image || ''} onChange={url => set({ image: url })}
               label="Background Image (used when there is no video)" />
             <MediaBox kind="video" value={s.videoUrl || ''} onChange={url => set({ videoUrl: url })}
-              hint="Plays muted and on a loop behind this section, instead of the picture above. MP4, WebM, Ogg or MOV, up to 60 MB." />
+              hint="Plays muted and on a loop behind this section, instead of the picture above. MP4, WebM, Ogg or MOV." />
           </>)}
 
           {/* ══ TEXT ══ */}

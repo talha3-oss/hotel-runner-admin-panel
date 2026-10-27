@@ -15,6 +15,8 @@ import {
   getApiAssetUrl,
   uploadMedia,
   isVideoFile,
+  getUploadLimits,
+  DEFAULT_UPLOAD_LIMITS,
   GalleryFile,
 } from '../lib/api'
 
@@ -49,6 +51,11 @@ export default function MediaPicker({
 
   const [uploading, setUploading] = useState(false)
   const [percent, setPercent] = useState<number | null>(0)
+  // Shown and enforced from the setting rather than from a number written
+  // here, so Settings is the only place either changes.
+  const [limitMb, setLimitMb] = useState(
+    kind === 'video' ? DEFAULT_UPLOAD_LIMITS.video : DEFAULT_UPLOAD_LIMITS.image
+  )
   const uploadRef = useRef<HTMLInputElement>(null)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -80,6 +87,14 @@ export default function MediaPicker({
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    let cancelled = false
+    getUploadLimits().then(l => {
+      if (!cancelled) setLimitMb(kind === 'video' ? l.video : l.image)
+    })
+    return () => { cancelled = true }
+  }, [kind])
+
   // Escape closes, the way the other modals here behave.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -98,10 +113,18 @@ export default function MediaPicker({
       return
     }
 
+    // Caught here as well as by the API: a file refused before it is sent
+    // saves the person a long upload that was never going to be kept.
+    if (file.size > limitMb * 1024 * 1024) {
+      const mb = Math.round((file.size / 1024 / 1024) * 10) / 10
+      setError(`That file is ${mb} MB. The limit is ${limitMb} MB — it can be changed in Settings → Uploads.`)
+      return
+    }
+
     setUploading(true)
     setPercent(0)
     setError('')
-    const result = await uploadMedia(file, setPercent)
+    const result = await uploadMedia(file, setPercent, limitMb)
     setUploading(false)
 
     if (result.success && result.data?.fileUrl) {
@@ -126,7 +149,9 @@ export default function MediaPicker({
             <h2 className="text-base font-bold text-gray-900">
               Choose a {noun}
             </h2>
-            <p className="text-xs text-gray-400">From the library, or upload a new one.</p>
+            <p className="text-xs text-gray-400">
+            From the library, or upload a new one — up to {limitMb} MB.
+          </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
             <XMarkIcon className="h-5 w-5" />
