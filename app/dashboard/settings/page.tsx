@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, KeyIcon,
   PaperAirplaneIcon, GlobeAltIcon, PhotoIcon, TrashIcon,
@@ -10,6 +11,7 @@ import {
   fetchSiteSettings, saveSiteSettings, uploadHomepageSectionImage, getApiAssetUrl,
   SiteSettings,
 } from '../../../lib/api'
+import { passwordProblem } from '../../../lib/passwordRule'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
 
@@ -165,6 +167,18 @@ export default function SettingsPage() {
   const [loadError, setLoadError] = useState('')
   const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'security' | 'email' | 'partner-api' | 'ratetiger'>('profile')
 
+  // The header's menu links here with ?tab=..., so Profile and Settings land
+  // where they say they will instead of always opening on Profile.
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const wanted = searchParams.get('tab')
+    const allowed = ['profile', 'site', 'security', 'email', 'partner-api', 'ratetiger']
+    if (wanted && allowed.includes(wanted)) {
+      setActiveTab(wanted as typeof activeTab)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
   // Site settings — the name, logo and favicon the public site uses.
   const [site, setSite] = useState<SiteSettings>({ siteName: '', siteTagline: '', logo: '', favicon: '' })
   const [siteSaving, setSiteSaving] = useState(false)
@@ -301,7 +315,8 @@ export default function SettingsPage() {
   const handlePasswordSave = async (e: FormEvent) => {
     e.preventDefault(); setPwMsg(null)
     if (newPassword !== confirmPassword) { setPwMsg({ ok: false, text: 'New passwords do not match.' }); return }
-    if (newPassword.length < 8) { setPwMsg({ ok: false, text: 'Password must be at least 8 characters.' }); return }
+    const weak = passwordProblem(newPassword)
+    if (weak) { setPwMsg({ ok: false, text: weak }); return }
     setPwSaving(true)
     try {
       const token = localStorage.getItem('adminToken') || ''
@@ -656,6 +671,25 @@ export default function SettingsPage() {
                 <p className={`text-sm ${siteMsg.ok ? 'text-green-600' : 'text-red-600'}`}>{siteMsg.text}</p>
               )}
 
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <p className="text-sm font-medium text-gray-700">Your account</p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Your own name and sign-in email are under <strong>Profile</strong>, and your password
+                  under <strong>Security</strong>. They belong to you rather than to the site, which is
+                  why they are not on this tab.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setActiveTab('profile')}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                    Name &amp; email
+                  </button>
+                  <button type="button" onClick={() => setActiveTab('security')}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                    Change password
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-center gap-3">
                 <button type="submit" disabled={siteSaving}
                   className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50">
@@ -681,7 +715,7 @@ export default function SettingsPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">New Password</label>
                   <input type="password" required minLength={8} value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" className={inp} />
-                  <p className="mt-1 text-xs text-gray-400">Minimum 8 characters.</p>
+                  <p className="mt-1 text-xs text-gray-400">At least 8 characters, with a letter and a number.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirm New Password</label>
