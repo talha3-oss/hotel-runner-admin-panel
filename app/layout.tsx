@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3402'
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
 
 export const metadata: Metadata = {
   title: 'Luxotel Admin Dashboard',

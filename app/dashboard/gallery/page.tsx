@@ -14,10 +14,15 @@ import {
   fetchGallery,
   deleteGalleryImage,
   galleryThumbUrl,
+  getApiAssetUrl,
   GalleryFile,
 } from '../../../lib/api'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3402'
+// The address of the API is not worked out here any more. This file read
+// NEXT_PUBLIC_API_BASE_URL while every other screen in the panel reads
+// NEXT_PUBLIC_API_URL -- only the second is set, so this one quietly fell back
+// to localhost and "Open full size" sent people to a server on their own
+// machine.
 const PER_PAGE = 48
 
 function formatBytes(bytes: number) {
@@ -291,7 +296,7 @@ export default function GalleryPage() {
 
             <div className="flex items-center justify-between gap-3 border-t px-5 py-3">
               <a
-                href={`${API_BASE_URL}${preview.url}`}
+                href={getApiAssetUrl(preview.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900"
