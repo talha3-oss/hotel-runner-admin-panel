@@ -212,7 +212,6 @@ export default function HotelsPage() {
   const [accessibilityImageFile, setAccessibilityImageFile] = useState<File | null>(null)
   const [primaryImagePreview, setPrimaryImagePreview] = useState('')
   const [heroImagePreview, setHeroImagePreview] = useState('')
-  const [galleryImagePreviews, setGalleryImagePreviews] = useState<string[]>([])
   const [diningImagePreview, setDiningImagePreview] = useState('')
   const [businessImagePreview, setBusinessImagePreview] = useState('')
   const [accessibilityImagePreview, setAccessibilityImagePreview] = useState('')
@@ -247,9 +246,26 @@ export default function HotelsPage() {
     return () => {
       if (primaryImagePreview.startsWith('blob:')) URL.revokeObjectURL(primaryImagePreview)
       if (heroImagePreview.startsWith('blob:')) URL.revokeObjectURL(heroImagePreview)
-      galleryImagePreviews.forEach((p) => { if (p.startsWith('blob:')) URL.revokeObjectURL(p) })
+      // The gallery's own previews are let go beside the memo that makes them.
     }
-  }, [primaryImagePreview, heroImagePreview, galleryImagePreviews])
+  }, [primaryImagePreview, heroImagePreview])
+
+  // One object URL per picked file, made once and let go when the file is
+  // dropped. Making them while rendering would leak a new one every keystroke
+  // elsewhere in the form.
+  const newGalleryPreviews = useMemo(
+    () => galleryImageFiles.map((file) => ({ file, url: URL.createObjectURL(file) })),
+    [galleryImageFiles]
+  )
+
+  useEffect(() => {
+    return () => { newGalleryPreviews.forEach((item) => URL.revokeObjectURL(item.url)) }
+  }, [newGalleryPreviews])
+
+  const existingGalleryImages = useMemo(
+    () => parseCsv(hotelForm.galleryImages).filter(Boolean),
+    [hotelForm.galleryImages]
+  )
 
   const filteredHotels = useMemo(() => {
     return hotels.filter((hotel) => {
@@ -278,7 +294,6 @@ export default function HotelsPage() {
     setAccessibilityImageFile(null)
     setPrimaryImagePreview('')
     setHeroImagePreview('')
-    setGalleryImagePreviews([])
     setDiningImagePreview('')
     setBusinessImagePreview('')
     setAccessibilityImagePreview('')
@@ -351,7 +366,6 @@ export default function HotelsPage() {
     setFormError('')
     setPrimaryImagePreview(hotel.image ? getApiAssetUrl(hotel.image) : '')
     setHeroImagePreview(hotel.heroImage ? getApiAssetUrl(hotel.heroImage) : '')
-    setGalleryImagePreviews(hotel.galleryImages.map((img) => getApiAssetUrl(img)).filter(Boolean))
     const dc2 = asRecord(hotel.detailContent)
     setDiningImagePreview(typeof dc2?.diningImage === 'string' && dc2.diningImage ? getApiAssetUrl(dc2.diningImage) : '')
     setBusinessImagePreview(typeof dc2?.businessImage === 'string' && dc2.businessImage ? getApiAssetUrl(dc2.businessImage) : '')
@@ -379,15 +393,26 @@ export default function HotelsPage() {
     setPreview(fallbackUrl)
   }
 
+  // Picking files used to throw away every photo the hotel already had and
+  // keep only the new ones, so adding one picture to a gallery of twelve left
+  // the hotel with one. They are added to what is there.
   const handleGalleryImagesChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
-    galleryImagePreviews.forEach((p) => { if (p.startsWith('blob:')) URL.revokeObjectURL(p) })
-    setGalleryImageFiles(files)
-    if (files.length > 0) {
-      setGalleryImagePreviews(files.map((f) => URL.createObjectURL(f)))
-      return
-    }
-    setGalleryImagePreviews(parseCsv(hotelForm.galleryImages).map((img) => getApiAssetUrl(img)).filter(Boolean))
+    if (files.length) setGalleryImageFiles((prev) => [...prev, ...files])
+    // Clearing it lets the same file be picked again after it is removed --
+    // the input fires no change event when the choice has not changed.
+    event.target.value = ''
+  }
+
+  const removeExistingGalleryImage = (path: string) => {
+    setHotelForm((prev) => ({
+      ...prev,
+      galleryImages: parseCsv(prev.galleryImages).filter((img) => img !== path).join(', '),
+    }))
+  }
+
+  const removeNewGalleryImage = (index: number) => {
+    setGalleryImageFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
   const addAmenity = () => {
@@ -446,7 +471,9 @@ export default function HotelsPage() {
           if (!r.success || !r.data?.fileUrl) { setFormError(r.message || 'Failed to upload gallery image.'); return }
           paths.push(r.data.fileUrl)
         }
-        galleryImagePaths = paths
+        // Added to what the hotel already had. This used to be an assignment,
+        // which is why uploading one photo deleted the rest.
+        galleryImagePaths = [...galleryImagePaths, ...paths]
       }
 
       let diningImagePath = hotelForm.diningImage.trim()
@@ -995,16 +1022,48 @@ export default function HotelsPage() {
                 {/* Gallery Images */}
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Gallery Images</label>
-                  <p className="text-xs text-gray-400 mb-2">Multiple images shown in the hotel gallery. Selecting new files replaces all existing gallery images.</p>
+                  <p className="text-xs text-gray-400 mb-2">
+                    Shown in the gallery on the hotel page. New files are added to the ones already there — use the
+                    cross on a photo to take it out.
+                  </p>
                   <input type="file" accept="image/*" multiple className="block w-full text-sm text-gray-600 file:mr-3 file:py-1 file:px-3 file:rounded file:border file:border-gray-300 file:bg-white file:text-sm file:text-gray-700 hover:file:bg-gray-50"
                     onChange={handleGalleryImagesChange} />
-                  {galleryImagePreviews.length > 0 && (
+
+                  {(existingGalleryImages.length > 0 || newGalleryPreviews.length > 0) && (
                     <div className="mt-3 grid grid-cols-3 gap-2 md:grid-cols-5">
-                      {galleryImagePreviews.map((preview, i) => (
-                        <img key={`${preview}-${i}`} src={preview} alt={`Gallery ${i + 1}`} className="h-20 w-full rounded object-cover border border-gray-200" />
+                      {existingGalleryImages.map((path) => (
+                        <div key={path} className="group relative">
+                          <img src={getApiAssetUrl(path)} alt="Gallery" className="h-20 w-full rounded border border-gray-200 object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => removeExistingGalleryImage(path)}
+                            title="Remove from the gallery"
+                            className="absolute -right-1.5 -top-1.5 rounded-full bg-white p-0.5 text-red-500 opacity-0 shadow ring-1 ring-gray-200 transition-opacity group-hover:opacity-100"
+                          >
+                            <XMarkIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                      {newGalleryPreviews.map((item, i) => (
+                        <div key={`new-${i}-${item.file.name}`} className="group relative">
+                          <img src={item.url} alt="New gallery image" className="h-20 w-full rounded border-2 border-primary-400 object-cover" />
+                          <span className="absolute left-1 top-1 rounded bg-primary-600 px-1 py-0.5 text-[9px] font-semibold uppercase text-white">New</span>
+                          <button
+                            type="button"
+                            onClick={() => removeNewGalleryImage(i)}
+                            title="Do not upload this one"
+                            className="absolute -right-1.5 -top-1.5 rounded-full bg-white p-0.5 text-red-500 opacity-0 shadow ring-1 ring-gray-200 transition-opacity group-hover:opacity-100"
+                          >
+                            <XMarkIcon className="h-4 w-4" />
+                          </button>
+                        </div>
                       ))}
                     </div>
                   )}
+                  <p className="mt-2 text-xs text-gray-400">
+                    {existingGalleryImages.length} saved
+                    {newGalleryPreviews.length > 0 && `, ${newGalleryPreviews.length} to upload on save`}
+                  </p>
                 </div>
 
                 {/* ── Descriptions ── */}
