@@ -49,6 +49,10 @@ export default function MediaPicker({
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(1)
 
+  // Large enough to store and far too large to put behind a heading. The
+  // limit in Settings is about what the server will take; this is about what
+  // a guest will sit through, and they are not the same number.
+  const [slowWarning, setSlowWarning] = useState('')
   const [uploading, setUploading] = useState(false)
   const [percent, setPercent] = useState<number | null>(0)
   // Shown and enforced from the setting rather than from a number written
@@ -124,10 +128,24 @@ export default function MediaPicker({
     setUploading(true)
     setPercent(0)
     setError('')
+    setSlowWarning('')
     const result = await uploadMedia(file, setPercent, limitMb)
     setUploading(false)
 
     if (result.success && result.data?.fileUrl) {
+      // A background video is downloaded by every visitor before the page
+      // settles, and it comes from our own server rather than a content
+      // network. One that was 165 MB took over a minute on a fast line.
+      const mb = file.size / 1024 / 1024
+      if (kind === 'video' && mb > 20) {
+        setSlowWarning(
+          `Uploaded, but this video is ${Math.round(mb)} MB. Every visitor downloads it before the page settles — ` +
+          `at our server's speed that is roughly ${Math.round(mb / 1.5)} seconds on a fast connection, and longer on a phone. ` +
+          `Under 15 MB is what a background video wants: trim it to 10–15 seconds and compress it.`
+        )
+        onPick(result.data.fileUrl)
+        return
+      }
       onPick(result.data.fileUrl)
       onClose()
     } else {
@@ -193,6 +211,16 @@ export default function MediaPicker({
 
         {error && (
           <p className="border-b border-red-100 bg-red-50 px-5 py-2 text-sm text-red-700">{error}</p>
+        )}
+
+        {slowWarning && (
+          <div className="flex items-start gap-3 border-b border-amber-200 bg-amber-50 px-5 py-3">
+            <p className="flex-1 text-sm text-amber-800">{slowWarning}</p>
+            <button type="button" onClick={onClose}
+              className="shrink-0 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100">
+              Use it anyway
+            </button>
+          </div>
         )}
 
         {/* Grid */}
