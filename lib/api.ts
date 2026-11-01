@@ -1558,3 +1558,64 @@ export async function deleteGalleryImage(
 export function galleryThumbUrl(file: { folder: string; name: string }, width = 320) {
   return `${API_BASE_URL}/api/v1/admin/gallery/thumb/${file.folder}/${file.name}?w=${width}`
 }
+
+// ── RateTiger message log ─────────────────────────────────────────────────
+//
+// What RateTiger sent us and what we answered, kept in the database. pm2's
+// log files hold the same thing but rotate away, clip long messages, and need
+// a shell on the server -- which is no use when the question is "what did
+// they send on the 21st" three weeks later.
+
+export interface RateTigerLogRow {
+  id: string
+  createdAt: string
+  direction: 'IN' | 'OUT'
+  kind: string
+  hotelCode: string | null
+  requestId: string | null
+  statusCode: number | null
+  ok: boolean
+  note: string | null
+  durationMs: number | null
+}
+
+export interface RateTigerLogList {
+  success: boolean
+  message?: string
+  total: number
+  page: number
+  limit: number
+  pages: number
+  kinds: string[]
+  retentionDays: number
+  logs: RateTigerLogRow[]
+}
+
+export interface RateTigerLogDetail {
+  success: boolean
+  message?: string
+  log?: RateTigerLogRow & { request: unknown; response: unknown }
+}
+
+export async function fetchRateTigerLogs(
+  token: string,
+  params: { page?: number; limit?: number; kind?: string; direction?: string; status?: string; search?: string } = {}
+): Promise<RateTigerLogList> {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && String(v) !== '') q.set(k, String(v))
+  }
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/ratetiger-logs?${q}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function fetchRateTigerLog(token: string, id: string): Promise<RateTigerLogDetail> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/ratetiger-logs/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}

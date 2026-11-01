@@ -13,6 +13,7 @@ import {
   SiteSettings,
 } from '../../../lib/api'
 import { passwordProblem } from '../../../lib/passwordRule'
+import RateTigerLogs from '@/components/RateTigerLogs'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
 
@@ -1284,6 +1285,10 @@ export default function SettingsPage() {
                   </div>
                 </form>
               )}
+
+              <div className="border-t border-gray-200 pt-6">
+                <RateTigerLogs />
+              </div>
             </div>
           )}
         </div>
