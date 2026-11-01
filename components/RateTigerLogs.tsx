@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import {
   fetchRateTigerLogs, fetchRateTigerLog,
   type RateTigerLogRow, type RateTigerLogList,
@@ -186,7 +186,14 @@ export default function RateTigerLogs() {
               </td></tr>
             )}
             {rows.map(row => (
-              <tr key={row.id} className="align-top">
+              // The opened message renders inside this fragment, directly
+              // under its own row. It used to be appended after the whole
+              // list, so opening the first row put its bodies below the
+              // second -- and the detail read as if it belonged to the row
+              // above it. Two rows, two different messages, and the screen
+              // said the wrong one.
+              <Fragment key={row.id}>
+              <tr className="align-top">
                 <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">{when(row.createdAt)}</td>
                 <td className="px-3 py-2">
                   <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
@@ -215,10 +222,15 @@ export default function RateTigerLogs() {
                   </button>
                 </td>
               </tr>
+              {open === row.id && (
+                <tr>
+                  <td colSpan={6} className="bg-gray-50 p-0">
+                    <Detail id={row.id} token={token} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
-            {open && rows.some(r => r.id === open) && (
-              <tr><td colSpan={6} className="bg-gray-50 p-0"><Detail id={open} token={token} /></td></tr>
-            )}
           </tbody>
         </table>
       </div>
