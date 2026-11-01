@@ -42,7 +42,11 @@ type GroupedRoom = {
   countryName?: string
   discount: number
   totalRooms: number | null
-  plans: Array<{ id: string; roomType: string; price: number }>
+  // Status is per rate plan in the database, not per room code. Carrying only
+  // the group's made a real divergence invisible: nine of this property's
+  // eighteen rate plans sat OCCUPIED and off sale while the card said
+  // Available, because the card shows whichever row the query returned first.
+  plans: Array<{ id: string; roomType: string; price: number; status: RoomStatus }>
 }
 
 type RoomFormData = {
@@ -233,7 +237,9 @@ export default function RoomsPage() {
           plans: [],
         })
       }
-      map.get(key)!.plans.push({ id: room.id, roomType: room.roomType, price: room.price })
+      map.get(key)!.plans.push({
+        id: room.id, roomType: room.roomType, price: room.price, status: room.status,
+      })
     }
     return Array.from(map.values())
   }, [filteredRooms])
@@ -632,9 +638,23 @@ export default function RoomsPage() {
                   className="w-full h-48 object-cover"
                 />
                 <div className="absolute top-2 right-2">
-                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusBadgeClass(group.status)}`}>
-                    {statusLabels[group.status]}
-                  </span>
+                  {/* One badge for a room code that holds several rate plans,
+                      each with its own status. Showing the first plan's was
+                      how nine shut plans passed for Available; where they
+                      disagree it now says so and the plan badges below carry
+                      the detail. */}
+                  {group.plans.every((plan) => plan.status === group.plans[0]?.status) ? (
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusBadgeClass(group.status)}`}>
+                      {statusLabels[group.status]}
+                    </span>
+                  ) : (
+                    <span
+                      title="Rate plans under this room do not share a status"
+                      className="px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800"
+                    >
+                      Mixed
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -665,18 +685,41 @@ export default function RoomsPage() {
                     {group.plans.map((plan) => {
                       const meta = allRatePlans.find((m) => m.key === plan.roomType)
                       const luxotelRate = Math.round(plan.price * (1 - (group.discount ?? 0) / 100))
+                      // A plan not on AVAILABLE is not being sold, whatever the
+                      // badge at the top of the card says.
+                      const offSale = plan.status !== 'AVAILABLE'
                       return (
                         <span
                           key={plan.roomType}
-                          className="inline-flex items-center gap-1.5 px-2 py-1 bg-orange-50 border border-orange-200 text-xs rounded-full"
+                          title={offSale ? `Not on sale — ${statusLabels[plan.status]}` : undefined}
+                          className={`inline-flex items-center gap-1.5 px-2 py-1 border text-xs rounded-full ${
+                            offSale
+                              ? 'bg-red-50 border-red-200'
+                              : 'bg-orange-50 border-orange-200'
+                          }`}
                         >
-                          <span className="font-bold text-orange-800">{meta?.code ?? plan.roomType}</span>
+                          <span className={offSale ? 'font-bold text-red-800' : 'font-bold text-orange-800'}>
+                            {meta?.code ?? plan.roomType}
+                          </span>
                           <span className="text-gray-400 line-through">JOD {plan.price}</span>
-                          <span className="text-orange-600 font-bold">JOD {luxotelRate}</span>
+                          <span className={offSale ? 'text-red-600 font-bold' : 'text-orange-600 font-bold'}>
+                            JOD {luxotelRate}
+                          </span>
+                          {offSale && (
+                            <span className="text-[10px] font-semibold uppercase text-red-700">
+                              {statusLabels[plan.status]}
+                            </span>
+                          )}
                         </span>
                       )
                     })}
                   </div>
+                  {group.plans.some((plan) => plan.status !== 'AVAILABLE') && (
+                    <p className="mt-1 text-[11px] text-red-700">
+                      {group.plans.filter((plan) => plan.status !== 'AVAILABLE').length} of{' '}
+                      {group.plans.length} rate plans are not on sale.
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-1 mb-3">
@@ -1110,10 +1153,17 @@ export default function RoomsPage() {
                         const meta = allRatePlans.find((m) => m.key === plan.roomType)
                         const luxotelRate = Math.round(plan.price * (1 - (selectedGroup.discount ?? 0) / 100))
                         return (
-                          <div key={plan.roomType} className="flex items-center justify-between rounded-md bg-orange-50 px-3 py-2 text-sm">
+                          <div key={plan.roomType} className={`flex items-center justify-between rounded-md px-3 py-2 text-sm ${
+                            plan.status === 'AVAILABLE' ? 'bg-orange-50' : 'bg-red-50'
+                          }`}>
                             <span className="font-medium text-gray-700">
                               <span className="font-mono text-xs font-bold text-orange-700 mr-2">{meta?.code ?? plan.roomType}</span>
                               {meta?.label ?? plan.roomType}
+                              {plan.status !== 'AVAILABLE' && (
+                                <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase bg-red-100 text-red-800">
+                                  {statusLabels[plan.status]} — not on sale
+                                </span>
+                              )}
                             </span>
                             <div className="flex items-center gap-3">
                               <span className="text-xs text-gray-400 line-through">Public: JOD {plan.price}</span>
