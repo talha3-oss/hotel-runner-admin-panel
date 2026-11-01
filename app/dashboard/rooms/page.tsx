@@ -105,7 +105,15 @@ const statusLabels: Record<RoomStatus, string> = {
   CLEANING: 'Cleaning',
 }
 
-const statusOptions: RoomStatus[] = ['AVAILABLE', 'OCCUPIED', 'MAINTENANCE', 'CLEANING']
+// What an admin may choose. OCCUPIED is not offered any more: a room code
+// stands for every room of its type -- 25 of them on DBL -- so it is never
+// "occupied" as a whole, and whether a given night is sold out is worked out
+// per night from the bookings against totalRooms. Offering it invited someone
+// to set a state the system maintains itself, which is how twenty-six rate
+// plans ended up shut for good.
+//
+// The value still exists for filtering, so any row left on it can be found.
+const statusOptions: RoomStatus[] = ['AVAILABLE', 'MAINTENANCE', 'CLEANING']
 
 const parseCsvInput = (value: string): string[] =>
   value
@@ -869,7 +877,7 @@ export default function RoomsPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                     <select
-                      value={formData.status}
+                      value={formData.status === 'OCCUPIED' ? 'AVAILABLE' : formData.status}
                       onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value as RoomStatus }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                     >
@@ -879,6 +887,12 @@ export default function RoomsPage() {
                         </option>
                       ))}
                     </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      A switch you control, for taking this room off sale yourself. It is not how
+                      the site knows a night is sold out — that is counted per night from the
+                      bookings against Total Rooms, and shown in Rates &amp; Availability.
+                      Applies to every rate plan on this room code.
+                    </p>
                   </div>
                 </div>
 
