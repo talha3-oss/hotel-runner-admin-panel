@@ -41,9 +41,6 @@ type GroupedRoom = {
   locationName?: string
   countryName?: string
   discount: number
-  childrenPrice: number
-  childrenAllowed: boolean
-  adultMinAge: number
   totalRooms: number | null
   plans: Array<{ id: string; roomType: string; price: number }>
 }
@@ -59,9 +56,6 @@ type RoomFormData = {
   // it is what the site sells at on those nights, and a leftover 10 has been
   // offered to guests before.
   discount: string
-  childrenPrice: string
-  childrenAllowed: boolean
-  adultMinAge: string
   roomType: string
   capacity: string
   totalRooms: string
@@ -89,9 +83,6 @@ const EMPTY_FORM: RoomFormData = {
   selectedRatePlans: [],
   ratePlanPrices: {},
   discount: '10',
-  childrenPrice: '',
-  childrenAllowed: true,
-  adultMinAge: '0',
   roomType: '',
   capacity: '',
   totalRooms: '',
@@ -238,9 +229,6 @@ export default function RoomsPage() {
           locationName: room.locationName,
           countryName: room.countryName,
           discount: room.discount ?? 0,
-          childrenPrice: room.childrenPrice ?? 0,
-          childrenAllowed: room.childrenAllowed !== false,
-          adultMinAge: room.adultMinAge ?? 0,
           totalRooms: room.totalRooms ?? null,
           plans: [],
         })
@@ -279,9 +267,6 @@ export default function RoomsPage() {
       selectedRatePlans: selectedPlans,
       ratePlanPrices: planPrices,
       discount: String(group.discount ?? 10),
-      childrenPrice: String(group.childrenPrice ?? ''),
-      childrenAllowed: group.childrenAllowed !== false,
-      adultMinAge: String(group.adultMinAge ?? 0),
       roomType: group.plans[0]?.roomType || '',
       capacity: String(group.capacity),
       totalRooms: group.totalRooms == null ? '' : String(group.totalRooms),
@@ -440,9 +425,6 @@ export default function RoomsPage() {
               price: Number(formData.ratePlanPrices[plan.roomType]),
               roomNumber: formData.roomNumber.trim(),
               discount: Number(formData.discount) || 0,
-              childrenPrice: Number(formData.childrenPrice) || 0,
-              childrenAllowed: formData.childrenAllowed,
-              adultMinAge: Number(formData.adultMinAge) || 0,
             })
             if (!result.success) errors.push(`${plan.roomType}: ${result.message || 'Failed to update'}`)
           }
@@ -466,9 +448,6 @@ export default function RoomsPage() {
               roomCount: 1,
               roomNumbers: [formData.roomNumber.trim()],
               discount: Number(formData.discount) || 0,
-              childrenPrice: Number(formData.childrenPrice) || 0,
-              childrenAllowed: formData.childrenAllowed,
-              adultMinAge: Number(formData.adultMinAge) || 0,
             })
             if (!result.success) errors.push(`${planType}: ${result.message || 'Failed to create'}`)
           }
@@ -550,7 +529,6 @@ export default function RoomsPage() {
           roomCount,
           roomNumbers,
           discount: Number(formData.discount) || 0,
-          childrenPrice: Number(formData.childrenPrice) || 0,
         })
         if (!result.success) {
           errors.push(`${plan}: ${result.message || 'Failed'}`)
