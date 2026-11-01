@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import {
   UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, KeyIcon,
   PaperAirplaneIcon, GlobeAltIcon, PhotoIcon, TrashIcon, ArrowUpTrayIcon, VideoCameraIcon,
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline'
 import {
   getAdminMe, updateAdminMe,
@@ -167,7 +168,7 @@ export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'partner-api' | 'ratetiger'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'partner-api' | 'ratetiger' | 'ratetiger-logs'>('profile')
 
   // The header's menu links here with ?tab=..., so Profile and Settings land
   // where they say they will instead of always opening on Profile.
@@ -536,6 +537,10 @@ export default function SettingsPage() {
     { id: 'email' as const, name: 'Email (SMTP)', icon: EnvelopeIcon },
     { id: 'partner-api' as const, name: 'Partner API', icon: KeyIcon },
     { id: 'ratetiger' as const, name: 'RateTiger', icon: PaperAirplaneIcon },
+    // Its own tab rather than a section under RateTiger: the settings there
+    // are filled in once and left, while this is read whenever a rate looks
+    // wrong, and it was buried under a form nobody scrolls past.
+    { id: 'ratetiger-logs' as const, name: 'RateTiger Logs', icon: DocumentTextIcon },
   ]
 
   const inp = 'w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500'
@@ -1286,9 +1291,13 @@ export default function SettingsPage() {
                 </form>
               )}
 
-              <div className="border-t border-gray-200 pt-6">
-                <RateTigerLogs />
-              </div>
+            </div>
+          )}
+
+          {/* RateTiger Logs tab */}
+          {activeTab === 'ratetiger-logs' && (
+            <div className="p-6">
+              <RateTigerLogs />
             </div>
           )}
         </div>
