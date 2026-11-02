@@ -268,14 +268,50 @@ export default function RichTextEditor({
   )
 }
 
+const LOOKS_LIKE_HTML = /<[a-z][\s\S]*>/i
+
+/** Markup that was written out as characters instead of tags, possibly more
+ *  than once.
+ *
+ *  A value stored as `&lt;p>Hello&lt;/p>` does not match the test below, so it
+ *  was treated as plain typing and escaped again on the way in -- and Tiptap
+ *  then handed that back on the way out. Every save buried the page one layer
+ *  deeper, which is why it worsened on something as small as pressing space.
+ *
+ *  Decoding is only kept when it turns the value into real markup, so a
+ *  sentence with a stray `&lt;` in it is left exactly as typed. */
+function decodeEscapedHtml(value: string) {
+  if (LOOKS_LIKE_HTML.test(value)) return value
+
+  let out = value
+  // Five is far past anything real: each save added one layer, and the pages
+  // that broke carry two.
+  for (let i = 0; i < 5; i += 1) {
+    const next = out
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#0*39;/gi, "'")
+      // Last, so &amp;lt; becomes &lt; on this pass and < on the next.
+      .replace(/&amp;/gi, '&')
+    if (next === out) break
+    out = next
+    if (LOOKS_LIKE_HTML.test(out)) return out
+  }
+
+  return value
+}
+
 /** Everything written before this editor existed is plain text with line
  *  breaks. Handing that to Tiptap as HTML would collapse it onto one line, so
  *  it is turned into paragraphs first. Anything that already looks like HTML
- *  is passed through untouched. */
+ *  is passed through untouched, and anything that is markup in disguise is
+ *  turned back into markup first -- otherwise opening the page to fix it was
+ *  what made it worse. */
 function toInitialHtml(value: string) {
-  const text = value || ''
+  const text = decodeEscapedHtml(value || '')
   if (!text.trim()) return ''
-  if (/<[a-z][\s\S]*>/i.test(text)) return text
+  if (LOOKS_LIKE_HTML.test(text)) return text
   return text
     .split(/\n{2,}/)
     .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
