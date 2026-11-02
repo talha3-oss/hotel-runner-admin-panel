@@ -40,6 +40,12 @@ interface Calendar {
 
 const DAY_OPTIONS = [14, 30, 60, 90]
 
+// Which price the grid is showing. RateTiger publishes the room rate and the
+// child rate as separate parameters, and a mapping can carry one without the
+// other -- so "is a child rate arriving for these nights?" could not be read
+// off a grid showing only the room. It had to be asked a night at a time.
+type View = 'room' | 'child'
+
 const today = () => new Date().toISOString().slice(0, 10)
 
 const addDays = (day: string, count: number) => {
@@ -74,15 +80,29 @@ const displayAmount = (cell: RateCell | undefined) => {
   return cell.baseAmount ?? null
 }
 
+// What a child costs that night, as RateTiger published it. Their child rate
+// travels at ageQualifyingCode 8 and is its own parameter: a night can carry a
+// room rate and no child rate, which is most of them.
+const displayChild = (cell: RateCell | undefined) =>
+  cell?.childAmount ?? null
+
 export default function RatesPage() {
   const [hotels, setHotels] = useState<Hotel[]>([])
   const [hotelId, setHotelId] = useState('')
   const [start, setStart] = useState(today())
   const [days, setDays] = useState(30)
+  const [view, setView] = useState<View>('room')
+  const showingChild = view === 'child'
 
   const [calendar, setCalendar] = useState<Calendar | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // The children policy is the hotel's. It is what a child costs on any night
+  // RateTiger has not published a child rate for, which is most of them.
+  const selectedHotel = hotels.find(h => h.id === hotelId)
+  const childrenBarred = selectedHotel?.childrenAllowed === false
+  const childFallback = Number(selectedHotel?.childrenPrice) || 0
 
   useEffect(() => {
     const token = localStorage.getItem('adminToken') || ''
@@ -175,6 +195,26 @@ export default function RatesPage() {
           </select>
         </div>
 
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Showing</label>
+          <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+            {([['room', 'Room rate'], ['child', 'Child rate']] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setView(id)}
+                className={`px-4 py-2 text-sm font-medium ${
+                  view === id
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <button
           onClick={load}
           disabled={loading}
@@ -187,6 +227,25 @@ export default function RatesPage() {
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+
+      {showingChild && (
+        <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-900">
+          {childrenBarred ? (
+            <>
+              This hotel does not take children, so nothing here is charged for one whatever
+              RateTiger publishes. Change that on the hotel if it is wrong.
+            </>
+          ) : (
+            <>
+              What RateTiger has published for a child, per night and per rate plan
+              (<code className="bg-white/70 px-1 rounded">ageQualifyingCode 8</code>). It is a
+              separate parameter from the room rate, so a night can carry one and not the other —
+              grey means they have published no child rate for it and the hotel&apos;s Children
+              Price of {CURRENCY} {childFallback} applies.
+            </>
+          )}
+        </div>
       )}
 
       {calendar && !calendar.hotel.connected && (
@@ -281,7 +340,11 @@ export default function RatesPage() {
                           </td>
                           {calendar.dates.map(day => {
                             const cell = calendar.rates[`${room.code}|${pair.planCode}|${day}`]
-                            const amount = displayAmount(cell)
+                            const amount = showingChild ? displayChild(cell) : displayAmount(cell)
+                            // What applies when RateTiger has published nothing
+                            // for that night: the hotel's children price in the
+                            // child view, the room's own price otherwise.
+                            const fallback = showingChild ? childFallback : pair.fallbackPrice
                             const closed = cell?.stopSell === true
                             const flags = [
                               cell?.closedToArrival ? 'A' : '',
@@ -294,7 +357,10 @@ export default function RatesPage() {
                                 key={day}
                                 title={
                                   closed ? 'Stop-sell — RateTiger has closed this night'
-                                    : amount === null ? `Not published — the room's own price applies (${CURRENCY} ${pair.fallbackPrice})`
+                                    : amount === null
+                                      ? showingChild
+                                        ? `No child rate published — the hotel's Children Price applies (${CURRENCY} ${fallback})`
+                                        : `Not published — the room's own price applies (${CURRENCY} ${fallback})`
                                     : `${cell?.taxInclusive ? 'After tax' : 'Before tax'}${cell?.updatedAt ? ` · updated ${new Date(cell.updatedAt).toLocaleString('en-GB')}` : ''}`
                                 }
                                 className={`px-2 py-2 text-center border-b border-gray-100 whitespace-nowrap ${
@@ -303,7 +369,7 @@ export default function RatesPage() {
                                 }`}
                               >
                                 {closed ? 'STOP' : amount === null ? (
-                                  <span className="text-gray-300">{pair.fallbackPrice}</span>
+                                  <span className="text-gray-300">{fallback}</span>
                                 ) : amount}
                                 {flags && <div className="text-[10px] text-amber-600 leading-none mt-0.5">{flags}</div>}
                               </td>
@@ -319,8 +385,15 @@ export default function RatesPage() {
           </div>
 
           <div className="px-4 py-3 border-t border-gray-200 text-xs text-gray-500 flex flex-wrap gap-x-6 gap-y-1">
-            <span>Amounts in {CURRENCY}, per night.</span>
-            <span><span className="text-gray-300">Grey</span> — not published, the room&apos;s own price applies.</span>
+            <span>
+              {showingChild ? 'Child rate' : 'Room rate'} in {CURRENCY}, per night.
+            </span>
+            <span>
+              <span className="text-gray-300">Grey</span> — not published,{' '}
+              {showingChild
+                ? `the hotel's Children Price applies (${CURRENCY} ${childFallback}).`
+                : "the room's own price applies."}
+            </span>
             <span><span className="text-red-700 font-semibold">STOP</span> — closed by RateTiger.</span>
             <span><span className="text-orange-800 bg-orange-100 px-1">over</span> — more rooms on sale than the property has.</span>
             <span><span className="text-amber-600">A</span> closed to arrival · <span className="text-amber-600">D</span> closed to departure · <span className="text-amber-600">≥n</span> minimum nights.</span>
