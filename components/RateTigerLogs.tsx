@@ -125,8 +125,13 @@ export default function RateTigerLogs() {
           <strong> OUT</strong> is a reservation we pushed to them. Open a row to see the
           amounts exactly as they travelled — a child rate is the one at{' '}
           <code className="rounded bg-gray-100 px-1">ageQualifyingCode 8</code>. A row
-          marked <strong>our test</strong> came in at a route we use to try a message by
-          hand, not the one RateTiger posts to.
+          marked <strong>our test</strong> was pushed by hand at one of our own
+          routes rather than the one RateTiger posts to. Read-only pulls we run
+          against <code className="rounded bg-gray-100 px-1">/rates</code> and{' '}
+          <code className="rounded bg-gray-100 px-1">/rooms</code> are answered but not
+          kept — they change nothing, and filling this up with them would make it
+          unreadable. <strong>authenticate</strong> rows record only whether a token
+          was issued; no key, password or token is stored.
           {data ? ` Kept for ${data.retentionDays} days.` : ''}
         </p>
       </div>
@@ -206,11 +211,15 @@ export default function RateTigerLogs() {
                 <td className="px-3 py-2">
                   <p className="font-medium text-gray-800">
                     {row.kind}
-                    {/* RateTiger posts to /admin/rooms. Anything else came in at
-                        a route that exists for us to test against, and saying so
-                        stops a test of ours being read later as a message of
-                        theirs. */}
-                    {row.path && !row.path.endsWith('/admin/rooms') && (
+                    {/* RateTiger posts to /ratetiger/admin/rooms. The other
+                        /ratetiger routes exist for us to push a message by
+                        hand, and one that changed data is kept -- marked, so a
+                        test of ours is never read later as a message of
+                        theirs. Authenticate is their own traffic and is not
+                        marked. */}
+                    {row.direction === 'IN' &&
+                      row.path?.includes('/ratetiger/') &&
+                      !row.path.endsWith('/admin/rooms') && (
                       <span
                         title={row.path}
                         className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700"
