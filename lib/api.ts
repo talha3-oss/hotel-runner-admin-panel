@@ -1571,6 +1571,7 @@ export interface RateTigerLogRow {
   createdAt: string
   direction: 'IN' | 'OUT'
   kind: string
+  path: string | null
   hotelCode: string | null
   requestId: string | null
   statusCode: number | null

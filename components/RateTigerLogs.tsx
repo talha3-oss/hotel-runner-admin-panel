@@ -124,7 +124,9 @@ export default function RateTigerLogs() {
           Every message exchanged with RateTiger. <strong>IN</strong> is what they sent us,
           <strong> OUT</strong> is a reservation we pushed to them. Open a row to see the
           amounts exactly as they travelled — a child rate is the one at{' '}
-          <code className="rounded bg-gray-100 px-1">ageQualifyingCode 8</code>.
+          <code className="rounded bg-gray-100 px-1">ageQualifyingCode 8</code>. A row
+          marked <strong>our test</strong> came in at a route we use to try a message by
+          hand, not the one RateTiger posts to.
           {data ? ` Kept for ${data.retentionDays} days.` : ''}
         </p>
       </div>
@@ -202,8 +204,23 @@ export default function RateTigerLogs() {
                   </span>
                 </td>
                 <td className="px-3 py-2">
-                  <p className="font-medium text-gray-800">{row.kind}</p>
+                  <p className="font-medium text-gray-800">
+                    {row.kind}
+                    {/* RateTiger posts to /admin/rooms. Anything else came in at
+                        a route that exists for us to test against, and saying so
+                        stops a test of ours being read later as a message of
+                        theirs. */}
+                    {row.path && !row.path.endsWith('/admin/rooms') && (
+                      <span
+                        title={row.path}
+                        className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700"
+                      >
+                        our test
+                      </span>
+                    )}
+                  </p>
                   {row.requestId && <p className="text-[11px] text-gray-400">{row.requestId}</p>}
+                  {row.path && <p className="text-[11px] text-gray-400">{row.path}</p>}
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">{row.hotelCode || '—'}</td>
                 <td className="px-3 py-2">
