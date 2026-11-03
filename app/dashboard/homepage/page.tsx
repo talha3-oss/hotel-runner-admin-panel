@@ -15,7 +15,7 @@ import {
   uploadHomepageSectionImage,
   HomePageSection, HomePageSectionType, HomePageSectionStatus, HomePageSectionPayload,
   MenuButtons, DEFAULT_MENU_BUTTONS, MenuText, DEFAULT_MENU_TEXT,
-  fetchHotels, updateHotel, Hotel,
+  fetchHotels, updateHotel, Hotel, galleryThumbUrl,
 } from '../../../lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -373,6 +373,17 @@ function typeContent(form: SectionForm): Record<string, unknown> {
 
 // ── SectionCard ───────────────────────────────────────────────────────────────
 
+// A card shows its picture 128px tall, and was handed the original upload --
+// four of them, several megabytes between them, every time this screen opened.
+// The gallery's thumbnailer already serves a small copy of anything under
+// /uploads, so the card asks for that and falls back to the original for a
+// path it cannot take apart.
+function cardThumb(image: string) {
+  const full = image.startsWith('http') ? image : getApiAssetUrl(image)
+  const m = image.match(/^\/?uploads\/([^/]+)\/([^/?#]+)$/)
+  return m ? galleryThumbUrl({ folder: m[1], name: m[2] }, 320) : full
+}
+
 function SectionCard({ section, onEdit, onDelete, onMove, canMoveUp, canMoveDown, moving }: {
   section: HomePageSection
   onEdit: () => void
@@ -382,12 +393,12 @@ function SectionCard({ section, onEdit, onDelete, onMove, canMoveUp, canMoveDown
   canMoveDown: boolean
   moving: boolean
 }) {
-  const imageUrl = section.image ? getApiAssetUrl(section.image) : null
+  const imageUrl = section.image ? cardThumb(section.image) : null
   const block = HOMEPAGE_BLOCKS[section.sectionKey]
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col">
       {imageUrl ? (
-        <div className="h-32 flex-shrink-0"><img src={imageUrl} alt={section.imageAlt || section.name} className="w-full h-full object-cover" /></div>
+        <div className="h-32 flex-shrink-0"><img src={imageUrl} alt={section.imageAlt || section.name} loading="lazy" className="w-full h-full object-cover" /></div>
       ) : (
         <div className="h-32 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center flex-shrink-0">
           <PhotoIcon className="h-10 w-10 text-gray-300" />
@@ -658,15 +669,28 @@ export default function HomepagePage() {
     } finally { setLoadingNav(false) }
   }, [scope])
 
-  useEffect(() => { loadSections(); loadNav() }, [loadSections, loadNav])
+  // Only the sections are needed to draw the screen as it opens.
+  //
+  // It used to ask for all three at once -- the sections, the navigation menu
+  // and every hotel -- so the cards waited behind two requests belonging to
+  // tabs nobody had opened, the hotels one 39 KB of property detail wanted
+  // for a dropdown of names. The other two are fetched when their tab is.
+  useEffect(() => { loadSections() }, [loadSections])
 
-  // The list for the picker. Read-only, so a failure here costs nothing more
+  useEffect(() => { if (tab === 'nav') loadNav() }, [tab, loadNav])
+
+  // The list behind the "Menu for" / "Footer for" picker, so only those two
+  // tabs need it. Read-only, and fetched once: a failure costs nothing more
   // than the site-wide menu being the only one on offer.
+  const hotelsAsked = useRef(false)
   useEffect(() => {
+    if (tab !== 'nav' && tab !== 'footer') return
+    if (hotelsAsked.current) return
     const token = localStorage.getItem('adminToken')
     if (!token) return
-    fetchHotels(token).then(r => { if (r.success) setHotels(r.hotels || []) }).catch(() => {})
-  }, [])
+    hotelsAsked.current = true
+    fetchHotels(token).then(r => { if (r.success) setHotels(r.hotels || []) }).catch(() => { hotelsAsked.current = false })
+  }, [tab])
 
   // ── Section CRUD ────────────────────────────────────────────────────────────
 
