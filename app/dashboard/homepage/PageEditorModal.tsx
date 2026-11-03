@@ -17,13 +17,18 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SectionType = 'hero' | 'text' | 'cards' | 'offers' | 'cta' | 'contact-info' | 'form' | 'sitemap'
+type SectionType =
+  | 'hero' | 'text' | 'cards' | 'offers' | 'cta' | 'contact-info' | 'form' | 'sitemap'
+  | 'media-text' | 'gallery' | 'pricing'
 
 interface CardItem     { icon: string; title: string; text: string }
 interface OfferItem    { title: string; badge: string; description: string; highlight: string; image: string; includes: string[] }
 interface ContactItem  { icon: string; label: string; value: string }
 interface SitemapLink  { label: string; href: string }
 interface SitemapColumn{ title: string; links: SitemapLink[] }
+interface GalleryItem  { image: string; caption: string }
+interface PriceItem    { title: string; description: string; price: string; duration: string }
+interface PriceGroup   { label: string; items: PriceItem[] }
 
 interface ContentSection {
   type: SectionType
@@ -39,8 +44,16 @@ interface ContentSection {
   contactNote?: string
   /** Contact form only: where its enquiries are emailed, comma separated. */
   recipients?: string
-  items?: (CardItem | OfferItem | ContactItem)[]
+  /** Image & Text only: which side the picture sits on, and what a screen
+   *  reader is told about it. */
+  imagePosition?: 'left' | 'right'
+  imageAlt?: string
+  /** Price List only: the line under the chips, e.g. opening hours. */
+  note?: string
+  items?: (CardItem | OfferItem | ContactItem | GalleryItem)[]
   columns?: SitemapColumn[]
+  /** Price List only: one group per chip. */
+  groups?: PriceGroup[]
 }
 
 // ─── Section type metadata ────────────────────────────────────────────────────
@@ -54,6 +67,9 @@ const SECTION_TYPES: { value: SectionType; label: string; desc: string }[] = [
   { value: 'contact-info', label: 'Contact Info',   desc: 'List of phone / email / address items' },
   { value: 'form',         label: 'Contact Form',   desc: 'Embedded enquiry form' },
   { value: 'sitemap',      label: 'Sitemap',        desc: 'Link columns for a sitemap page' },
+  { value: 'media-text',   label: 'Image & Text',   desc: 'Picture on one side, heading and text on the other' },
+  { value: 'gallery',      label: 'Gallery Carousel', desc: 'Images in a carousel the guest can swipe' },
+  { value: 'pricing',      label: 'Price List',     desc: 'Chips per category, price cards underneath' },
 ]
 
 const TYPE_COLORS: Record<SectionType, string> = {
@@ -65,6 +81,9 @@ const TYPE_COLORS: Record<SectionType, string> = {
   'contact-info':'bg-teal-100 text-teal-700 border-teal-200',
   form:          'bg-pink-100 text-pink-700 border-pink-200',
   sitemap:       'bg-gray-100 text-gray-700 border-gray-200',
+  'media-text':  'bg-indigo-100 text-indigo-700 border-indigo-200',
+  gallery:       'bg-rose-100 text-rose-700 border-rose-200',
+  pricing:       'bg-amber-100 text-amber-700 border-amber-200',
 }
 
 // ─── Default items for new sections ──────────────────────────────────────────
@@ -106,6 +125,17 @@ const DEFAULT_SITEMAP_COLS: SitemapColumn[] = [
   { title: 'Company',    links: [{ label: 'About Luxotel', href: '/about' }, { label: 'Careers', href: '/careers' }] },
 ]
 
+const DEFAULT_PRICE_GROUPS: PriceGroup[] = [
+  {
+    label: 'Body Massage',
+    items: [
+      { title: 'Back, Neck & Shoulder', description: 'Focused massage to release built-up tension.', price: '35 JOD', duration: '30 Minutes' },
+      { title: 'Swedish Massage', description: 'A classic full-body massage with flowing, relaxing movements.', price: '70 JOD', duration: '60 Minutes' },
+    ],
+  },
+  { label: 'Hammam', items: [] },
+]
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const inp     = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500'
@@ -128,6 +158,9 @@ function buildEmpty(type: SectionType): ContentSection {
   if (type === 'contact-info') return { type, title: 'Get in Touch', items: DEFAULT_CONTACTS }
   if (type === 'form')         return { type, title: 'Send Us a Message', content: '', recipients: '' }
   if (type === 'sitemap')      return { type, title: 'Site Map', columns: DEFAULT_SITEMAP_COLS }
+  if (type === 'media-text')   return { type, title: '', subtitle: '', content: '', image: '', imageAlt: '', imagePosition: 'left', buttonLabel: '', buttonHref: '' }
+  if (type === 'gallery')      return { type, title: 'Gallery', subtitle: '', items: [] }
+  if (type === 'pricing')      return { type, title: 'Treatments', subtitle: '', note: '', groups: DEFAULT_PRICE_GROUPS }
   return { type }
 }
 
@@ -261,6 +294,49 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
     const arr = [...cols]
     const links = [...arr[ci].links]; links[li] = { ...links[li], [f]: v }
     arr[ci] = { ...arr[ci], links }; setCols(arr)
+  }
+
+  // ── GALLERY
+  const shots = (s.items || []) as GalleryItem[]
+  const setShots = (items: GalleryItem[]) => set({ items })
+  const rmShot = (i: number) => setShots(shots.filter((_, j) => j !== i))
+  const updShot = (i: number, f: keyof GalleryItem, v: string) => {
+    const arr = [...shots]; arr[i] = { ...arr[i], [f]: v }; setShots(arr)
+  }
+  // Moving a picture is the whole point of a carousel editor -- the order on
+  // screen is the order they are shown in.
+  const moveShot = (i: number, by: number) => {
+    const to = i + by
+    if (to < 0 || to >= shots.length) return
+    const arr = [...shots]; const [row] = arr.splice(i, 1); arr.splice(to, 0, row); setShots(arr)
+  }
+  // The library picker returns one picture at a time and closes itself, so
+  // adding several means opening it again -- which is also how the offer
+  // cards work.
+  const [shotPicking, setShotPicking] = useState<'new' | number | null>(null)
+
+  // ── PRICING
+  const groups = (s.groups || []) as PriceGroup[]
+  const setGroups = (g: PriceGroup[]) => set({ groups: g })
+  const addGroup = () => setGroups([...groups, { label: '', items: [] }])
+  const rmGroup  = (gi: number) => setGroups(groups.filter((_, j) => j !== gi))
+  const updGroupLabel = (gi: number, label: string) => {
+    const arr = [...groups]; arr[gi] = { ...arr[gi], label }; setGroups(arr)
+  }
+  const addPrice = (gi: number) => {
+    const arr = [...groups]
+    arr[gi] = { ...arr[gi], items: [...(arr[gi].items || []), { title: '', description: '', price: '', duration: '' }] }
+    setGroups(arr)
+  }
+  const rmPrice = (gi: number, pi: number) => {
+    const arr = [...groups]
+    arr[gi] = { ...arr[gi], items: (arr[gi].items || []).filter((_, j) => j !== pi) }
+    setGroups(arr)
+  }
+  const updPrice = (gi: number, pi: number, f: keyof PriceItem, v: string) => {
+    const arr = [...groups]
+    const items = [...(arr[gi].items || [])]; items[pi] = { ...items[pi], [f]: v }
+    arr[gi] = { ...arr[gi], items }; setGroups(arr)
   }
 
   return (
@@ -624,6 +700,214 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
             </div>
           </>)}
 
+          {/* ══ IMAGE & TEXT ══ */}
+          {s.type === 'media-text' && (<>
+            <SectionHeading>Image &amp; Text</SectionHeading>
+            <p className="-mt-2 text-xs text-gray-500">
+              The picture sits on one side and the words on the other. On a phone the
+              picture always goes above the words — half a phone is not a column.
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Small Line Above <span className="font-normal text-gray-400">(optional)</span>
+              </label>
+              <input className={inp} value={s.subtitle || ''} onChange={e => set({ subtitle: e.target.value })} placeholder="e.g. Our Story" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Heading</label>
+              <input className={inp} value={s.title || ''} onChange={e => set({ title: e.target.value })} placeholder="e.g. Our vision" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Text</label>
+              <RichTextEditor
+                value={s.content || ''}
+                onChange={html => set({ content: html })}
+                placeholder="Write the paragraph here. Select text to make it bigger, bold, or a link."
+                minHeight={180}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Picture Side</label>
+              <div className="flex gap-2">
+                {(['left', 'right'] as const).map(side => (
+                  <button key={side} type="button" onClick={() => set({ imagePosition: side })}
+                    className={`flex-1 rounded-lg border px-4 py-2 text-sm capitalize transition-all ${
+                      (s.imagePosition || 'left') === side
+                        ? 'border-primary-500 bg-primary-50 font-medium text-primary-700'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    {side}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <MediaBox value={s.image || ''} onChange={url => set({ image: url })} label="Picture" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Picture Description <span className="font-normal text-gray-400">(optional)</span>
+              </label>
+              <input className={inp} value={s.imageAlt || ''} onChange={e => set({ imageAlt: e.target.value })}
+                placeholder="What the picture shows" />
+              <p className="mt-1 text-xs text-gray-400">
+                Read out to someone using a screen reader, and shown if the picture fails to load.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Button Label <span className="font-normal text-gray-400">(optional)</span></label>
+                <input className={inp} value={s.buttonLabel || ''} onChange={e => set({ buttonLabel: e.target.value })} placeholder="Read more" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Button URL</label>
+                <input className={monoInp} value={s.buttonHref || ''} onChange={e => set({ buttonHref: e.target.value })} placeholder="/about" />
+              </div>
+            </div>
+          </>)}
+
+          {/* ══ GALLERY ══ */}
+          {s.type === 'gallery' && (<>
+            <SectionHeading>Gallery Carousel</SectionHeading>
+            <p className="-mt-2 text-xs text-gray-500">
+              Shown in the order below — the guest swipes, or uses the arrows and dots.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Section Title</label>
+                <input className={inp} value={s.title || ''} onChange={e => set({ title: e.target.value })} placeholder="Gallery" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Subtitle <span className="font-normal text-gray-400">(optional)</span></label>
+                <input className={inp} value={s.subtitle || ''} onChange={e => set({ subtitle: e.target.value })} placeholder="A look around" />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between mt-2">
+              <label className="text-sm font-medium text-gray-700">Images <span className="font-normal text-gray-400">({shots.length})</span></label>
+              <button type="button" onClick={() => setShotPicking('new')}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700">
+                <PlusIcon className="h-4 w-4" /> Add Image
+              </button>
+            </div>
+            {shots.length === 0 && (
+              <p className="text-sm text-gray-400">No images yet. Add one from the library, or upload.</p>
+            )}
+            <div className="space-y-3">
+              {shots.map((shot, i) => (
+                <div key={i} className="flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                  <div className="flex flex-col items-center gap-0.5 pt-1">
+                    <button type="button" onClick={() => moveShot(i, -1)} disabled={i === 0}
+                      className="rounded p-1 hover:bg-gray-200 disabled:opacity-20"><ChevronUpIcon className="h-3.5 w-3.5 text-gray-400" /></button>
+                    <span className="w-4 text-center font-mono text-xs text-gray-300">{i + 1}</span>
+                    <button type="button" onClick={() => moveShot(i, 1)} disabled={i === shots.length - 1}
+                      className="rounded p-1 hover:bg-gray-200 disabled:opacity-20"><ChevronDownIcon className="h-3.5 w-3.5 text-gray-400" /></button>
+                  </div>
+                  {shot.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={shot.image.startsWith('http') ? shot.image : getApiAssetUrl(shot.image)} alt=""
+                      className="h-16 w-24 flex-shrink-0 rounded-lg border border-gray-200 object-cover" />
+                  ) : (
+                    <div className="flex h-16 w-24 flex-shrink-0 items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white">
+                      <PhotoIcon className="h-5 w-5 text-gray-300" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <input className={inp} value={shot.caption} onChange={e => updShot(i, 'caption', e.target.value)}
+                      placeholder="Caption (optional) — shown over the bottom of the picture" />
+                    <div className="flex gap-3 text-xs">
+                      <button type="button" onClick={() => setShotPicking(i)} className="text-gray-600 hover:text-gray-900">Change image</button>
+                      <button type="button" onClick={() => rmShot(i)} className="text-red-500 hover:text-red-700">Remove</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {shotPicking !== null && (
+              <MediaPicker
+                kind="image"
+                onPick={(url) => {
+                  if (shotPicking === 'new') setShots([...shots, { image: url, caption: '' }])
+                  else updShot(shotPicking, 'image', url)
+                }}
+                onClose={() => setShotPicking(null)}
+              />
+            )}
+          </>)}
+
+          {/* ══ PRICE LIST ══ */}
+          {s.type === 'pricing' && (<>
+            <SectionHeading>Price List</SectionHeading>
+            <p className="-mt-2 text-xs text-gray-500">
+              Each group becomes a chip along the top, the same way the FAQ page filters.
+              Clicking a chip shows that group&apos;s prices; the first one is open to begin with.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Section Title</label>
+                <input className={inp} value={s.title || ''} onChange={e => set({ title: e.target.value })} placeholder="Treatments" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Subtitle <span className="font-normal text-gray-400">(optional)</span></label>
+                <input className={inp} value={s.subtitle || ''} onChange={e => set({ subtitle: e.target.value })} placeholder="Our spa menu" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Line Under The Chips <span className="font-normal text-gray-400">(optional)</span>
+              </label>
+              <input className={inp} value={s.note || ''} onChange={e => set({ note: e.target.value })}
+                placeholder="Open · 9:00 AM — 6:00 PM" />
+            </div>
+
+            <div className="flex items-center justify-between mt-2">
+              <label className="text-sm font-medium text-gray-700">Groups</label>
+              <button type="button" onClick={addGroup}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700">
+                <PlusIcon className="h-4 w-4" /> Add Group
+              </button>
+            </div>
+            {groups.length === 0 && <p className="text-sm text-gray-400">No groups yet.</p>}
+            <div className="space-y-4">
+              {groups.map((group, gi) => (
+                <div key={gi} className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Chip Label</label>
+                      <input className={inp} value={group.label} onChange={e => updGroupLabel(gi, e.target.value)}
+                        placeholder="e.g. Body Massage" />
+                    </div>
+                    <button type="button" onClick={() => rmGroup(gi)}
+                      className="flex items-center gap-1 pb-2 text-xs text-red-400 hover:text-red-600">
+                      <TrashIcon className="h-3.5 w-3.5" /> Remove group
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {(group.items || []).map((item, pi) => (
+                      <div key={pi} className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
+                        <div className="grid grid-cols-3 gap-2">
+                          <input className={inp} value={item.title} onChange={e => updPrice(gi, pi, 'title', e.target.value)} placeholder="Swedish Massage" />
+                          <input className={inp} value={item.price} onChange={e => updPrice(gi, pi, 'price', e.target.value)} placeholder="70 JOD" />
+                          <input className={inp} value={item.duration} onChange={e => updPrice(gi, pi, 'duration', e.target.value)} placeholder="60 Minutes" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input className={inp} value={item.description} onChange={e => updPrice(gi, pi, 'description', e.target.value)}
+                            placeholder="Short description." />
+                          <button type="button" onClick={() => rmPrice(gi, pi)} className="flex-shrink-0 text-red-400 hover:text-red-600">
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <button type="button" onClick={() => addPrice(gi)}
+                      className="inline-flex items-center gap-1 pt-1 text-xs font-medium text-primary-600 hover:text-primary-700">
+                      <PlusIcon className="h-3.5 w-3.5" /> Add Treatment
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>)}
+
+
         </div>
 
         {/* Footer */}
@@ -775,7 +1059,14 @@ export default function PageEditorModal({ slug, pageName, onClose }: {
               <div className="space-y-3">
                 {sections.map((sec, i) => {
                   const meta   = SECTION_TYPES.find(t => t.value === sec.type)
-                  const imgSrc = sec.image ? (sec.image.startsWith('http') ? sec.image : getApiAssetUrl(sec.image)) : ''
+                  // A gallery's pictures live on its items, so the row showed no
+                  // thumbnail at all for the one section type that is nothing
+                  // but pictures. Falls back to the first of them.
+                  const firstShot = (sec.items || []).find(
+                    (it): it is GalleryItem => typeof (it as GalleryItem).image === 'string' && !!(it as GalleryItem).image
+                  )
+                  const thumb  = sec.image || firstShot?.image || ''
+                  const imgSrc = thumb ? (thumb.startsWith('http') ? thumb : getApiAssetUrl(thumb)) : ''
                   return (
                     <div key={i} className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow group">
                       <div className="flex flex-col items-center gap-0.5 flex-shrink-0 pt-1">
@@ -801,6 +1092,13 @@ export default function PageEditorModal({ slug, pageName, onClose }: {
                         {sec.content  && <p className="text-xs text-gray-400 truncate">{sec.content.slice(0, 80)}</p>}
                         {Array.isArray(sec.items)   && <p className="text-xs text-gray-400">{sec.items.length} item{sec.items.length !== 1 ? 's' : ''}</p>}
                         {Array.isArray(sec.columns) && <p className="text-xs text-gray-400">{sec.columns.length} column{sec.columns.length !== 1 ? 's' : ''}</p>}
+                        {Array.isArray(sec.groups) && (
+                          <p className="text-xs text-gray-400">
+                            {sec.groups.length} group{sec.groups.length !== 1 ? 's' : ''}
+                            {' · '}
+                            {sec.groups.reduce((n, g) => n + (g.items || []).length, 0)} priced
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => { setEditingIndex(i); setShowForm(true) }}
