@@ -648,6 +648,9 @@ export default function PageEditorModal({ slug, pageName, onClose }: {
   slug: string; pageName: string; onClose: () => void
 }) {
   const [pageId,       setPageId]       = useState<string | null>(null)
+  // Where the page actually is. A page belonging to a hotel lives under that
+  // hotel, so showing "/<slug>" here named an address that does not exist.
+  const [path,         setPath]         = useState(slug)
   const [sections,     setSections]     = useState<ContentSection[]>([])
   const [loading,      setLoading]      = useState(true)
   const [saving,       setSaving]       = useState(false)
@@ -663,13 +666,17 @@ export default function PageEditorModal({ slug, pageName, onClose }: {
     try {
       const pagesResult = await fetchAdminPages(token)
       if (!pagesResult.success) { setError('Failed to load pages.'); return }
-      let page = (pagesResult.pages || []).find((p: { slug: string }) => p.slug === slug)
+      let page = (pagesResult.pages || []).find((p: { slug: string }) => p.slug === slug) as
+        | { id: string; slug: string; path?: string }
+        | undefined
       if (!page) {
         const created = await createAdminContentPage(token, pageName || slug, slug)
         if (!created.success) { setError('Could not create page. Check the backend is running.'); return }
-        page = created.page
+        page = created.page as { id: string; slug: string; path?: string }
       }
+      if (!page) { setError('Could not open the page.'); return }
       setPageId(page.id)
+      setPath(page.path || page.slug)
       const detail = await fetchAdminPageById(token, page.id)
       if (detail.success) setSections(Array.isArray(detail.page?.sections) ? detail.page.sections : [])
     } catch { setError('Connection error.') }
@@ -726,7 +733,7 @@ export default function PageEditorModal({ slug, pageName, onClose }: {
               <span className="text-2xl">{PAGE_ICONS[slug] || '📄'}</span>
               <div>
                 <h2 className="font-bold text-gray-900">{pageName}</h2>
-                <span className="text-xs font-mono text-gray-400">/{slug}</span>
+                <span className="text-xs font-mono text-gray-400">/{path}</span>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -814,7 +821,7 @@ export default function PageEditorModal({ slug, pageName, onClose }: {
 
           <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
             <p className="text-xs text-gray-400">
-              Click <strong>Save Page</strong> to publish. The frontend at <code className="font-mono">/{slug}</code> reflects changes immediately.
+              Click <strong>Save Page</strong> to publish. The frontend at <code className="font-mono">/{path}</code> reflects changes immediately.
             </p>
           </div>
         </div>

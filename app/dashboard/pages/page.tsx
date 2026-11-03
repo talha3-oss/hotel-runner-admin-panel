@@ -17,6 +17,8 @@ import {
   createAdminContentPage,
   updateLandingPage,
   deleteLandingPage,
+  fetchHotels,
+  type Hotel,
 } from '../../../lib/api'
 
 
@@ -27,18 +29,42 @@ interface PageRow {
   status: string
   createdAt: string
   updatedAt: string
+  // Which hotel the page belongs to, and the address it ends up at. Both come
+  // from the server, so the panel and the site cannot disagree about where a
+  // page lives.
+  hotelId?: string | null
+  hotel?: { id: string; name: string; slug?: string | null } | null
+  path?: string
 }
 
 /** The backend cleans the slug the same way on save; doing it here as well
  *  means the field shows what the URL will actually be, rather than quietly
- *  changing underneath the person typing it. */
+ *  changing underneath the person typing it.
+ *
+ *  A slash survives. It used to be replaced with a hyphen along with
+ *  everything else that is not a letter or a digit, so "aqaba/spa" saved as
+ *  "aqaba-spa" and the link that had been typed into the menu led nowhere. */
 function cleanSlug(raw: string) {
   return raw
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
+    .split('/')
+    .map((segment) =>
+      segment
+        .replace(/[^a-z0-9-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+    )
+    .filter(Boolean)
+    .join('/')
+}
+
+/** Where a page lives, from the hotel it is under and its own address. The
+ *  same rule the server applies, so the preview in the dialog is the address
+ *  that will actually work. */
+function pagePath(hotel: Hotel | { slug?: string | null; id: string } | null | undefined, slug: string) {
+  if (!hotel) return slug
+  return `hotels/${hotel.slug || hotel.id}/${slug}`
 }
 
 function formatDate(iso: string) {
@@ -52,11 +78,13 @@ function formatDate(iso: string) {
 
 function PageSettingsModal({
   page,
+  hotels,
   takenSlugs,
   onClose,
   onSaved,
 }: {
   page: PageRow | null
+  hotels: Hotel[]
   takenSlugs: string[]
   onClose: () => void
   onSaved: () => void
@@ -65,6 +93,9 @@ function PageSettingsModal({
   const [name, setName] = useState(page?.name || '')
   const [slug, setSlug] = useState(page?.slug || '')
   const [status, setStatus] = useState(page?.status || 'ACTIVE')
+  // Which hotel the page sits under. '' is the top level, which is where every
+  // page used to go whether it was about a hotel or not.
+  const [hotelId, setHotelId] = useState(page?.hotelId || '')
   // A new page takes its URL from the name until the URL is typed in directly,
   // at which point the two stop being tied together.
   const [slugTouched, setSlugTouched] = useState(!isNew)
@@ -72,14 +103,20 @@ function PageSettingsModal({
   const [error, setError] = useState('')
 
   const effectiveSlug = cleanSlug(slugTouched ? slug : name)
+  const parent = hotels.find((h) => h.id === hotelId) || null
+  const fullPath = pagePath(parent, effectiveSlug)
 
   const save = async () => {
     const token = localStorage.getItem('adminToken')
     if (!token) return
     if (!name.trim()) { setError('Give the page a name.'); return }
     if (!effectiveSlug) { setError('Give the page a web address.'); return }
+    if (!hotelId && /^hotels(\/|$)/.test(effectiveSlug)) {
+      setError('Addresses starting with hotels/ belong to the hotel pages. Choose the hotel above instead.')
+      return
+    }
     if (takenSlugs.includes(effectiveSlug)) {
-      setError(`/${effectiveSlug} is already taken by another page.`)
+      setError(`"${effectiveSlug}" is already used by another page. Addresses have to be different from each other even when the pages are under different hotels.`)
       return
     }
 
@@ -87,8 +124,13 @@ function PageSettingsModal({
     setError('')
     try {
       const result = isNew
-        ? await createAdminContentPage(token, name.trim(), effectiveSlug)
-        : await updateLandingPage(token, page.id, { name: name.trim(), slug: effectiveSlug, status })
+        ? await createAdminContentPage(token, name.trim(), effectiveSlug, hotelId || null)
+        : await updateLandingPage(token, page.id, {
+            name: name.trim(),
+            slug: effectiveSlug,
+            status,
+            hotelId: hotelId || null,
+          })
       if (result.success) onSaved()
       else setError(result.message || 'Could not save the page.')
     } catch {
@@ -125,9 +167,29 @@ function PageSettingsModal({
           </div>
 
           <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Belongs To</label>
+            <select className={inp} value={hotelId} onChange={(e) => setHotelId(e.target.value)}>
+              <option value="">The whole site — not one hotel</option>
+              {hotels.map((h) => (
+                <option key={h.id} value={h.id}>{h.name}</option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs text-gray-500">
+              A page about one hotel has to sit under that hotel, or it opens with the
+              site-wide menu and footer instead of the hotel&apos;s own — those are chosen
+              from the address.
+            </p>
+          </div>
+
+          <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Web Address</label>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-400">/</span>
+              {/* The hotel part is not typed and cannot be edited here: it
+                  follows the hotel's own permalink, so renaming the hotel
+                  moves its pages with it. */}
+              <span className="whitespace-nowrap font-mono text-sm text-gray-400">
+                /{parent ? `hotels/${parent.slug || parent.id}/` : ''}
+              </span>
               <input
                 className={`${inp} font-mono`}
                 value={slugTouched ? slug : effectiveSlug}
@@ -136,7 +198,12 @@ function PageSettingsModal({
               />
             </div>
             <p className="mt-1.5 text-xs text-gray-500">
-              The page will live at <span className="font-mono text-gray-700">{SITE_URL}/{effectiveSlug || '…'}</span>
+              The page will live at{' '}
+              <span className="font-mono text-gray-700">{SITE_URL}/{fullPath || '…'}</span>
+            </p>
+            <p className="mt-1 text-xs text-gray-400">
+              A slash is allowed and kept — <span className="font-mono">dining/breakfast</span>{' '}
+              is one page sitting under another address.
             </p>
           </div>
 
@@ -174,6 +241,7 @@ function PageSettingsModal({
 
 export default function PagesAdmin() {
   const [pages, setPages] = useState<PageRow[]>([])
+  const [hotels, setHotels] = useState<Hotel[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [settingsFor, setSettingsFor] = useState<PageRow | null>(null)
@@ -186,7 +254,12 @@ export default function PagesAdmin() {
     setLoading(true)
     setError('')
     try {
-      const result = await fetchAdminPages(token)
+      const [result, hotelResult] = await Promise.all([
+        fetchAdminPages(token),
+        // Only to fill the "Belongs To" list; a page still loads without it.
+        fetchHotels(token).catch(() => ({ success: false })),
+      ])
+      if (hotelResult.success) setHotels(hotelResult.hotels || [])
       if (result.success) setPages(result.pages || [])
       else setError(result.message || 'Could not load the pages.')
     } catch {
@@ -202,7 +275,7 @@ export default function PagesAdmin() {
   const openSettings = (p: PageRow) => { setSettingsFor(p); setShowSettings(true) }
 
   const remove = async (p: PageRow) => {
-    if (!confirm(`Delete "${p.name}"? Everything on the page goes with it, and /${p.slug} stops working.`)) return
+    if (!confirm(`Delete "${p.name}"? Everything on the page goes with it, and /${p.path || p.slug} stops working.`)) return
     const token = localStorage.getItem('adminToken')
     if (!token) return
     const result = await deleteLandingPage(token, p.id)
@@ -222,7 +295,9 @@ export default function PagesAdmin() {
           <h1 className="text-2xl font-bold text-gray-900">Pages</h1>
           <p className="mt-1 text-sm text-gray-500">
             Every page on the site apart from the homepage. Build one here, then add a link to it
-            under Homepage Content → Navigation Menu if you want it in the site menu.
+            under Homepage Content → Navigation Menu if you want it in the menu. A page set to
+            belong to a hotel lives under that hotel&apos;s address, which is what makes the
+            hotel&apos;s own menu and footer show on it.
           </p>
         </div>
         <button
@@ -261,7 +336,14 @@ export default function PagesAdmin() {
               {pages.map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.name}</td>
-                  <td className="px-4 py-3 font-mono text-sm text-gray-500">/{p.slug}</td>
+                  <td className="px-4 py-3 font-mono text-sm text-gray-500">
+                    /{p.path || p.slug}
+                    {p.hotel && (
+                      <span className="ml-2 inline-flex rounded bg-gray-100 px-1.5 py-0.5 font-sans text-[11px] font-medium text-gray-600">
+                        {p.hotel.name}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -291,7 +373,7 @@ export default function PagesAdmin() {
                         <Cog6ToothIcon className="h-3.5 w-3.5" /> Settings
                       </button>
                       <a
-                        href={`${SITE_URL}/${p.slug}`}
+                        href={`${SITE_URL}/${p.path || p.slug}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         title="Open on the site"
@@ -318,6 +400,7 @@ export default function PagesAdmin() {
       {showSettings && (
         <PageSettingsModal
           page={settingsFor}
+          hotels={hotels}
           takenSlugs={takenSlugs}
           onClose={() => setShowSettings(false)}
           onSaved={() => { setShowSettings(false); load() }}

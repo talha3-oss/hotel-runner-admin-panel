@@ -1054,7 +1054,9 @@ export async function createLandingPage(token: string, payload: { name: string; 
 export async function updateLandingPage(
   token: string,
   id: string,
-  payload: { name?: string; slug?: string; status?: string; sections?: unknown }
+  // hotelId moves the page under a hotel, or back to the top level with null.
+  // Left out entirely, it stays where it is.
+  payload: { name?: string; slug?: string; status?: string; sections?: unknown; hotelId?: string | null }
 ) {
   const res = await fetch(`${API_BASE_URL}/api/v1/pages/admin/pages/${id}`, {
     method: 'PUT',
@@ -1486,11 +1488,16 @@ export async function deleteAdminBlog(token: string, id: string) {
   return res.json()
 }
 
-export async function createAdminContentPage(token: string, name: string, slug: string) {
+export async function createAdminContentPage(
+  token: string,
+  name: string,
+  slug: string,
+  hotelId: string | null = null
+) {
   const res = await fetch(`${API_BASE_URL}/api/v1/pages/admin/content-pages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ name, slug, sections: [] }),
+    body: JSON.stringify({ name, slug, sections: [], hotelId }),
   })
   return res.json()
 }
