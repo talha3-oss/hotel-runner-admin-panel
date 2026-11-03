@@ -46,7 +46,7 @@ function Body({ value }: { value: unknown }) {
   )
 }
 
-function Detail({ id, token }: { id: string; token: string }) {
+function Detail({ id, token, direction }: { id: string; token: string; direction: string }) {
   const [state, setState] = useState<{ loading: boolean; request?: unknown; response?: unknown; error?: string }>(
     { loading: true }
   )
@@ -66,6 +66,13 @@ function Detail({ id, token }: { id: string; token: string }) {
   if (state.loading) return <p className="px-3 py-3 text-xs text-gray-400">Loading…</p>
   if (state.error) return <p className="px-3 py-3 text-xs text-red-600">{state.error}</p>
 
+  // Whose message is whose depends on which way it went. An outgoing
+  // reservation headed "What they sent", which is the opposite of the truth
+  // and exactly the thing this screen exists to settle.
+  const out = direction === 'OUT'
+  const sent = out ? 'What we sent' : 'What they sent'
+  const answered = out ? 'What they answered' : 'What we answered'
+
   return (
     <div className="space-y-3 px-3 py-3">
       <p className="text-[11px] text-gray-500">
@@ -73,11 +80,11 @@ function Detail({ id, token }: { id: string; token: string }) {
         <span className="inline-block rounded bg-sky-500/20 px-1">10 — adult</span>
       </p>
       <div>
-        <p className="mb-1 text-xs font-semibold text-gray-700">What they sent</p>
+        <p className="mb-1 text-xs font-semibold text-gray-700">{sent}</p>
         <Body value={state.request} />
       </div>
       <div>
-        <p className="mb-1 text-xs font-semibold text-gray-700">What we answered</p>
+        <p className="mb-1 text-xs font-semibold text-gray-700">{answered}</p>
         <Body value={state.response} />
       </div>
     </div>
@@ -251,7 +258,7 @@ export default function RateTigerLogs() {
               {open === row.id && (
                 <tr>
                   <td colSpan={6} className="bg-gray-50 p-0">
-                    <Detail id={row.id} token={token} />
+                    <Detail id={row.id} token={token} direction={row.direction} />
                   </td>
                 </tr>
               )}
