@@ -10,7 +10,12 @@ import {
   ArrowTopRightOnSquareIcon,
   Cog6ToothIcon,
 } from '@heroicons/react/24/outline'
-import PageEditorModal from '../homepage/PageEditorModal'
+import dynamic from 'next/dynamic'
+
+// The section editor carries the rich text editor and the media library with
+// it, and neither is on screen until somebody clicks Content. Loading it with
+// the list meant waiting for both to see the list.
+const PageEditorModal = dynamic(() => import('../homepage/PageEditorModal'), { ssr: false })
 import { SITE_URL } from '../../../lib/siteUrl'
 import {
   fetchAdminPages,

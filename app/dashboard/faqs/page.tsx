@@ -1,6 +1,14 @@
 'use client'
 
-import RichTextEditor from '../../../components/RichTextEditor'
+import dynamic from 'next/dynamic'
+
+// TipTap is the heaviest thing on this screen and it is only on it when an
+// answer is being written -- which is behind a button. Loaded then, rather
+// than before the list of questions can be shown at all.
+const RichTextEditor = dynamic(() => import('../../../components/RichTextEditor'), {
+  ssr: false,
+  loading: () => <div className="h-[200px] animate-pulse rounded-lg border border-gray-200 bg-gray-50" />,
+})
 
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ChevronUpDownIcon, ArrowPathIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline'

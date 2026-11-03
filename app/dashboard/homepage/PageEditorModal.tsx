@@ -1,7 +1,15 @@
 'use client'
 
-import RichTextEditor from '../../../components/RichTextEditor'
+import dynamic from 'next/dynamic'
 import MediaPicker from '../../../components/MediaPicker'
+
+// Only a text block and an Image & Text section use it, and only once one of
+// them is open. Importing it here put the whole of TipTap in front of every
+// screen that can open this editor.
+const RichTextEditor = dynamic(() => import('../../../components/RichTextEditor'), {
+  ssr: false,
+  loading: () => <div className="h-[180px] animate-pulse rounded-lg border border-gray-200 bg-gray-50" />,
+})
 
 import { useCallback, useEffect, useState } from 'react'
 import {
