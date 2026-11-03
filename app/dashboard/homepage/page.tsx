@@ -209,6 +209,57 @@ const DEFAULT_FOOTER: FooterData = {
   socialLinks:[], socialIconSize:20,
 }
 
+// What the homepage actually does with each section.
+//
+// The editor offered every field the section's *type* allowed, which is not
+// the same question: Book Direct is a CTA, so it was given a button label and
+// a URL, but its button opens the booking panel and ignores both. An admin
+// filled fields in and watched the site take no notice. This says, per
+// section, where it appears and which fields reach it -- and a key the
+// homepage has never heard of is marked as such rather than looking editable.
+const HOMEPAGE_BLOCKS: Record<string, { label: string; where: string; uses: string[] }> = {
+  'hotels-hero-banner': {
+    label: 'Hero banner',
+    where: 'The full-screen banner at the top of the homepage.',
+    uses: ['badge', 'eyebrow', 'title', 'image', 'video', 'buttonLabel', 'locationPlaceholder'],
+  },
+  'hotels-story-intro': {
+    label: 'Story intro',
+    where: 'The paragraph under the banner. Its Secondary Title and Description are the heading above the locations carousel — not this section.',
+    uses: ['title', 'description', 'secondary'],
+  },
+  'hotels-location-cards': {
+    label: 'Locations carousel',
+    where: 'The locations carousel. It shows the published hotels whenever there are any; these cards are only used when there are none.',
+    uses: ['cards'],
+  },
+  'hotels-dining-feature': {
+    label: 'Dining feature',
+    where: 'The first picture-and-text feature, under the locations.',
+    uses: ['title', 'subtitle', 'description', 'button', 'image', 'style'],
+  },
+  'hotels-book-direct-offer': {
+    label: 'Book Direct strip',
+    where: 'The Book Direct band. Its button opens the booking panel, so it has no label or address of its own.',
+    uses: ['title', 'description'],
+  },
+  'hotels-business-feature': {
+    label: 'Business feature',
+    where: 'The second picture-and-text feature.',
+    uses: ['title', 'subtitle', 'description', 'button', 'image', 'style'],
+  },
+  'hotels-gift-cards': {
+    label: 'Gift cards',
+    where: 'The left half of the Gift Cards / Health & Safety pair at the foot of the page.',
+    uses: ['title', 'description', 'button', 'image'],
+  },
+  'hotels-health-safety': {
+    label: 'Health & Safety',
+    where: 'The right half of the Gift Cards / Health & Safety pair.',
+    uses: ['title', 'description', 'button', 'image'],
+  },
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function parseFooterContent(c: Record<string, unknown>): Partial<FooterData> {
@@ -289,10 +340,18 @@ const numOr = (value: unknown, fallback: number) => {
   return Number.isFinite(n) ? n : fallback
 }
 
-function buildContent(form: SectionForm): Record<string, unknown> {
+function buildContent(form: SectionForm, existing: unknown): Record<string, unknown> {
+  // Whatever was already in the section's content is kept underneath. This
+  // used to be built from scratch, so saving a section threw away any key the
+  // form did not know about -- including the keys belonging to its own type
+  // the moment somebody changed the type and changed it back.
+  const kept = (existing && typeof existing === 'object' && !Array.isArray(existing))
+    ? existing as Record<string, unknown>
+    : {}
+
   // The style rides alongside whatever the section type stores, rather than
   // inside the switch, so adding a type cannot quietly drop it.
-  return { ...typeContent(form), videoUrl: form.videoUrl, style: {
+  return { ...kept, ...typeContent(form), videoUrl: form.videoUrl, style: {
     headingSize: form.headingSize,
     headingWeight: form.headingWeight,
     bodySize: form.bodySize,
@@ -314,8 +373,17 @@ function typeContent(form: SectionForm): Record<string, unknown> {
 
 // ── SectionCard ───────────────────────────────────────────────────────────────
 
-function SectionCard({ section, onEdit, onDelete }: { section: HomePageSection; onEdit: () => void; onDelete: () => void }) {
+function SectionCard({ section, onEdit, onDelete, onMove, canMoveUp, canMoveDown, moving }: {
+  section: HomePageSection
+  onEdit: () => void
+  onDelete: () => void
+  onMove: (by: -1 | 1) => void
+  canMoveUp: boolean
+  canMoveDown: boolean
+  moving: boolean
+}) {
   const imageUrl = section.image ? getApiAssetUrl(section.image) : null
+  const block = HOMEPAGE_BLOCKS[section.sectionKey]
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col">
       {imageUrl ? (
@@ -338,9 +406,31 @@ function SectionCard({ section, onEdit, onDelete }: { section: HomePageSection; 
           {section.status === 'ACTIVE'
             ? <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-green-700 bg-green-50 border border-green-100 px-2 py-0.5 rounded-full"><CheckCircleIcon className="h-3 w-3" /> Active</span>
             : <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-gray-500 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-full"><XCircleIcon className="h-3 w-3" /> Inactive</span>}
+          {/* A section the homepage has no block for. It was indistinguishable
+              from the eight that do appear, which is how a section nobody
+              could see ended up being edited. */}
+          {!block && (
+            <span className="inline-block rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              Not on the homepage
+            </span>
+          )}
         </div>
+        {block && <p className="mb-2 text-[11px] text-gray-400">{block.where}</p>}
         {section.title && <p className="text-xs text-gray-500 line-clamp-1 mb-3 flex-1">{section.title}</p>}
         <div className="flex gap-2 mt-auto">
+          {/* Order on this screen is order on the page now, so it is worth
+              being able to change it without opening the editor and typing a
+              number. */}
+          <div className="flex overflow-hidden rounded-md border border-gray-300">
+            <button type="button" title="Move up" disabled={!canMoveUp || moving} onClick={() => onMove(-1)}
+              className="px-2 py-1.5 text-gray-500 hover:bg-gray-50 disabled:opacity-25">
+              <ArrowUpIcon className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" title="Move down" disabled={!canMoveDown || moving} onClick={() => onMove(1)}
+              className="border-l border-gray-300 px-2 py-1.5 text-gray-500 hover:bg-gray-50 disabled:opacity-25">
+              <ArrowDownIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <button onClick={onEdit} className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors">
             <PencilIcon className="h-3.5 w-3.5" /> Edit
           </button>
@@ -500,9 +590,19 @@ export default function HomepagePage() {
         const missing = SEED_SECTIONS.filter(s => !existingKeys.has(s.sectionKey))
 
         if (missing.length > 0) {
-          await Promise.all(missing.map(payload => createAdminHomePageSection(token, payload)))
+          const made = await Promise.all(missing.map(payload => createAdminHomePageSection(token, payload)))
           const refreshed = await fetchAdminHomePageSections(token)
           if (refreshed.success) allSections = refreshed.sections || []
+
+          // A section that could not be created used to fail in silence: the
+          // screen simply showed one card fewer, every time, and the block it
+          // belongs to sat on the homepage with wording nobody could reach.
+          const refused = made
+            .map((r, i) => (r?.success ? null : `${missing[i].name} (${r?.message || 'no answer from the server'})`))
+            .filter(Boolean)
+          if (refused.length > 0) {
+            setError(`These homepage sections could not be created, so they are missing from this screen and cannot be edited: ${refused.join('; ')}`)
+          }
         }
 
         setSections(allSections)
@@ -570,7 +670,20 @@ export default function HomepagePage() {
 
   // ── Section CRUD ────────────────────────────────────────────────────────────
 
+  // The cards on screen, in the order the homepage will draw them. One list
+  // rather than three copies of the same filter and sort.
+  const visibleSections = [...sections]
+    .filter(s => s.sectionType !== 'FOOTER' && s.sectionKey !== 'hotels-newsletter-footer')
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+
   const sf = (updates: Partial<SectionForm>) => setForm(p => ({ ...p, ...updates }))
+
+  // Which fields the homepage reads for the section being edited. A key the
+  // homepage does not know falls back to what its type allows, so a section
+  // of somebody's own keeps every field it had.
+  const editingBlock = HOMEPAGE_BLOCKS[form.sectionKey]
+  const uses = (field: string, fallback: boolean) =>
+    editingBlock ? editingBlock.uses.includes(field) : fallback
 
   const openCreate = () => {
     setEditingSection(null)
@@ -588,6 +701,45 @@ export default function HomepagePage() {
     setRemoveImage(false)
     setPickedImage('')
     setError(''); setSuccess(''); setShowModal(true)
+  }
+
+  // Swapping two cards' sort orders, which is now what the page order is. Two
+  // saves rather than renumbering the lot: fewer writes, and a failure leaves
+  // the pair as they were rather than half a list.
+  const [movingSection, setMovingSection] = useState('')
+
+  const moveSection = async (section: HomePageSection, by: -1 | 1) => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    const ordered = visibleSections
+    const index = ordered.findIndex(s => s.id === section.id)
+    const other = ordered[index + by]
+    if (!other) return
+
+    setMovingSection(section.id); setError(''); setSuccess('')
+    try {
+      // Equal orders would leave the two in whatever order the database
+      // returned them, so a pair that already matches is pushed apart.
+      const a = section.sortOrder
+      const b = other.sortOrder === a ? a + by * 10 : other.sortOrder
+      const results = await Promise.all([
+        updateAdminHomePageSection(token, section.id, { sortOrder: b }),
+        updateAdminHomePageSection(token, other.id, { sortOrder: a }),
+      ])
+      if (results.every(r => r.success)) {
+        setSections(prev => prev.map(s =>
+          s.id === section.id ? { ...s, sortOrder: b } : s.id === other.id ? { ...s, sortOrder: a } : s
+        ))
+        setSuccess('Order saved. The homepage follows this order.')
+      } else {
+        setError(results.find(r => !r.success)?.message || 'Could not save the new order.')
+        await loadSections()
+      }
+    } catch {
+      setError('Could not reach the server.')
+    } finally {
+      setMovingSection('')
+    }
   }
 
   const handleSectionImageChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -632,7 +784,7 @@ export default function HomepagePage() {
     if (!token) return
     setSectionSaving(true); setError('')
     try {
-      const contentJson = buildContent(form)
+      const contentJson = buildContent(form, editingSection?.content)
       const payload = {
         name: form.name.trim(), sectionKey: form.sectionKey.trim(),
         groupKey: form.groupKey.trim() || 'general',
@@ -932,7 +1084,9 @@ export default function HomepagePage() {
       )}
       {tab === 'sections' && (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
-          Click <strong>Edit</strong> on a section card to modify it, then click <strong>Save</strong> inside the editor to publish changes.
+          These are the blocks of the homepage, in the order the site draws them — use the
+          arrows on a card to move one. <strong>Edit</strong> changes what a section says;
+          <strong> Inactive</strong> takes it off the page altogether.
         </div>
       )}
 
@@ -993,13 +1147,19 @@ export default function HomepagePage() {
       {tab === 'sections' && (
         loadingSections ? <div className="py-12 text-center text-sm text-gray-400">Loading sections…</div> : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {[...sections]
-              .filter(s => s.sectionType !== 'FOOTER' && s.sectionKey !== 'hotels-newsletter-footer')
-              .sort((a,b) => a.sortOrder - b.sortOrder)
-              .map(section => (
-                <SectionCard key={section.id} section={section} onEdit={() => openEdit(section)} onDelete={() => handleDeleteSection(section.id, section.name)} />
-              ))}
-            {sections.filter(s => s.sectionType !== 'FOOTER' && s.sectionKey !== 'hotels-newsletter-footer').length === 0 && (
+            {visibleSections.map((section, i) => (
+              <SectionCard
+                key={section.id}
+                section={section}
+                onEdit={() => openEdit(section)}
+                onDelete={() => handleDeleteSection(section.id, section.name)}
+                onMove={(by) => moveSection(section, by)}
+                canMoveUp={i > 0}
+                canMoveDown={i < visibleSections.length - 1}
+                moving={movingSection === section.id}
+              />
+            ))}
+            {visibleSections.length === 0 && (
               <div className="col-span-full py-16 text-center text-sm text-gray-400">No sections yet. Click <strong>Add Section</strong>.</div>
             )}
           </div>
@@ -1402,6 +1562,21 @@ export default function HomepagePage() {
             <form onSubmit={handleSectionSubmit} className="flex-1 overflow-y-auto p-6 space-y-8">
               {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
 
+              {/* Where this section comes out, and -- for a key the homepage
+                  has never heard of -- that it does not come out anywhere. */}
+              {editingBlock ? (
+                <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                  <strong>{editingBlock.label}.</strong> {editingBlock.where} Only the fields below
+                  reach it — the rest have been left out rather than shown doing nothing.
+                </p>
+              ) : (
+                <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  The homepage draws eight sections, each by its own key, and this key is not one
+                  of them — so nothing set here appears on the site. It is kept, and it can be
+                  edited, but to change the homepage edit one of the eight instead.
+                </p>
+              )}
+
               {/* ── Basic Info ── */}
               <div>
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 pb-2 border-b">Section Settings</h3>
@@ -1440,16 +1615,18 @@ export default function HomepagePage() {
 
                   {/* Fields shown for most types */}
                   {form.sectionType !== 'LOCATION' && (<>
-                    {['HERO','TEXT','CTA','NEWSLETTER','CUSTOM'].includes(form.sectionType) && (
+                    {uses('badge', ['HERO','TEXT','CTA','NEWSLETTER','CUSTOM'].includes(form.sectionType)) && (
                       <Field label="Badge / Label"><input className={inp} value={form.badge} onChange={e => sf({ badge: e.target.value })} placeholder="e.g. HOTELS" /></Field>
                     )}
-                    {['HERO','FEATURE','CTA','NEWSLETTER','CUSTOM'].includes(form.sectionType) && (
+                    {uses('eyebrow', ['HERO','FEATURE','CTA','NEWSLETTER','CUSTOM'].includes(form.sectionType)) && (
                       <Field label="Eyebrow Text"><input className={inp} value={form.eyebrow} onChange={e => sf({ eyebrow: e.target.value })} placeholder="Small text above title" /></Field>
                     )}
-                    <Field label="Title" span2={form.sectionType === 'TEXT'}>
-                      <input className={inp} value={form.title} onChange={e => sf({ title: e.target.value })} placeholder="Main heading" />
-                    </Field>
-                    {['HERO','FEATURE','CTA','NEWSLETTER','CUSTOM'].includes(form.sectionType) && (
+                    {uses('title', true) && (
+                      <Field label="Title" span2={form.sectionType === 'TEXT'}>
+                        <input className={inp} value={form.title} onChange={e => sf({ title: e.target.value })} placeholder="Main heading" />
+                      </Field>
+                    )}
+                    {uses('subtitle', ['HERO','FEATURE','CTA','NEWSLETTER','CUSTOM'].includes(form.sectionType)) && (
                       <Field label="Subtitle / Bold Title">
                         <input className={inp} value={form.subtitle} onChange={e => sf({ subtitle: e.target.value })} placeholder="Highlighted subtitle" />
                       </Field>
@@ -1468,8 +1645,11 @@ export default function HomepagePage() {
                       })()}
                     </Field>
 
-                    {/* Typography */}
-                    <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    {/* Typography. Only the two picture-and-text features read
+                        it; everywhere else the site sets its own sizes, and
+                        offering a slider there was an invitation to move
+                        something that does not move. */}
+                    <div className={`sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4 ${uses('style', true) ? '' : 'hidden'}`}>
                       <p className="text-sm font-medium text-gray-700">Typography</p>
                       <p className="mt-0.5 text-xs text-gray-500">
                         Sizes are for a wide screen. The site scales them down on phones, so there is nothing to set twice.
@@ -1509,7 +1689,7 @@ export default function HomepagePage() {
                   </>)}
 
                   {/* TEXT — secondary block */}
-                  {form.sectionType === 'TEXT' && (<>
+                  {uses('secondary', form.sectionType === 'TEXT') && (<>
                     <Field label="Secondary Title">
                       <input className={inp} value={form.secondaryTitle} onChange={e => sf({ secondaryTitle: e.target.value })} placeholder="e.g. Our Locations" />
                     </Field>
@@ -1519,14 +1699,14 @@ export default function HomepagePage() {
                   </>)}
 
                   {/* HERO — location placeholder */}
-                  {form.sectionType === 'HERO' && (
+                  {uses('locationPlaceholder', form.sectionType === 'HERO') && (
                     <Field label="Location Search Placeholder">
                       <input className={inp} value={form.locationPlaceholder} onChange={e => sf({ locationPlaceholder: e.target.value })} placeholder="e.g. Choose your location" />
                     </Field>
                   )}
 
                   {/* LOCATION — cards editor */}
-                  {form.sectionType === 'LOCATION' && (
+                  {uses('cards', form.sectionType === 'LOCATION') && (
                     <div className="sm:col-span-2 space-y-3">
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-gray-700">Location Cards</p>
@@ -1592,11 +1772,13 @@ export default function HomepagePage() {
               </div>
 
               {/* ── Buttons ── */}
-              {['HERO','FEATURE','CTA','NEWSLETTER','CUSTOM'].includes(form.sectionType) && (
+              {uses('button', ['HERO','FEATURE','CTA','NEWSLETTER','CUSTOM'].includes(form.sectionType)) || uses('buttonLabel', false) ? (
                 <div>
                   <div className="flex items-center justify-between mb-4 pb-2 border-b">
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Buttons</h3>
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                    {/* The hero always shows its button; everywhere else it
+                        can be turned off. */}
+                    <label className={`flex items-center gap-2 cursor-pointer select-none ${uses('button', true) ? '' : 'hidden'}`}>
                       <span className="text-xs text-gray-500">{form.buttonEnabled ? 'Button visible' : 'Button hidden'}</span>
                       <button
                         type="button"
@@ -1609,15 +1791,24 @@ export default function HomepagePage() {
                   </div>
                   <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity ${form.buttonEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
                     <Field label="Primary Button Label"><input className={inp} value={form.buttonLabel} onChange={e => sf({ buttonLabel: e.target.value })} placeholder="e.g. Book Now" /></Field>
-                    <Field label="Primary Button URL"><input className={monoInp} value={form.buttonLink} onChange={e => sf({ buttonLink: e.target.value })} placeholder="/booking" /></Field>
-                    <Field label="Secondary Button Label"><input className={inp} value={form.secondaryButtonLabel} onChange={e => sf({ secondaryButtonLabel: e.target.value })} /></Field>
-                    <Field label="Secondary Button URL"><input className={monoInp} value={form.secondaryButtonLink} onChange={e => sf({ secondaryButtonLink: e.target.value })} /></Field>
+                    {/* The hero's button opens the booking panel, so it takes
+                        a label and nothing else. */}
+                    {uses('button', true) && (
+                      <Field label="Primary Button URL"><input className={monoInp} value={form.buttonLink} onChange={e => sf({ buttonLink: e.target.value })} placeholder="/booking" /></Field>
+                    )}
+                    {/* No block on the homepage draws a second button. Offered
+                        only on a section of somebody's own, where it is at
+                        least not a promise this page cannot keep. */}
+                    {!editingBlock && (<>
+                      <Field label="Secondary Button Label"><input className={inp} value={form.secondaryButtonLabel} onChange={e => sf({ secondaryButtonLabel: e.target.value })} /></Field>
+                      <Field label="Secondary Button URL"><input className={monoInp} value={form.secondaryButtonLink} onChange={e => sf({ secondaryButtonLink: e.target.value })} /></Field>
+                    </>)}
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {/* ── Image ── */}
-              {form.sectionType !== 'TEXT' && form.sectionType !== 'FOOTER' && (
+              {uses('image', form.sectionType !== 'TEXT' && form.sectionType !== 'FOOTER') && (
                 <div>
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 pb-2 border-b">
                     {form.sectionKey === 'hotels-health-safety'
@@ -1664,8 +1855,8 @@ export default function HomepagePage() {
                   {/* A background video. Optional, and the picture above is
                       what shows when there is none -- so a section always has
                       something behind it, and a phone on a slow connection
-                      still gets the picture. */}
-                  <div className="mt-6">
+                      still gets the picture. Only the hero plays one. */}
+                  <div className={`mt-6 ${uses('video', true) ? '' : 'hidden'}`}>
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 pb-2 border-b">
                       Background Video (optional)
                     </h3>
