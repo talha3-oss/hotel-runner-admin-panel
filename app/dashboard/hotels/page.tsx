@@ -966,18 +966,18 @@ export default function HotelsPage() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Children under 6, per room</label>
                       <input type="number" min="0" max="10" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="1" value={hotelForm.maxUnderSixPerRoom} onChange={field('maxUnderSixPerRoom')} />
-                      <p className="text-xs text-gray-400 mt-1">Never charged for, whatever this is set to. 0 means none may come.</p>
+                      <p className="text-xs text-gray-400 mt-1">Always free, whatever this is set to. Set 0 to take none at all.</p>
                     </div>
 
                     {hotelForm.allowOlderChildren && (
                       <>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Children aged {Math.max(1, Number(hotelForm.adultMinAge) || 13) - 1} and under, per room
+                            Children aged 6–{Math.max(1, Number(hotelForm.adultMinAge) || 13) - 1}, per room
                           </label>
                           <input type="number" min="0" max="10" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="1" value={hotelForm.maxOlderChildrenPerRoom} onChange={field('maxOlderChildrenPerRoom')} />
                           <p className="text-xs text-gray-400 mt-1">
-                            Children of 6 and over. A second one means a second room.
+                            A guest wanting a second one books a second room.
                           </p>
                         </div>
                         <div />
@@ -989,12 +989,19 @@ export default function HotelsPage() {
                             >
                               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hotelForm.olderChildTakesAdultPlace ? 'translate-x-6' : 'translate-x-1'}`} />
                             </div>
-                            <span className="text-sm font-medium text-gray-700">An older child may take an adult&apos;s unused place</span>
+                            <span className="text-sm font-medium text-gray-700">A child of 6+ is free in an empty adult place</span>
                           </label>
+                          {/* Written as the two cases the person is actually
+                              choosing between, with this property's own adult
+                              count in them. It used to describe the rule --
+                              "a room with 2 adult places and fewer adults in
+                              it carries that many older children free" -- and
+                              the client could not tell from that what it
+                              would cost a guest. */}
                           <p className="text-xs text-gray-400 mt-1 ml-14">
                             {hotelForm.olderChildTakesAdultPlace
-                              ? `On now. A room with ${Math.max(1, Number(hotelForm.maxAdultsPerRoom) || 2)} adult places and fewer adults in it carries that many older children free; beyond that each one is charged.`
-                              : 'Off. Every child of 6 and over is charged, however many adults are in the room.'}
+                              ? `On. A room with ${Math.max(1, Number(hotelForm.maxAdultsPerRoom) || 2)} adults pays for a child of 6+. A room with fewer adults does not — the child takes an empty place.`
+                              : 'Off. Every child of 6 and over is paid for, even when the room has an empty place.'}
                           </p>
                         </div>
                       </>
