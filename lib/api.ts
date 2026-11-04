@@ -292,6 +292,12 @@ export interface Hotel {
   childrenPrice?: number
   adultMinAge?: number
   allowOlderChildren?: boolean
+  // How many people of each kind one room here takes, and whether a child old
+  // enough to be charged may use a place no adult is using.
+  maxAdultsPerRoom?: number
+  maxUnderSixPerRoom?: number
+  maxOlderChildrenPerRoom?: number
+  olderChildTakesAdultPlace?: boolean
   locationId: string
   location: string
   country: string

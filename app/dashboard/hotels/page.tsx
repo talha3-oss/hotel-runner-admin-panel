@@ -79,6 +79,10 @@ type HotelForm = {
   childrenPrice: string
   adultMinAge: string
   allowOlderChildren: boolean
+  maxAdultsPerRoom: string
+  maxUnderSixPerRoom: string
+  maxOlderChildrenPerRoom: string
+  olderChildTakesAdultPlace: boolean
 }
 
 /** Mirrors the backend's rule so the preview under the field is the address
@@ -144,6 +148,10 @@ const EMPTY_HOTEL: HotelForm = {
   childrenPrice: '0',
   adultMinAge: '13',
   allowOlderChildren: true,
+  maxAdultsPerRoom: '2',
+  maxUnderSixPerRoom: '1',
+  maxOlderChildrenPerRoom: '1',
+  olderChildTakesAdultPlace: true,
 }
 
 const parseCsv = (value: string) =>
@@ -361,6 +369,10 @@ export default function HotelsPage() {
       childrenPrice: String(hotel.childrenPrice ?? 0),
       adultMinAge: String(hotel.adultMinAge ?? 13),
       allowOlderChildren: hotel.allowOlderChildren !== false,
+      maxAdultsPerRoom: String(hotel.maxAdultsPerRoom ?? 2),
+      maxUnderSixPerRoom: String(hotel.maxUnderSixPerRoom ?? 1),
+      maxOlderChildrenPerRoom: String(hotel.maxOlderChildrenPerRoom ?? 1),
+      olderChildTakesAdultPlace: hotel.olderChildTakesAdultPlace !== false,
     })
     setNewAmenity('')
     setFormError('')
@@ -554,6 +566,12 @@ export default function HotelsPage() {
         childrenPrice: Number(hotelForm.childrenPrice) || 0,
         adultMinAge: Number(hotelForm.adultMinAge) || 13,
         allowOlderChildren: hotelForm.allowOlderChildren,
+        maxAdultsPerRoom: Number(hotelForm.maxAdultsPerRoom) || 2,
+        // Zero is a real answer here -- a property may take no children of an
+        // age at all -- so an empty box falls back to 0, not to 1.
+        maxUnderSixPerRoom: Math.max(0, Number(hotelForm.maxUnderSixPerRoom) || 0),
+        maxOlderChildrenPerRoom: Math.max(0, Number(hotelForm.maxOlderChildrenPerRoom) || 0),
+        olderChildTakesAdultPlace: hotelForm.olderChildTakesAdultPlace,
       }
 
       const result = hotelForm.id
@@ -925,6 +943,62 @@ export default function HotelsPage() {
                           : 'Only children under 6 can be added — no older child age band shown.'}
                       </p>
                     </div>
+
+                    {/* ── What one room here holds ──
+                        These were written into the website's code until the
+                        owner asked to be able to change them. The guest's
+                        search panel offers exactly this, and the bill is
+                        worked out from it, so the two cannot disagree. */}
+                    <div className="col-span-2 pt-2">
+                      <p className="text-sm font-semibold text-gray-700">What one room here holds</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        A guest who needs more places books another room. These numbers decide what
+                        the booking panel lets them choose, and what the bill charges for.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Adults per room</label>
+                      <input type="number" min="1" max="10" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="2" value={hotelForm.maxAdultsPerRoom} onChange={field('maxAdultsPerRoom')} />
+                      <p className="text-xs text-gray-400 mt-1">Most rooms take 2.</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Children under 6, per room</label>
+                      <input type="number" min="0" max="10" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="1" value={hotelForm.maxUnderSixPerRoom} onChange={field('maxUnderSixPerRoom')} />
+                      <p className="text-xs text-gray-400 mt-1">Never charged for, whatever this is set to. 0 means none may come.</p>
+                    </div>
+
+                    {hotelForm.allowOlderChildren && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Children aged {Math.max(1, Number(hotelForm.adultMinAge) || 13) - 1} and under, per room
+                          </label>
+                          <input type="number" min="0" max="10" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="1" value={hotelForm.maxOlderChildrenPerRoom} onChange={field('maxOlderChildrenPerRoom')} />
+                          <p className="text-xs text-gray-400 mt-1">
+                            Children of 6 and over. A second one means a second room.
+                          </p>
+                        </div>
+                        <div />
+                        <div className="col-span-2">
+                          <label className="flex items-center gap-3 cursor-pointer select-none">
+                            <div
+                              onClick={() => setHotelForm((prev) => ({ ...prev, olderChildTakesAdultPlace: !prev.olderChildTakesAdultPlace }))}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${hotelForm.olderChildTakesAdultPlace ? 'bg-primary-600' : 'bg-gray-300'}`}
+                            >
+                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hotelForm.olderChildTakesAdultPlace ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </div>
+                            <span className="text-sm font-medium text-gray-700">An older child may take an adult&apos;s unused place</span>
+                          </label>
+                          <p className="text-xs text-gray-400 mt-1 ml-14">
+                            {hotelForm.olderChildTakesAdultPlace
+                              ? `On now. A room with ${Math.max(1, Number(hotelForm.maxAdultsPerRoom) || 2)} adult places and fewer adults in it carries that many older children free; beyond that each one is charged.`
+                              : 'Off. Every child of 6 and over is charged, however many adults are in the room.'}
+                          </p>
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
 
