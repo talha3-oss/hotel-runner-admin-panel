@@ -8,11 +8,11 @@
 // read. A booking also has a reference an admin says out loud, so it should
 // have an address they can send to somebody.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
-import { BedDouble, UtensilsCrossed, User, PersonStanding, Baby, Pencil, AlertTriangle } from 'lucide-react'
+import { BedDouble, UtensilsCrossed, User, PersonStanding, Baby, Pencil, AlertTriangle, ChevronDown, Check } from 'lucide-react'
 import {
   fetchAdminBooking, updateBookingStatus, fetchAdminRooms, fetchAdminRoomTypes,
   previewBookingChange, applyBookingChange, fetchHotels,
@@ -20,11 +20,84 @@ import {
 } from '../../../../lib/api'
 import { formatMoney } from '../../../../lib/currency'
 import {
-  STATUS_COLORS, RT_LABELS, RT_COLORS, RT_HINTS, API_BASE_URL,
+  STATUS_COLORS, STATUS_LABELS, STATUS_DOTS, STATUS_ORDER,
+  RT_LABELS, RT_COLORS, RT_HINTS, API_BASE_URL,
   fmtDate, partyPerRoom, partyLabel, partyParts, RoomParty,
 } from '../shared'
 
 const fmt = formatMoney
+
+/** The status, as a control rather than a native dropdown.
+ *
+ *  A <select> cannot carry a colour dot, cannot be sized to match the button
+ *  beside it, and draws the operating system's own list -- so the page had a
+ *  pill that did not look like anything else on it. This is the same
+ *  rectangle as "Change booking", and the menu is the page's own.
+ *
+ *  It never reports the status it already has: see askStatus. */
+function StatusMenu({ value, disabled, onPick }: {
+  value: string
+  disabled?: boolean
+  onPick: (next: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+
+  // Clicking anywhere else, or pressing Escape, closes it -- a menu that can
+  // only be dismissed by choosing something traps the admin into a change.
+  useEffect(() => {
+    if (!open) return
+    const away = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false)
+    }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', away)
+    document.addEventListener('keydown', key)
+    return () => {
+      document.removeEventListener('mousedown', away)
+      document.removeEventListener('keydown', key)
+    }
+  }, [open])
+
+  return (
+    <div ref={box} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50 ${STATUS_COLORS[value] || 'bg-gray-100 text-gray-600'}`}
+      >
+        <span className={`h-2 w-2 rounded-full ${STATUS_DOTS[value] || 'bg-gray-400'}`} />
+        {STATUS_LABELS[value] || value}
+        <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute right-0 z-20 mt-1.5 w-44 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+        >
+          {STATUS_ORDER.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="option"
+              aria-selected={option === value}
+              onClick={() => { setOpen(false); onPick(option) }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <span className={`h-2 w-2 rounded-full ${STATUS_DOTS[option]}`} />
+              <span className="flex-1">{STATUS_LABELS[option]}</span>
+              {option === value && <Check className="h-4 w-4 text-primary-600" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function Section({ title, children, aside }: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
@@ -262,6 +335,25 @@ export default function BookingPage() {
     setEditing(true)
   }
 
+  // Arrived from the list's pencil. The editor is what they came for, so it
+  // is already open -- and the flag is taken back out of the address, so a
+  // reload, or the link sent to somebody else, is just the booking.
+  //
+  // Read from window rather than useSearchParams: that hook makes the whole
+  // page need a Suspense boundary at build time, for one optional flag.
+  const autoEdited = useRef(false)
+  useEffect(() => {
+    if (autoEdited.current || !booking || editing) return
+    if (booking.status === 'CANCELLED') return
+    if (!new URLSearchParams(window.location.search).has('edit')) return
+    autoEdited.current = true
+    openEditor()
+    window.history.replaceState(null, '', window.location.pathname)
+    // openEditor reads this render's booking and rooms; listing it would
+    // re-run this on every keystroke in the editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking, editing])
+
   const closeEditor = () => { setEditing(false); setQuote(null); setForm({}) }
 
   // The rooms are what the admin edits; the totals are read off them, so the
@@ -381,16 +473,7 @@ export default function BookingPage() {
         <div className="flex items-center gap-3">
           {/* One control, not a badge next to a copy of itself. It carries the
               status colour so the page still reads at a glance. */}
-          <select
-            value={booking.status}
-            disabled={statusUpdating}
-            onChange={(e) => askStatus(e.target.value)}
-            className={`rounded-full border-0 px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 ${STATUS_COLORS[booking.status] || 'bg-gray-100 text-gray-600'}`}
-          >
-            <option value="CONFIRMED">Confirmed</option>
-            <option value="PENDING">Pending</option>
-            <option value="CANCELLED">Cancelled</option>
-          </select>
+          <StatusMenu value={booking.status} disabled={statusUpdating} onPick={askStatus} />
 
           {booking.status !== 'CANCELLED' && !editing && (
             <button

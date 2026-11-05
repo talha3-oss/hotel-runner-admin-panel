@@ -11,6 +11,23 @@ export const STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-red-100 text-red-700',
 }
 
+// The same three statuses, as a dropdown wants them: a label to read and a
+// dot to recognise. A native <select> cannot be told to show either, which is
+// why the booking page draws its own.
+export const STATUS_LABELS: Record<string, string> = {
+  CONFIRMED: 'Confirmed',
+  PENDING: 'Pending',
+  CANCELLED: 'Cancelled',
+}
+
+export const STATUS_DOTS: Record<string, string> = {
+  CONFIRMED: 'bg-green-500',
+  PENDING: 'bg-yellow-500',
+  CANCELLED: 'bg-red-500',
+}
+
+export const STATUS_ORDER = ['CONFIRMED', 'PENDING', 'CANCELLED']
+
 export const PAYMENT_COLORS: Record<string, string> = {
   PAID: 'bg-blue-100 text-blue-700',
   PENDING: 'bg-gray-100 text-gray-600',

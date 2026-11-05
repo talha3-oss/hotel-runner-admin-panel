@@ -876,10 +876,17 @@ export async function fetchAdminBooking(token: string, ref: string) {
 
 export async function fetchAdminBookings(
   token: string,
-  query: { search?: string; status?: string; page?: number; limit?: number } = {}
+  // from/to are YYYY-MM-DD and mean "stays that touch these days", not
+  // "stays that start in them" -- a guest who arrived before the window and
+  // is still here during it belongs in the answer.
+  query: { search?: string; status?: string; page?: number; limit?: number; from?: string; to?: string } = {}
 ) {
   const qs = new URLSearchParams(
-    Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
+    Object.fromEntries(
+      Object.entries(query)
+        .filter(([, v]) => v !== undefined && v !== '')
+        .map(([k, v]) => [k, String(v)])
+    )
   ).toString()
   const res = await fetch(`${API_BASE_URL}/api/v1/bookings${qs ? `?${qs}` : ''}`, {
     headers: { Authorization: `Bearer ${token}` },
