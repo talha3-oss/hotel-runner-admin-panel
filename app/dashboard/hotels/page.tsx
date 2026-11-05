@@ -82,6 +82,7 @@ type HotelForm = {
   maxAdultsPerRoom: string
   maxUnderSixPerRoom: string
   maxOlderChildrenPerRoom: string
+  maxPersonsPerRoom: string
   olderChildTakesAdultPlace: boolean
 }
 
@@ -149,8 +150,9 @@ const EMPTY_HOTEL: HotelForm = {
   adultMinAge: '13',
   allowOlderChildren: true,
   maxAdultsPerRoom: '2',
-  maxUnderSixPerRoom: '1',
-  maxOlderChildrenPerRoom: '1',
+  maxUnderSixPerRoom: '2',
+  maxOlderChildrenPerRoom: '2',
+  maxPersonsPerRoom: '3',
   olderChildTakesAdultPlace: true,
 }
 
@@ -187,6 +189,69 @@ const parseNearbyPlaces = (raw: unknown): NearbyPlace[] => {
       return { name, distance }
     })
     .filter((p): p is NearbyPlace => p !== null)
+}
+
+/** Every room layout the occupancy settings allow, and what each one costs.
+ *
+ *  The client set these rules out as a table of nine room layouts rather than
+ *  as four numbers, and checking four numbers against that table by hand is
+ *  how a setting gets changed to something nobody meant. This reads the boxes
+ *  as they stand and lists what a guest may book, so the person changing them
+ *  can see the answer instead of deriving it. */
+function RoomOccupancyPreview({
+  maxAdults, maxUnderSix, maxOlder, maxPersons, freePlace, adultMinAge,
+}: {
+  maxAdults: number
+  maxUnderSix: number
+  maxOlder: number
+  maxPersons: number
+  freePlace: boolean
+  adultMinAge: number
+}) {
+  const rows: { people: string; charged: number }[] = []
+  // At least one adult in a room, or nobody is staying in it.
+  for (let adults = 1; adults <= maxAdults; adults += 1) {
+    for (let under6 = 0; under6 <= maxUnderSix; under6 += 1) {
+      for (let older = 0; older <= maxOlder; older += 1) {
+        if (adults + under6 + older > maxPersons) continue
+        const parts = [`${adults} adult${adults === 1 ? '' : 's'}`]
+        if (under6) parts.push(`${under6} under 6`)
+        if (older) parts.push(`${older} aged 6–${adultMinAge - 1}`)
+        rows.push({
+          people: parts.join(' + '),
+          // The same arithmetic the server does: an older child takes a place
+          // no adult is using, and pays once the adults have filled the room.
+          charged: freePlace ? Math.max(0, older - (maxAdults - adults)) : older,
+        })
+      }
+    }
+  }
+
+  return (
+    <div className="rounded-md border border-gray-200 bg-gray-50 p-4">
+      <p className="text-sm font-semibold text-gray-700">What a guest may book, as set above</p>
+      <p className="mt-0.5 text-xs text-gray-400">
+        {rows.length} layout{rows.length === 1 ? '' : 's'}. Anything else means a second room.
+      </p>
+      <div className="mt-3 grid grid-cols-1 gap-x-8 gap-y-1 sm:grid-cols-2">
+        {rows.map((row) => (
+          <div key={row.people} className="flex items-baseline justify-between gap-3 text-xs">
+            <span className="text-gray-700">{row.people}</span>
+            <span className={row.charged > 0 ? 'whitespace-nowrap text-gray-700' : 'whitespace-nowrap text-green-600'}>
+              {row.charged === 0
+                ? 'room only'
+                : `room + ${row.charged} child${row.charged === 1 ? '' : 'ren'}`}
+            </span>
+          </div>
+        ))}
+      </div>
+      {rows.length === 0 && (
+        <p className="mt-2 text-xs text-amber-600">
+          These numbers allow nothing at all — check the ceiling against the counts above it.
+        </p>
+      )}
+    </div>
+  )
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -370,8 +435,9 @@ export default function HotelsPage() {
       adultMinAge: String(hotel.adultMinAge ?? 13),
       allowOlderChildren: hotel.allowOlderChildren !== false,
       maxAdultsPerRoom: String(hotel.maxAdultsPerRoom ?? 2),
-      maxUnderSixPerRoom: String(hotel.maxUnderSixPerRoom ?? 1),
-      maxOlderChildrenPerRoom: String(hotel.maxOlderChildrenPerRoom ?? 1),
+      maxUnderSixPerRoom: String(hotel.maxUnderSixPerRoom ?? 2),
+      maxOlderChildrenPerRoom: String(hotel.maxOlderChildrenPerRoom ?? 2),
+      maxPersonsPerRoom: String(hotel.maxPersonsPerRoom ?? 3),
       olderChildTakesAdultPlace: hotel.olderChildTakesAdultPlace !== false,
     })
     setNewAmenity('')
@@ -571,6 +637,7 @@ export default function HotelsPage() {
         // age at all -- so an empty box falls back to 0, not to 1.
         maxUnderSixPerRoom: Math.max(0, Number(hotelForm.maxUnderSixPerRoom) || 0),
         maxOlderChildrenPerRoom: Math.max(0, Number(hotelForm.maxOlderChildrenPerRoom) || 0),
+        maxPersonsPerRoom: Number(hotelForm.maxPersonsPerRoom) || 3,
         olderChildTakesAdultPlace: hotelForm.olderChildTakesAdultPlace,
       }
 
@@ -964,6 +1031,12 @@ export default function HotelsPage() {
                     </div>
 
                     <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Most people in one room</label>
+                      <input type="number" min="1" max="12" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="3" value={hotelForm.maxPersonsPerRoom} onChange={field('maxPersonsPerRoom')} />
+                      <p className="text-xs text-gray-400 mt-1">Adults and children together. 2 adults and 2 children is 4, so at 3 that needs two rooms.</p>
+                    </div>
+
+                    <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Children under 6, per room</label>
                       <input type="number" min="0" max="10" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="1" value={hotelForm.maxUnderSixPerRoom} onChange={field('maxUnderSixPerRoom')} />
                       <p className="text-xs text-gray-400 mt-1">Always free, whatever this is set to. Set 0 to take none at all.</p>
@@ -1006,6 +1079,23 @@ export default function HotelsPage() {
                         </div>
                       </>
                     )}
+
+                    {/* Every layout the four settings above allow, worked out
+                        from them as they stand. The client gave these rules as
+                        a table of room layouts, so the panel answers in the
+                        same shape: change a number and read off what a guest
+                        may now book and what it costs them, rather than
+                        working it out from four separate boxes. */}
+                    <div className="col-span-2">
+                      <RoomOccupancyPreview
+                        maxAdults={Math.max(1, Number(hotelForm.maxAdultsPerRoom) || 2)}
+                        maxUnderSix={Math.max(0, Number(hotelForm.maxUnderSixPerRoom) || 0)}
+                        maxOlder={hotelForm.allowOlderChildren ? Math.max(0, Number(hotelForm.maxOlderChildrenPerRoom) || 0) : 0}
+                        maxPersons={Math.max(1, Number(hotelForm.maxPersonsPerRoom) || 3)}
+                        freePlace={hotelForm.olderChildTakesAdultPlace}
+                        adultMinAge={Math.max(1, Number(hotelForm.adultMinAge) || 13)}
+                      />
+                    </div>
                   </>
                 )}
 

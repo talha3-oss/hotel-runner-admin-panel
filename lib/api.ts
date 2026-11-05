@@ -297,6 +297,9 @@ export interface Hotel {
   maxAdultsPerRoom?: number
   maxUnderSixPerRoom?: number
   maxOlderChildrenPerRoom?: number
+  /** The ceiling over all three -- a room may allow 2 adults and 2 children
+   *  and still hold only 3 people between them. */
+  maxPersonsPerRoom?: number
   olderChildTakesAdultPlace?: boolean
   locationId: string
   location: string
