@@ -91,15 +91,31 @@ export function partyPerRoom(
   return { recorded: false, rooms: a.map((_, i) => ({ adults: a[i], underSix: u[i], olderChildren: o[i] })) }
 }
 
-/** "2 adults, 1 child aged 6–12, 1 under 6" — whoever is actually there. */
+/** "2 adults, 1 child aged 6–12, 1 under 6" — whoever is actually there.
+ *  For places that read as a sentence; where there is room to draw them,
+ *  partyParts gives the same thing a piece at a time so each can have its
+ *  own icon. */
 export function partyLabel(party: RoomParty, adultMinAge = 13) {
-  return [
-    `${party.adults} adult${party.adults === 1 ? '' : 's'}`,
-    party.olderChildren > 0
-      ? `${party.olderChildren} child${party.olderChildren === 1 ? '' : 'ren'} aged 6–${adultMinAge - 1}`
-      : null,
-    party.underSix > 0 ? `${party.underSix} under 6` : null,
-  ]
-    .filter(Boolean)
+  return partyParts(party, adultMinAge)
+    .map((p) => p.text)
     .join(', ')
+}
+
+/** The same party split by who they are, so a row can put an icon beside
+ *  each. An age band with nobody in it is left out entirely rather than
+ *  drawn as a zero. */
+export function partyParts(party: RoomParty, adultMinAge = 13) {
+  return [
+    { kind: 'adults' as const, count: party.adults, text: `${party.adults} adult${party.adults === 1 ? '' : 's'}` },
+    party.olderChildren > 0
+      ? {
+          kind: 'older' as const,
+          count: party.olderChildren,
+          text: `${party.olderChildren} child${party.olderChildren === 1 ? '' : 'ren'} aged 6–${adultMinAge - 1}`,
+        }
+      : null,
+    party.underSix > 0
+      ? { kind: 'underSix' as const, count: party.underSix, text: `${party.underSix} under 6` }
+      : null,
+  ].filter(Boolean) as { kind: 'adults' | 'older' | 'underSix'; count: number; text: string }[]
 }

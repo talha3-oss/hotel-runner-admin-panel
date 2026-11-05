@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
+import { BedDouble, UtensilsCrossed, User, PersonStanding, Baby } from 'lucide-react'
 import {
   fetchAdminBooking, updateBookingStatus, fetchAdminRooms, fetchAdminRoomTypes,
   previewBookingChange, applyBookingChange, fetchHotels,
@@ -20,7 +21,7 @@ import {
 import { formatMoney } from '../../../../lib/currency'
 import {
   STATUS_COLORS, RT_LABELS, RT_COLORS, RT_HINTS, API_BASE_URL,
-  fmtDate, partyPerRoom, partyLabel, RoomParty,
+  fmtDate, partyPerRoom, partyLabel, partyParts, RoomParty,
 } from '../shared'
 
 const fmt = formatMoney
@@ -34,6 +35,33 @@ function Section({ title, children, aside }: { title: string; children: React.Re
       </div>
       <div className="px-5 py-4">{children}</div>
     </section>
+  )
+}
+
+// Who the icon beside a count stands for. Three ages, three shapes -- an
+// adult and a child of 6-12 were the same person drawn smaller, which at this
+// size is no difference at all, and the whole point of the icon is to be read
+// without reading the words.
+const PARTY_ICONS = {
+  adults: User,
+  older: PersonStanding,
+  underSix: Baby,
+} as const
+
+/** A party with an icon on each piece of it. */
+function Party({ party, adultMinAge }: { party: RoomParty; adultMinAge: number }) {
+  return (
+    <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      {partyParts(party, adultMinAge).map((part) => {
+        const Icon = PARTY_ICONS[part.kind]
+        return (
+          <span key={part.kind} className="flex items-center gap-1.5 whitespace-nowrap text-sm text-gray-700">
+            <Icon className="h-4 w-4 shrink-0 text-gray-400" />
+            {part.text}
+          </span>
+        )
+      })}
+    </span>
   )
 }
 
@@ -595,14 +623,16 @@ export default function BookingPage() {
               <div className="col-span-2">
                 <Field
                   label="Guests"
-                  value={partyLabel(
-                    {
-                      adults: booking.adults,
-                      underSix: party.rooms.reduce((s, r) => s + r.underSix, 0),
-                      olderChildren: party.rooms.reduce((s, r) => s + r.olderChildren, 0),
-                    },
-                    adultMinAge
-                  )}
+                  value={
+                    <Party
+                      party={{
+                        adults: booking.adults,
+                        underSix: party.rooms.reduce((s, r) => s + r.underSix, 0),
+                        olderChildren: party.rooms.reduce((s, r) => s + r.olderChildren, 0),
+                      }}
+                      adultMinAge={adultMinAge}
+                    />
+                  }
                 />
               </div>
             </dl>
@@ -646,23 +676,36 @@ export default function BookingPage() {
                   const plan = planOf(room.id)
                   const here = party.rooms[i]
                   return (
-                    <div key={i} className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 py-3 first:pt-0 last:pb-0">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900">
-                          <span className="text-gray-400">{i + 1}.</span> {room.name}
+                    <div key={i} className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 py-3 first:pt-0 last:pb-0">
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                          <span className="w-4 shrink-0 text-right text-xs text-gray-400">{i + 1}</span>
+                          <BedDouble className="h-4 w-4 shrink-0 text-gray-400" />
+                          {room.name}
                         </p>
                         {plan?.planName && (
-                          <p className="mt-0.5 text-xs text-gray-400">
+                          <p className="mt-1 flex items-center gap-2 text-xs text-gray-400">
+                            <span className="w-4 shrink-0" />
+                            <UtensilsCrossed className="h-3.5 w-3.5 shrink-0" />
                             {plan.planCode && <span className="font-mono">{plan.planCode}</span>}
-                            {plan.planCode ? ' · ' : ''}{plan.planName}
+                            {plan.planName}
                           </p>
                         )}
                       </div>
-                      <p className="text-sm text-gray-700">{here ? partyLabel(here, adultMinAge) : '—'}</p>
-                      <p className="whitespace-nowrap text-sm text-gray-500">
+
+                      {here ? <Party party={here} adultMinAge={adultMinAge} /> : <span className="text-sm text-gray-400">—</span>}
+
+                      {/* The stay total only when it is a different number
+                          from the nightly one. On a one-night booking the two
+                          are the same, and printing it twice reads as though
+                          something has gone wrong. */}
+                      <p className="whitespace-nowrap text-right text-sm text-gray-500">
                         {fmt(room.claytonRate)} / night
-                        <span className="text-gray-300"> · </span>
-                        <span className="text-gray-400">{fmt(room.claytonRate * nights)} for the stay</span>
+                        {nights > 1 && (
+                          <span className="block text-xs text-gray-400">
+                            {fmt(room.claytonRate * nights)} for {nights} nights
+                          </span>
+                        )}
                       </p>
                     </div>
                   )
