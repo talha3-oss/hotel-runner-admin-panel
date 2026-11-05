@@ -36,8 +36,8 @@ export function RevenueChart({ data }: { data: { month: string; revenue: number;
       <AreaChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#f97316" stopOpacity={0.15} />
-            <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+            <stop offset="5%" stopColor="#a56d35" stopOpacity={0.15} />
+            <stop offset="95%" stopColor="#a56d35" stopOpacity={0} />
           </linearGradient>
           <linearGradient id="bkGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
@@ -50,7 +50,7 @@ export function RevenueChart({ data }: { data: { month: string; revenue: number;
         <YAxis yAxisId="bk" orientation="right" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={30} />
         <Tooltip content={<CustomTooltip />} />
         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 16 }} />
-        <Area yAxisId="rev" type="monotone" dataKey="revenue" name="revenue" stroke="#f97316" strokeWidth={2} fill="url(#revGrad)" dot={false} />
+        <Area yAxisId="rev" type="monotone" dataKey="revenue" name="revenue" stroke="#a56d35" strokeWidth={2} fill="url(#revGrad)" dot={false} />
         <Area yAxisId="bk" type="monotone" dataKey="bookings" name="bookings" stroke="#3b82f6" strokeWidth={2} fill="url(#bkGrad)" dot={false} />
       </AreaChart>
     </ResponsiveContainer>
@@ -91,7 +91,7 @@ export function HotelBars({ data }: { data: { hotel: string; bookings: number; r
           contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
         />
         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
-        <Bar dataKey="revenue" name="Revenue" fill="#f97316" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="revenue" name="Revenue" fill="#a56d35" radius={[4, 4, 0, 0]} />
         <Bar dataKey="bookings" name="Bookings" fill="#3b82f6" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>

@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
-import { BedDouble, UtensilsCrossed, User, PersonStanding, Baby } from 'lucide-react'
+import { BedDouble, UtensilsCrossed, User, PersonStanding, Baby, Pencil, AlertTriangle } from 'lucide-react'
 import {
   fetchAdminBooking, updateBookingStatus, fetchAdminRooms, fetchAdminRoomTypes,
   previewBookingChange, applyBookingChange, fetchHotels,
@@ -56,7 +56,7 @@ function Party({ party, adultMinAge }: { party: RoomParty; adultMinAge: number }
         const Icon = PARTY_ICONS[part.kind]
         return (
           <span key={part.kind} className="flex items-center gap-1.5 whitespace-nowrap text-sm text-gray-700">
-            <Icon className="h-4 w-4 shrink-0 text-gray-400" />
+            <Icon className="h-4 w-4 shrink-0 text-primary-600" />
             {part.text}
           </span>
         )
@@ -84,6 +84,7 @@ export default function BookingPage() {
   const [error, setError] = useState('')
 
   const [statusUpdating, setStatusUpdating] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
   const [rtSending, setRtSending] = useState(false)
   const [rtResult, setRtResult] = useState<{ ok: boolean; text: string } | null>(null)
 
@@ -192,6 +193,16 @@ export default function BookingPage() {
   // Who is in which room. Recorded on the booking since 2026-11-05; spread
   // evenly for older ones, which the page labels as the guess it is.
   const party = booking ? partyPerRoom(booking, rooms.length) : { rooms: [] as RoomParty[], recorded: true }
+
+  // Cancelling tells RateTiger and puts the rooms back on sale, and the
+  // dropdown did it the instant it was touched -- one mis-click on a
+  // confirmed stay and the guest's booking was gone. Anything else is
+  // reversible and goes straight through.
+  const askStatus = (next: string) => {
+    if (next === booking?.status) return
+    if (next === 'CANCELLED') setConfirmCancel(true)
+    else changeStatus(next)
+  }
 
   const changeStatus = async (next: string) => {
     const token = localStorage.getItem('adminToken')
@@ -347,6 +358,11 @@ export default function BookingPage() {
 
   const nights = Math.max(1, booking.nights || 1)
 
+  // Everybody staying. The card listed the ages and left the reader to add
+  // them up, which is the one number a hotel is looking for.
+  const totalGuests =
+    booking.adults + party.rooms.reduce((sum, r) => sum + r.underSix + r.olderChildren, 0)
+
   return (
     <div className="p-6 lg:p-8">
       {/* ── Header ── */}
@@ -363,24 +379,25 @@ export default function BookingPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[booking.status] || 'bg-gray-100 text-gray-600'}`}>
-            {booking.status}
-          </span>
+          {/* One control, not a badge next to a copy of itself. It carries the
+              status colour so the page still reads at a glance. */}
           <select
             value={booking.status}
             disabled={statusUpdating}
-            onChange={(e) => changeStatus(e.target.value)}
-            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+            onChange={(e) => askStatus(e.target.value)}
+            className={`rounded-full border-0 px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 ${STATUS_COLORS[booking.status] || 'bg-gray-100 text-gray-600'}`}
           >
             <option value="CONFIRMED">Confirmed</option>
             <option value="PENDING">Pending</option>
             <option value="CANCELLED">Cancelled</option>
           </select>
+
           {booking.status !== 'CANCELLED' && !editing && (
             <button
               onClick={openEditor}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
             >
+              <Pencil className="h-4 w-4" />
               Change booking
             </button>
           )}
@@ -605,6 +622,54 @@ export default function BookingPage() {
         </section>
       )}
 
+      {/* ── Asking before cancelling ──
+          Not a browser confirm(): this one can say what cancelling does,
+          which is the part an admin needs before pressing it. */}
+      {confirmCancel && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setConfirmCancel(false) }}
+        >
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+              </span>
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">
+                  Cancel {booking.bookingRef}?
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  The guest keeps their reference but the stay is off.
+                  {booking.rateTigerStatus === 'SENT'
+                    ? ' RateTiger is told, so the rooms go back on sale on every channel they feed.'
+                    : ' RateTiger was never told about this booking, so nothing is sent to them.'}
+                </p>
+                <p className="mt-2 text-sm text-gray-500">
+                  Money is not refunded here — settle that separately.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmCancel(false)}
+                className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Keep the booking
+              </button>
+              <button
+                onClick={() => { setConfirmCancel(false); changeStatus('CANCELLED') }}
+                disabled={statusUpdating}
+                className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {statusUpdating ? 'Cancelling…' : 'Yes, cancel it'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mt-6 grid gap-5 lg:grid-cols-3">
         {/* ── Left: who and when ── */}
         <div className="space-y-5">
@@ -622,7 +687,7 @@ export default function BookingPage() {
               <Field label="Check-out" value={booking.checkOut} />
               <div className="col-span-2">
                 <Field
-                  label="Guests"
+                  label={`Guests — ${totalGuests} ${totalGuests === 1 ? 'person' : 'people'} in all`}
                   value={
                     <Party
                       party={{
@@ -680,13 +745,13 @@ export default function BookingPage() {
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-2 text-sm font-medium text-gray-900">
                           <span className="w-4 shrink-0 text-right text-xs text-gray-400">{i + 1}</span>
-                          <BedDouble className="h-4 w-4 shrink-0 text-gray-400" />
+                          <BedDouble className="h-4 w-4 shrink-0 text-primary-600" />
                           {room.name}
                         </p>
                         {plan?.planName && (
                           <p className="mt-1 flex items-center gap-2 text-xs text-gray-400">
                             <span className="w-4 shrink-0" />
-                            <UtensilsCrossed className="h-3.5 w-3.5 shrink-0" />
+                            <UtensilsCrossed className="h-3.5 w-3.5 shrink-0 text-primary-500" />
                             {plan.planCode && <span className="font-mono">{plan.planCode}</span>}
                             {plan.planName}
                           </p>
