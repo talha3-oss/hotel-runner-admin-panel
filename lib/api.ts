@@ -849,6 +849,10 @@ export interface BookingRecord {
   rateTigerLastError?: string | null
   rateTigerSentAt?: string | null
   childrenAges?: string[]
+  hotelId?: string | null
+  /** Who is in which room, as the stay was booked. Null on bookings taken
+   *  before 2026-11-05, which were priced from the totals. */
+  roomOccupancy?: { adults: number; underSix: number; olderChildren: number }[] | null
 }
 
 export interface InvoiceRecord {
@@ -906,6 +910,11 @@ export interface BookingChange {
   checkOut?: string
   adults?: number
   childrenAges?: string[]
+  /** One entry per room, in the same order as roomIds. The server prices each
+   *  room on its own when it has this, and pools the totals when it does not
+   *  -- which charges less, because an empty place in one room is no use to a
+   *  child in another. */
+  roomOccupancy?: { adults: number; underSix: number; olderChildren: number }[]
   roomIds?: string[]
   firstName?: string
   lastName?: string

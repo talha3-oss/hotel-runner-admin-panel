@@ -8,8 +8,8 @@ import {
 } from '@heroicons/react/24/outline'
 import {
   fetchAdminBookings, updateBookingStatus, fetchAdminRooms, fetchAdminRoomTypes,
-  previewBookingChange, applyBookingChange,
-  BookingRecord, BookingChange, BookingChangeQuote,
+  previewBookingChange, applyBookingChange, fetchHotels,
+  BookingRecord, BookingChange, BookingChangeQuote, Hotel,
 } from '../../../lib/api'
 import { formatMoney } from '../../../lib/currency'
 
@@ -84,6 +84,10 @@ export default function BookingsPage() {
   const [roomOptions, setRoomOptions] = useState<
     { id: string; name: string; roomNumber: string; planName: string; planCode: string }[]
   >([])
+  // What one room at this property holds. Asked for when the editor opens, so
+  // the boxes can say when a room is over-filled instead of letting the admin
+  // find out from a refusal after pressing Check.
+  const [roomLimits, setRoomLimits] = useState({ adults: 2, underSix: 2, olderChildren: 2, persons: 3 })
   const [quote, setQuote] = useState<BookingChangeQuote | null>(null)
   const [quoting, setQuoting] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -206,18 +210,81 @@ export default function BookingsPage() {
   // What rate plan a booked room is on. The booking stores only the room id.
   const planOf = (roomId: string) => roomOptions.find((r) => r.id === roomId)
 
+  /** The party laid out room by room.
+   *
+   *  A booking taken since 2026-11-05 carries its own arrangement and that is
+   *  what opens. An older one has none -- nothing recorded where its guests
+   *  slept -- so the people are spread evenly over its rooms as a starting
+   *  point the admin can correct. It is a guess either way for those, and the
+   *  old pooled price is what they were charged, so the quote is what decides
+   *  rather than this. */
+  const layoutFor = (b: BookingRecord) => {
+    const roomIds = (Array.isArray(b.rooms) ? b.rooms : []).map((r) => r.id)
+    const count = Math.max(1, roomIds.length)
+
+    const stored = Array.isArray(b.roomOccupancy) ? b.roomOccupancy : null
+    if (stored && stored.length === count) {
+      return stored.map((r) => ({
+        adults: Math.max(1, Number(r.adults) || 1),
+        underSix: Math.max(0, Number(r.underSix) || 0),
+        olderChildren: Math.max(0, Number(r.olderChildren) || 0),
+      }))
+    }
+
+    const ages = Array.isArray(b.childrenAges) ? b.childrenAges : []
+    let older = ages.filter((a) => a === '6-12').length
+    let younger = ages.length - older
+    let adults = Math.max(count, Number(b.adults) || 1)
+
+    return Array.from({ length: count }, () => {
+      const take = (left: number, each: number) => {
+        const n = Math.min(each, left)
+        return n
+      }
+      const a = 1 + take(adults - count, 1)
+      adults -= a
+      const o = take(older, 1); older -= o
+      const u = take(younger, 1); younger -= u
+      return { adults: a, underSix: u, olderChildren: o }
+    })
+  }
+
   const openEditor = async (b: BookingRecord) => {
     setQuote(null)
     setForm({
       checkIn: b.checkIn,
       checkOut: b.checkOut,
-      adults: b.adults,
-      childrenAges: Array.isArray(b.childrenAges) ? b.childrenAges : [],
       roomIds: (Array.isArray(b.rooms) ? b.rooms : []).map((r) => r.id),
+      roomOccupancy: layoutFor(b),
       firstName: b.firstName, lastName: b.lastName, email: b.email, phone: b.phone,
     })
     setEditing(true)
     if (roomOptions.length === 0) await loadRooms()
+    void loadRoomLimits(b.hotelId || null)
+  }
+
+  /** What one room at this booking's property holds. Falls back to what every
+   *  hotel defaults to if the property cannot be found. */
+  const loadRoomLimits = async (hotelId: string | null) => {
+    const token = localStorage.getItem('adminToken')
+    if (!token || !hotelId) return
+    try {
+      const result = await fetchHotels(token)
+      const hotel = ((result?.hotels || result?.data || []) as Hotel[]).find((h) => h.id === hotelId)
+      if (!hotel) return
+      const whole = (value: unknown, fallback: number, floor: number) => {
+        const n = Math.floor(Number(value))
+        return Number.isFinite(n) && n >= floor ? n : fallback
+      }
+      setRoomLimits({
+        adults: whole(hotel.maxAdultsPerRoom, 2, 1),
+        underSix: whole(hotel.maxUnderSixPerRoom, 2, 0),
+        olderChildren: whole(hotel.maxOlderChildrenPerRoom, 2, 0),
+        persons: whole(hotel.maxPersonsPerRoom, 3, 1),
+      })
+    } catch {
+      /* the defaults are already on screen */
+    }
   }
 
   const closeEditor = () => { setEditing(false); setQuote(null); setForm({}) }
@@ -228,7 +295,7 @@ export default function BookingsPage() {
     if (!token) return
     setQuoting(true)
     try {
-      setQuote(await previewBookingChange(token, selectedBooking.id, form))
+      setQuote(await previewBookingChange(token, selectedBooking.id, changePayload()))
     } catch {
       setQuote({ success: false, message: 'Unable to reach the server.' })
     } finally {
@@ -242,7 +309,7 @@ export default function BookingsPage() {
     if (!token) return
     setApplying(true)
     try {
-      const result = await applyBookingChange(token, selectedBooking.id, form)
+      const result = await applyBookingChange(token, selectedBooking.id, changePayload())
       if (result.success) {
         setBookings((prev) => prev.map((b) => b.id === result.booking.id ? result.booking : b))
         setSelectedBooking(result.booking)
@@ -257,12 +324,48 @@ export default function BookingsPage() {
     }
   }
 
-  const setChildren = (band: '0-5' | '6-12', count: number) => {
-    const others = (form.childrenAges || []).filter((a) => a !== band)
-    setForm({ ...form, childrenAges: [...others, ...Array(Math.max(0, count)).fill(band)] })
+  // The rooms are what the admin edits; the totals are read off them. They
+  // used to be the other way round -- one Adults box and two Children boxes
+  // for the whole booking -- and the arrangement the guest booked was lost
+  // the moment any of the three changed, which dropped the stay back to the
+  // cheaper pooled price without saying so.
+  const layout = form.roomOccupancy || []
+
+  const partyTotals = {
+    adults: layout.reduce((sum, r) => sum + r.adults, 0),
+    underSix: layout.reduce((sum, r) => sum + r.underSix, 0),
+    olderChildren: layout.reduce((sum, r) => sum + r.olderChildren, 0),
+  }
+
+  const setRoomCount = (index: number, key: 'adults' | 'underSix' | 'olderChildren', value: number) => {
+    const floor = key === 'adults' ? 1 : 0
+    const next = layout.map((room, i) =>
+      i === index ? { ...room, [key]: Math.max(floor, Math.floor(Number(value) || 0)) } : room
+    )
+    setForm({ ...form, roomOccupancy: next })
     setQuote(null)
   }
-  const childCount = (band: string) => (form.childrenAges || []).filter((a) => a === band).length
+
+  /** Whatever is over a limit in this room, for the line underneath it. */
+  const roomProblem = (room: { adults: number; underSix: number; olderChildren: number }) => {
+    const people = room.adults + room.underSix + room.olderChildren
+    if (room.adults > roomLimits.adults) return `${room.adults} adults — a room here takes ${roomLimits.adults}.`
+    if (room.olderChildren > roomLimits.olderChildren) return `${room.olderChildren} children of 6–12 — a room here takes ${roomLimits.olderChildren}.`
+    if (room.underSix > roomLimits.underSix) return `${room.underSix} under 6 — a room here takes ${roomLimits.underSix}.`
+    if (people > roomLimits.persons) return `${people} people — a room here takes ${roomLimits.persons}.`
+    return null
+  }
+
+  /** What goes to the server: the rooms as the admin left them, plus the
+   *  totals read off them, so the two can never disagree. */
+  const changePayload = (): BookingChange => ({
+    ...form,
+    adults: Math.max(1, partyTotals.adults),
+    childrenAges: [
+      ...Array(partyTotals.underSix).fill('under6'),
+      ...Array(partyTotals.olderChildren).fill('6-12'),
+    ],
+  })
 
   const totalPages = Math.ceil(total / limit)
 
@@ -455,78 +558,117 @@ export default function BookingsPage() {
                         className="mt-1 w-full border border-gray-300 rounded-md text-sm px-2 py-1.5"
                       />
                     </label>
-                    <label className="text-xs text-gray-600">
-                      Adults
-                      <input
-                        type="number" min={1} value={form.adults ?? 1}
-                        onChange={(e) => { setForm({ ...form, adults: Number(e.target.value) }); setQuote(null) }}
-                        className="mt-1 w-full border border-gray-300 rounded-md text-sm px-2 py-1.5"
-                      />
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="text-xs text-gray-600">
-                        Children 0–5
-                        <input
-                          type="number" min={0} value={childCount('0-5')}
-                          onChange={(e) => setChildren('0-5', Number(e.target.value))}
-                          className="mt-1 w-full border border-gray-300 rounded-md text-sm px-2 py-1.5"
-                        />
-                      </label>
-                      <label className="text-xs text-gray-600">
-                        Children 6–12
-                        <input
-                          type="number" min={0} value={childCount('6-12')}
-                          onChange={(e) => setChildren('6-12', Number(e.target.value))}
-                          className="mt-1 w-full border border-gray-300 rounded-md text-sm px-2 py-1.5"
-                        />
-                      </label>
-                    </div>
                   </div>
 
-                  {/* Rooms. The same room twice means two of it. */}
+                  {/* Rooms, and who is in each of them.
+                      The rule is applied to each room on its own -- an empty
+                      place in one room is no use to a child sleeping in
+                      another -- so the party is edited here rather than as
+                      three totals above. The same room twice means two of it. */}
                   <div>
-                    <div className="text-xs text-gray-600 mb-1">Rooms</div>
-                    <div className="space-y-1">
-                      {(form.roomIds || []).map((id, i) => (
-                        <div key={`${id}-${i}`} className="flex gap-2">
-                          <select
-                            value={id}
-                            onChange={(e) => {
-                              const next = [...(form.roomIds || [])]
-                              next[i] = e.target.value
-                              setForm({ ...form, roomIds: next }); setQuote(null)
-                            }}
-                            className="flex-1 border border-gray-300 rounded-md text-sm px-2 py-1.5"
-                          >
-                            {roomOptions.length === 0 && <option value={id}>{id}</option>}
-                            {roomOptions.map((r) => (
-                              <option key={r.id} value={r.id}>
-                                {r.roomNumber} — {r.name}
-                                {r.planName ? ` · ${r.planCode ? `${r.planCode} ` : ''}${r.planName}` : ''}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() => {
-                              setForm({ ...form, roomIds: (form.roomIds || []).filter((_, j) => j !== i) })
-                              setQuote(null)
-                            }}
-                            className="px-2 text-xs text-red-600 hover:bg-red-50 rounded"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
+                    <div className="flex items-baseline justify-between">
+                      <div className="text-xs font-medium text-gray-700">Rooms and who is in them</div>
+                      <div className="text-[11px] text-gray-400">
+                        a room here takes {roomLimits.adults} adults, {roomLimits.underSix} under 6,{' '}
+                        {roomLimits.olderChildren} aged 6–12, {roomLimits.persons} people in all
+                      </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        const first = roomOptions[0]?.id || (form.roomIds || [])[0]
-                        if (first) { setForm({ ...form, roomIds: [...(form.roomIds || []), first] }); setQuote(null) }
-                      }}
-                      className="mt-1 text-xs text-primary-600 hover:underline"
-                    >
-                      + Add room
-                    </button>
+
+                    <div className="mt-1 space-y-1">
+                      <div className="grid grid-cols-[1fr_4rem_4rem_4rem_auto] gap-2 text-[11px] text-gray-400">
+                        <span>Room</span>
+                        <span>Adults</span>
+                        <span>Under 6</span>
+                        <span>6–12</span>
+                        <span />
+                      </div>
+
+                      {(form.roomIds || []).map((id, i) => {
+                        const room = layout[i] || { adults: 1, underSix: 0, olderChildren: 0 }
+                        const problem = roomProblem(room)
+                        return (
+                          <div key={`${id}-${i}`}>
+                            <div className="grid grid-cols-[1fr_4rem_4rem_4rem_auto] gap-2">
+                              <select
+                                value={id}
+                                onChange={(e) => {
+                                  const next = [...(form.roomIds || [])]
+                                  next[i] = e.target.value
+                                  setForm({ ...form, roomIds: next }); setQuote(null)
+                                }}
+                                className="border border-gray-300 rounded-md text-sm px-2 py-1.5"
+                              >
+                                {roomOptions.length === 0 && <option value={id}>{id}</option>}
+                                {roomOptions.map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.roomNumber} — {r.name}
+                                    {r.planName ? ` · ${r.planCode ? `${r.planCode} ` : ''}${r.planName}` : ''}
+                                  </option>
+                                ))}
+                              </select>
+
+                              {([
+                                ['adults', room.adults, 1],
+                                ['underSix', room.underSix, 0],
+                                ['olderChildren', room.olderChildren, 0],
+                              ] as const).map(([key, value, floor]) => (
+                                <input
+                                  key={key}
+                                  type="number"
+                                  min={floor}
+                                  value={value}
+                                  onChange={(e) => setRoomCount(i, key, Number(e.target.value))}
+                                  className={`border rounded-md text-sm px-2 py-1.5 ${
+                                    problem ? 'border-amber-400 bg-amber-50' : 'border-gray-300'
+                                  }`}
+                                />
+                              ))}
+
+                              <button
+                                onClick={() => {
+                                  setForm({
+                                    ...form,
+                                    roomIds: (form.roomIds || []).filter((_, j) => j !== i),
+                                    roomOccupancy: layout.filter((_, j) => j !== i),
+                                  })
+                                  setQuote(null)
+                                }}
+                                disabled={(form.roomIds || []).length <= 1}
+                                className="px-2 text-xs text-red-600 hover:bg-red-50 rounded disabled:text-gray-300 disabled:hover:bg-transparent"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            {problem && (
+                              <p className="mt-0.5 text-[11px] text-amber-700">Room {i + 1}: {problem}</p>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    <div className="mt-2 flex items-baseline justify-between">
+                      <button
+                        onClick={() => {
+                          const first = roomOptions[0]?.id || (form.roomIds || [])[0]
+                          if (!first) return
+                          setForm({
+                            ...form,
+                            roomIds: [...(form.roomIds || []), first],
+                            roomOccupancy: [...layout, { adults: 1, underSix: 0, olderChildren: 0 }],
+                          })
+                          setQuote(null)
+                        }}
+                        className="text-xs text-primary-600 hover:underline"
+                      >
+                        + Add room
+                      </button>
+                      <span className="text-[11px] text-gray-500">
+                        {partyTotals.adults} adult{partyTotals.adults === 1 ? '' : 's'}
+                        {partyTotals.underSix > 0 && `, ${partyTotals.underSix} under 6`}
+                        {partyTotals.olderChildren > 0 && `, ${partyTotals.olderChildren} aged 6–12`}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
