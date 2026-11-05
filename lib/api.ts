@@ -864,6 +864,16 @@ export interface InvoiceRecord {
   booking: BookingRecord
 }
 
+/** One booking, by its reference or its id -- the endpoint takes either, so
+ *  a page can be addressed by the reference an admin actually reads. */
+export async function fetchAdminBooking(token: string, ref: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/bookings/${encodeURIComponent(ref)}`, {
+    headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache' },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
 export async function fetchAdminBookings(
   token: string,
   query: { search?: string; status?: string; page?: number; limit?: number } = {}
