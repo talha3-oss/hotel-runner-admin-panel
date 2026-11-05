@@ -26,6 +26,14 @@ export const STATUS_DOTS: Record<string, string> = {
   CANCELLED: 'bg-red-500',
 }
 
+// A border in the status's own colour, so the control reads as a button
+// beside the one next to it rather than as a tinted patch of background.
+export const STATUS_BORDERS: Record<string, string> = {
+  CONFIRMED: 'border-green-300',
+  PENDING: 'border-yellow-300',
+  CANCELLED: 'border-red-300',
+}
+
 export const STATUS_ORDER = ['CONFIRMED', 'PENDING', 'CANCELLED']
 
 export const PAYMENT_COLORS: Record<string, string> = {

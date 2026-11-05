@@ -20,7 +20,7 @@ import {
 } from '../../../../lib/api'
 import { formatMoney } from '../../../../lib/currency'
 import {
-  STATUS_COLORS, STATUS_LABELS, STATUS_DOTS, STATUS_ORDER,
+  STATUS_COLORS, STATUS_LABELS, STATUS_DOTS, STATUS_BORDERS, STATUS_ORDER,
   RT_LABELS, RT_COLORS, RT_HINTS, API_BASE_URL,
   fmtDate, partyPerRoom, partyLabel, partyParts, RoomParty,
 } from '../shared'
@@ -175,7 +175,7 @@ function StatusMenu({ value, disabled, onPick }: {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50 ${STATUS_COLORS[value] || 'bg-gray-100 text-gray-600'}`}
+        className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50 ${STATUS_COLORS[value] || 'bg-gray-100 text-gray-600'} ${STATUS_BORDERS[value] || 'border-gray-300'}`}
       >
         <span className={`h-2 w-2 rounded-full ${STATUS_DOTS[value] || 'bg-gray-400'}`} />
         {STATUS_LABELS[value] || value}
@@ -584,7 +584,9 @@ export default function BookingPage() {
           {booking.status !== 'CANCELLED' && !editing && (
             <button
               onClick={openEditor}
-              className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+              // border-transparent only so it stands exactly as tall as the
+              // status control beside it, which now has a real border.
+              className="inline-flex items-center gap-2 rounded-md border border-transparent bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
             >
               <Pencil className="h-4 w-4" />
               Change booking
