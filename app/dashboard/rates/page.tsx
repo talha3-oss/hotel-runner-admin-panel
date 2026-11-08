@@ -83,6 +83,44 @@ const displayAmount = (cell: RateCell | undefined) => {
 // What a child costs that night, as RateTiger published it. Their child rate
 // travels at ageQualifyingCode 8 and is its own parameter: a night can carry a
 // room rate and no child rate, which is most of them.
+/** An ISO 8601 duration as RateTiger sends a cut-off: "P2D" is two days,
+ *  "P1M" a month, "PT24H" twenty-four hours. Anything unrecognised is shown
+ *  as it arrived rather than swallowed -- a cut-off nobody can read is still
+ *  better than one nobody can see. */
+function shortDuration(value?: string | null): string {
+  const text = String(value || '').trim().toUpperCase()
+  if (!text) return ''
+  const m = /^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/.exec(text)
+  if (!m) return text
+  const parts: string[] = []
+  if (m[1]) parts.push(`${m[1]}y`)
+  if (m[2]) parts.push(`${m[2]}mo`)
+  if (m[3]) parts.push(`${m[3]}w`)
+  if (m[4]) parts.push(`${m[4]}d`)
+  if (m[5]) parts.push(`${m[5]}h`)
+  if (m[6]) parts.push(`${m[6]}min`)
+  return parts.length ? parts.join(' ') : text
+}
+
+/** The length-of-stay rule for a night, as one short string. */
+function losLabel(min?: number | null, max?: number | null): string {
+  if (min && max) return min === max ? `${min}n` : `${min}\u2013${max}n`
+  if (min) return `\u2265${min}n`
+  if (max) return `\u2264${max}n`
+  return ''
+}
+
+/** How far ahead a night may be booked. RateTiger calls these the minimum
+ *  and maximum cut-off, or release days. */
+function cutOffLabel(min?: string | null, max?: string | null): string {
+  const a = shortDuration(min)
+  const b = shortDuration(max)
+  if (a && b) return `${a}\u2013${b}`
+  if (a) return `\u2265${a}`
+  if (b) return `\u2264${b}`
+  return ''
+}
+
 const displayChild = (cell: RateCell | undefined) =>
   cell?.childAmount ?? null
 
@@ -346,11 +384,20 @@ export default function RatesPage() {
                             // child view, the room's own price otherwise.
                             const fallback = showingChild ? childFallback : pair.fallbackPrice
                             const closed = cell?.stopSell === true
+                            // A and D are the arrival/departure closures;
+                            // the rest is the stay length. Max LOS and the
+                            // cut-offs were stored and never shown, so a
+                            // night RateTiger had capped at three nights
+                            // looked the same as one it had not.
                             const flags = [
                               cell?.closedToArrival ? 'A' : '',
                               cell?.closedToDeparture ? 'D' : '',
-                              cell?.minLos ? `≥${cell.minLos}` : '',
+                              losLabel(cell?.minLos, cell?.maxLos),
                             ].filter(Boolean).join(' ')
+                            // Its own line: a cut-off is counted in days
+                            // ahead and the stay in nights, and the two sat
+                            // side by side read as one number.
+                            const cutOff = cutOffLabel(cell?.minAdvance, cell?.maxAdvance)
 
                             return (
                               <td
@@ -361,7 +408,16 @@ export default function RatesPage() {
                                       ? showingChild
                                         ? `No child rate published — the hotel's Children Price applies (${CURRENCY} ${fallback})`
                                         : `Not published — the room's own price applies (${CURRENCY} ${fallback})`
-                                    : `${cell?.taxInclusive ? 'After tax' : 'Before tax'}${cell?.updatedAt ? ` · updated ${new Date(cell.updatedAt).toLocaleString('en-GB')}` : ''}`
+                                    : [
+                                        cell?.taxInclusive ? 'After tax' : 'Before tax',
+                                        cell?.closedToArrival ? 'Closed to arrival' : '',
+                                        cell?.closedToDeparture ? 'Closed to departure' : '',
+                                        cell?.minLos ? `Minimum stay ${cell.minLos} night${cell.minLos === 1 ? '' : 's'}` : '',
+                                        cell?.maxLos ? `Maximum stay ${cell.maxLos} night${cell.maxLos === 1 ? '' : 's'}` : '',
+                                        cell?.minAdvance ? `Book at least ${shortDuration(cell.minAdvance)} ahead` : '',
+                                        cell?.maxAdvance ? `Book at most ${shortDuration(cell.maxAdvance)} ahead` : '',
+                                        cell?.updatedAt ? `updated ${new Date(cell.updatedAt).toLocaleString('en-GB')}` : '',
+                                      ].filter(Boolean).join(' · ')
                                 }
                                 className={`px-2 py-2 text-center border-b border-gray-100 whitespace-nowrap ${
                                   closed ? 'bg-red-50 text-red-700 font-semibold'
@@ -372,6 +428,7 @@ export default function RatesPage() {
                                   <span className="text-gray-300">{fallback}</span>
                                 ) : amount}
                                 {flags && <div className="text-[10px] text-amber-600 leading-none mt-0.5">{flags}</div>}
+                                {cutOff && <div className="text-[10px] text-sky-700 leading-none mt-0.5">{cutOff}</div>}
                               </td>
                             )
                           })}
@@ -396,7 +453,8 @@ export default function RatesPage() {
             </span>
             <span><span className="text-red-700 font-semibold">STOP</span> — closed by RateTiger.</span>
             <span><span className="text-orange-800 bg-orange-100 px-1">over</span> — more rooms on sale than the property has.</span>
-            <span><span className="text-amber-600">A</span> closed to arrival · <span className="text-amber-600">D</span> closed to departure · <span className="text-amber-600">≥n</span> minimum nights.</span>
+            <span><span className="text-amber-600">A</span> closed to arrival · <span className="text-amber-600">D</span> closed to departure · <span className="text-amber-600">2–7n</span> length of stay, in nights.</span>
+            <span><span className="text-sky-700">2d–4d</span> cut-off — how far ahead the night may be booked. Hover a cell for all of it in words.</span>
           </div>
         </div>
       )}
