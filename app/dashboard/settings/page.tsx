@@ -122,6 +122,276 @@ function SmtpFieldGroup({
   )
 }
 
+// ── Each hotel's own reservations mailbox ───────────────────────────────
+//
+// The client's properties each have their own address. A guest should hear
+// from the hotel they are staying at, and be able to reply to it; the hotel
+// gets its own copy of every booking, change and cancellation, with the
+// guest as the reply address. A hotel left blank here goes on being sent for
+// by the Luxotel mailbox above, exactly as before.
+//
+// Its own component with its own state: the page's SMTP form posts every
+// field it holds in one go, and a hotel's credentials have nothing to do
+// with that request.
+interface HotelMailbox {
+  id: string
+  name: string
+  contactEmail: string
+  host: string
+  port: string
+  secure: string
+  username: string
+  fromEmail: string
+  fromName: string
+  notifyEmail: string
+  passwordSet: boolean
+  ready: boolean
+}
+
+const BLANK_MAILBOX = {
+  host: '', port: '465', secure: 'true', username: '',
+  fromEmail: '', fromName: '', notifyEmail: '',
+}
+
+function HotelMailboxes() {
+  const [hotels, setHotels] = useState<HotelMailbox[]>([])
+  const [loading, setLoading] = useState(true)
+  const [pickedId, setPickedId] = useState('')
+  const [form, setForm] = useState({ ...BLANK_MAILBOX })
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const load = async (keep = '') => {
+    const token = localStorage.getItem('adminToken') || ''
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/smtp/hotels`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then(r => r.json())
+      if (!res.success) return
+      setHotels(res.hotels || [])
+      const next = keep || pickedId
+      if (next) fill((res.hotels || []).find((h: HotelMailbox) => h.id === next))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fill = (hotel?: HotelMailbox) => {
+    if (!hotel) { setForm({ ...BLANK_MAILBOX }); return }
+    setForm({
+      host: hotel.host, port: hotel.port || '465', secure: hotel.secure || 'true',
+      username: hotel.username, fromEmail: hotel.fromEmail,
+      fromName: hotel.fromName, notifyEmail: hotel.notifyEmail,
+    })
+  }
+
+  const pick = (id: string) => {
+    setPickedId(id)
+    setPassword('')
+    setMsg(null)
+    fill(hotels.find(h => h.id === id))
+  }
+
+  const picked = hotels.find(h => h.id === pickedId) || null
+  const ff = (field: keyof typeof BLANK_MAILBOX, value: string) =>
+    setForm(prev => ({ ...prev, [field]: value }))
+
+  const save = async () => {
+    if (!pickedId) return
+    setSaving(true); setMsg(null)
+    try {
+      const token = localStorage.getItem('adminToken') || ''
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/smtp/hotels/${pickedId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...form, password }),
+      }).then(r => r.json())
+      if (res.success) {
+        setPassword('')
+        setMsg({
+          ok: true,
+          text: res.ready
+            ? 'Saved. This hotel now sends its own confirmations.'
+            : 'Saved. Host, username, password and From Email are all needed before it sends its own — until then the Luxotel mailbox sends for it.',
+        })
+        await load(pickedId)
+      } else {
+        setMsg({ ok: false, text: res.message || 'Could not save.' })
+      }
+    } catch {
+      setMsg({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Saved first on purpose: the server tests what is stored, so testing an
+  // unsaved password would report on the old one.
+  const test = async () => {
+    if (!pickedId) return
+    setTesting(true); setMsg(null)
+    try {
+      const token = localStorage.getItem('adminToken') || ''
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/smtp/hotels/${pickedId}/test`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).then(r => r.json())
+      setMsg({ ok: res.success, text: res.message })
+    } catch {
+      setMsg({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <section className="border-t border-gray-100 p-6">
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">Each Hotel&apos;s Own Mailbox</h3>
+          <p className="text-xs text-gray-400 mt-0.5 max-w-2xl">
+            A guest gets their confirmation from the hotel they are staying at, and the hotel gets
+            its own copy of every booking, change and cancellation — with the guest as the reply
+            address, so the two can write to each other directly. A hotel left blank is sent for by
+            the Luxotel mailbox above, as it is today.
+          </p>
+        </div>
+        {pickedId && (
+          <button
+            type="button"
+            onClick={test}
+            disabled={testing || saving}
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {testing ? 'Testing…' : '⚡ Test Connection'}
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-gray-400">Loading hotels…</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Hotel</label>
+              <select value={pickedId} onChange={e => pick(e.target.value)} className={inputClass}>
+                <option value="">Choose a hotel…</option>
+                {hotels.map(h => (
+                  <option key={h.id} value={h.id}>
+                    {h.name}{h.ready ? ' — own mailbox' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {picked && (
+            <>
+              <div
+                className={`mt-4 rounded-lg px-4 py-2.5 text-xs ${
+                  picked.ready
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                }`}
+              >
+                {picked.ready ? (
+                  <>Guests of {picked.name} hear from <strong>{picked.fromEmail}</strong>, and its copy goes to{' '}
+                    <strong>{picked.notifyEmail || picked.fromEmail}</strong>.</>
+                ) : (
+                  <>
+                    {picked.name} has no mailbox of its own yet, so the Luxotel mailbox sends for it.{' '}
+                    {picked.contactEmail
+                      ? <>Replies and its copy go to <strong>{picked.contactEmail}</strong>, the address on the hotel&apos;s record.</>
+                      : <>It has no address on its record either, so it is not being told about its bookings at all.</>}
+                  </>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-5">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">SMTP Host</label>
+                  <input type="text" value={form.host} onChange={e => ff('host', e.target.value)} placeholder="mail.rumreserve.com" className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Port</label>
+                  <input type="number" value={form.port} onChange={e => ff('port', e.target.value)} placeholder="465" className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Encryption</label>
+                  <select value={form.secure} onChange={e => ff('secure', e.target.value)} className={inputClass}>
+                    <option value="true">SSL / TLS (port 465)</option>
+                    <option value="false">STARTTLS (port 587)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Username</label>
+                  <input type="text" value={form.username} onChange={e => ff('username', e.target.value)} placeholder="reservations@rumreserve.com" className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className={`${inputClass} pr-10`}
+                    />
+                    <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showPassword ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">
+                    {picked.passwordSet ? 'A password is saved. Leave blank to keep it.' : 'No password saved yet.'}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">From Email</label>
+                  <input type="email" value={form.fromEmail} onChange={e => ff('fromEmail', e.target.value)} placeholder="reservations@rumreserve.com" className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">From Name</label>
+                  <input type="text" value={form.fromName} onChange={e => ff('fromName', e.target.value)} placeholder="Rum Reserve Reservations" className={inputClass} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Send the hotel&apos;s copy to</label>
+                  <input type="email" value={form.notifyEmail} onChange={e => ff('notifyEmail', e.target.value)} placeholder="Leave blank to use the From Email" className={inputClass} />
+                  <p className="mt-1 text-xs text-gray-400">
+                    Where this hotel reads its bookings, if that is not the address it sends from.
+                  </p>
+                </div>
+              </div>
+
+              {msg && (
+                <div className={`mt-5 rounded-lg px-4 py-2.5 text-sm ${msg.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  {msg.text}
+                </div>
+              )}
+
+              <div className="flex justify-end pt-5">
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={saving}
+                  className="px-5 py-2 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : `Save ${picked.name}'s Mailbox`}
+                </button>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 interface PartnerApiForm {
   partner_api_key: string; partner_id: string
   partner_basic_auth_username: string; partner_basic_auth_password: string
@@ -913,8 +1183,8 @@ export default function SettingsPage() {
               <div className="px-6 py-4 border-b border-gray-100">
                 <h2 className="text-base font-semibold text-gray-800">Email (SMTP) Settings</h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Two mailboxes: one guests see on booking confirmations, one for verification codes
-                  and password resets.
+                  Two house mailboxes — one guests see on booking confirmations, one for verification
+                  codes and password resets — and, underneath, each hotel&apos;s own reservations address.
                 </p>
               </div>
 
@@ -998,6 +1268,11 @@ export default function SettingsPage() {
                   </div>
                 </form>
               )}
+
+              {/* Outside the form above on purpose: that one posts every
+                  field it holds in one request, and one hotel's credentials
+                  have no business in it. */}
+              <HotelMailboxes />
             </div>
           )}
 
