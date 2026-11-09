@@ -8,11 +8,96 @@ import {
   updateAdminRoomType,
   deleteAdminRoomType,
   RoomTypeOption,
+  PlanLine,
 } from '../../../lib/api'
+import { PLAN_ICONS, planLineIcon } from '../../../lib/planIcons'
 
 
-type FormData = { name: string; code: string; description: string }
-const EMPTY_FORM: FormData = { name: '', code: '', description: '' }
+type FormData = {
+  name: string
+  code: string
+  description: string
+  // The two lists the booking site shows under the plan's info icon.
+  includes: PlanLine[]
+  stayIncludes: PlanLine[]
+  cancellationText: string
+}
+const EMPTY_FORM: FormData = {
+  name: '', code: '', description: '', includes: [], stayIncludes: [], cancellationText: '',
+}
+
+// One list of lines, each with the icon that will sit beside it on the site.
+// The icon is optional: left on "Pick from the words", the site reads the
+// line -- "Secure parking" gets the car -- which is right often enough that
+// most lines never need touching.
+function IncludesEditor({
+  title,
+  hint,
+  lines,
+  onChange,
+}: {
+  title: string
+  hint: string
+  lines: PlanLine[]
+  onChange: (next: PlanLine[]) => void
+}) {
+  const setLine = (i: number, patch: Partial<PlanLine>) =>
+    onChange(lines.map((line, n) => (n === i ? { ...line, ...patch } : line)))
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700">{title}</label>
+      <p className="mt-0.5 mb-2 text-xs text-gray-400">{hint}</p>
+
+      <div className="space-y-2">
+        {lines.map((line, i) => {
+          const Icon = planLineIcon(line)
+          return (
+            <div key={i} className="flex items-center gap-2">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-gray-200 bg-gray-50">
+                <Icon className="h-5 w-5 text-primary-600" />
+              </span>
+              <select
+                value={line.icon || ''}
+                onChange={(e) => setLine(i, { icon: e.target.value })}
+                className="h-9 w-44 flex-shrink-0 rounded-md border border-gray-300 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Pick from the words</option>
+                {PLAN_ICONS.map((icon) => (
+                  <option key={icon.name} value={icon.name}>{icon.label}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={line.text}
+                onChange={(e) => setLine(i, { text: e.target.value })}
+                placeholder="e.g. Choice of Full English or Vitality Breakfast"
+                className="h-9 flex-1 rounded-md border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              <button
+                type="button"
+                onClick={() => onChange(lines.filter((_, n) => n !== i))}
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-red-50 hover:text-red-600"
+                title="Remove this line"
+              >
+                <TrashIcon className="h-4 w-4" />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onChange([...lines, { icon: '', text: '' }])}
+        className="mt-2 flex items-center gap-1 text-sm text-primary-600 hover:text-primary-800"
+      >
+        <PlusIcon className="h-4 w-4" />
+        Add a line
+      </button>
+    </div>
+  )
+}
 
 export default function RatePlansPage() {
   const [plans, setPlans] = useState<RoomTypeOption[]>([])
@@ -54,7 +139,14 @@ export default function RatePlansPage() {
 
   const openEditModal = (plan: RoomTypeOption) => {
     setEditingPlan(plan)
-    setFormData({ name: plan.name, code: (plan.key || '').toUpperCase(), description: plan.description || '' })
+    setFormData({
+      name: plan.name,
+      code: (plan.key || '').toUpperCase(),
+      description: plan.description || '',
+      includes: plan.includes || [],
+      stayIncludes: plan.stayIncludes || [],
+      cancellationText: plan.cancellationText || '',
+    })
     setFormError('')
     setShowModal(true)
   }
@@ -82,7 +174,20 @@ export default function RatePlansPage() {
     setFormError('')
 
     try {
-      const payload = { name, key: code, description: formData.description.trim() || undefined }
+      // Empty lines are the admin's half-typed ones; they go no further.
+      const cleanLines = (lines: PlanLine[]) =>
+        lines
+          .map((line) => ({ icon: (line.icon || '').trim(), text: line.text.trim() }))
+          .filter((line) => line.text.length > 0)
+
+      const payload = {
+        name,
+        key: code,
+        description: formData.description.trim() || undefined,
+        includes: cleanLines(formData.includes),
+        stayIncludes: cleanLines(formData.stayIncludes),
+        cancellationText: formData.cancellationText.trim(),
+      }
       const result = editingPlan
         ? await updateAdminRoomType(token, editingPlan.id, payload)
         : await createAdminRoomType(token, payload)
@@ -231,7 +336,7 @@ export default function RatePlansPage() {
       {/* Add / Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-600 bg-opacity-50">
-          <div className="relative mx-auto mt-24 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+          <div className="relative mx-auto my-10 w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
             <div className="mb-5 flex items-center justify-between">
               <h3 className="text-lg font-medium text-gray-900">
                 {editingPlan ? 'Edit Rate Plan' : 'Add Rate Plan'}
@@ -286,6 +391,38 @@ export default function RatePlansPage() {
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="Optional description for this rate plan"
                 />
+                <p className="mt-1 text-xs text-gray-400">
+                  The paragraph at the top of the plan&apos;s popup on the booking site.
+                </p>
+              </div>
+
+              <IncludesEditor
+                title="This option includes"
+                hint="What this plan gives a guest that another plan does not — breakfast, parking, a late check-out."
+                lines={formData.includes}
+                onChange={(includes) => setFormData((prev) => ({ ...prev, includes }))}
+              />
+
+              <IncludesEditor
+                title="Every stay includes"
+                hint="What every guest gets whichever plan they pick — WiFi, for instance. Shown as a second list underneath."
+                lines={formData.stayIncludes}
+                onChange={(stayIncludes) => setFormData((prev) => ({ ...prev, stayIncludes }))}
+              />
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cancellation &amp; Payment</label>
+                <textarea
+                  rows={2}
+                  value={formData.cancellationText}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, cancellationText: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="e.g. This rate is Non Cancellable."
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  Leave this empty and the site writes it itself, from how the plan is paid for and the
+                  hotel&apos;s cancellation deadline.
+                </p>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">

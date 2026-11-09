@@ -67,14 +67,33 @@ export async function updateAdminMe(token: string, data: { fullName?: string; em
 
 export type RoomStatus = 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'CLEANING'
 
+// One line of a rate plan's "includes" list: the words, and the icon chosen
+// to sit beside them on the booking site.
+export interface PlanLine {
+  icon?: string
+  text: string
+}
+
 export interface RoomTypeOption {
   id: string
   name: string
   key?: string
   description: string | null
+  includes?: PlanLine[]
+  stayIncludes?: PlanLine[]
+  cancellationText?: string | null
   createdAt: string | null
   updatedAt: string | null
   derived: boolean
+}
+
+export interface RoomTypePayload {
+  name?: string
+  key?: string
+  description?: string
+  includes?: PlanLine[]
+  stayIncludes?: PlanLine[]
+  cancellationText?: string
 }
 
 export interface Room {
@@ -156,7 +175,7 @@ export async function fetchAdminRoomTypes(token: string) {
   return res.json()
 }
 
-export async function createAdminRoomType(token: string, payload: { name: string; key?: string; description?: string }) {
+export async function createAdminRoomType(token: string, payload: RoomTypePayload) {
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms/types`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -165,7 +184,7 @@ export async function createAdminRoomType(token: string, payload: { name: string
   return res.json()
 }
 
-export async function updateAdminRoomType(token: string, id: string, payload: { name?: string; key?: string; description?: string }) {
+export async function updateAdminRoomType(token: string, id: string, payload: RoomTypePayload) {
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms/types/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
