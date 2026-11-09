@@ -556,6 +556,31 @@ export default function BookingPage() {
                   <div className="font-semibold text-gray-900">{fmt(quote.after.total)}</div>
                 </div>
 
+                {/* What the children come to, and in which room. The total
+                    carries it either way; without this the admin cannot tell
+                    whether a child is being charged for at all. */}
+                {quote.detail && quote.after.children > 0 && (
+                  <div className="border-t border-gray-100 pt-2 text-xs text-gray-500">
+                    {(quote.detail.chargeableChildren ?? 0) === 0 ? (
+                      <div>No charge for the children — they take a free place in the room.</div>
+                    ) : quote.detail.lines.some((l) => (l.chargeableChildren ?? 0) > 0) ? (
+                      quote.detail.lines
+                        .filter((l) => (l.chargeableChildren ?? 0) > 0)
+                        .map((l, i) => (
+                          <div key={i}>
+                            {l.name}: {l.chargeableChildren} child
+                            {l.chargeableChildren !== 1 ? 'ren' : ''} aged 6–{adultMinAge - 1} ·{' '}
+                            {fmt(l.childrenTotal || 0)} for the stay
+                          </div>
+                        ))
+                    ) : (
+                      <div>
+                        Children: {fmt(quote.detail.childrenTotal)} for the stay, across the booking.
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {quote.detail && (
                   <div className="border-t border-gray-100 pt-2 text-xs text-gray-500">
                     {quote.detail.repriced

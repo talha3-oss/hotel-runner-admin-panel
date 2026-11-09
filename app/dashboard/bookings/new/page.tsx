@@ -373,13 +373,71 @@ export default function NewBookingPage() {
                 </div>
               </div>
 
+              {/* Room by room, with the children charged for in each one
+                  underneath it. A total with a child's price folded into it
+                  and nothing saying so is a figure an admin cannot check. */}
               <div className="border-t border-gray-100 pt-2 text-xs">
-                {quote.after.rooms.map((r, i) => (
-                  <div key={`${r.id}-${i}`} className="flex justify-between py-0.5 text-gray-600">
-                    <span>{r.name}</span>
-                    <span>{fmt(r.claytonRate)} a night</span>
+                {quote.after.rooms.map((r, i) => {
+                  const line = quote.detail?.lines?.[i]
+                  const kids = line?.chargeableChildren ?? null
+                  return (
+                    <div key={`${r.id}-${i}`} className="py-0.5">
+                      <div className="flex justify-between text-gray-600">
+                        <span>{r.name}</span>
+                        <span>{fmt(r.claytonRate)} a night</span>
+                      </div>
+                      {kids !== null && kids > 0 && (
+                        <div className="flex justify-between pl-4 text-[11px] text-gray-500">
+                          <span>
+                            + {kids} child{kids !== 1 ? 'ren' : ''} aged 6–{adultMinAge - 1}
+                            {quote.detail?.perChildStay
+                              ? ` · ${fmt(quote.detail.perChildStay)} each for the stay`
+                              : ''}
+                          </span>
+                          <span>{fmt(line?.childrenTotal || 0)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="space-y-0.5 border-t border-gray-100 pt-2 text-xs">
+                <div className="flex justify-between text-gray-500">
+                  <span>Rooms</span>
+                  <span>{fmt(quote.detail?.roomsTotal ?? 0)}</span>
+                </div>
+
+                {/* Said whether or not it is zero, so "no charge for the
+                    child" is an answer the admin can see rather than a line
+                    that is simply absent. */}
+                {(quote.after.children > 0 || (quote.detail?.childrenTotal ?? 0) > 0) && (
+                  <div className="flex justify-between text-gray-500">
+                    <span>
+                      Children
+                      {(quote.detail?.chargeableChildren ?? 0) === 0
+                        ? ' (no charge — they take a free place)'
+                        : quote.detail?.lines?.some((l) => l.chargeableChildren === null)
+                          ? ' (across the booking)'
+                          : ''}
+                    </span>
+                    <span>{fmt(quote.detail?.childrenTotal ?? 0)}</span>
                   </div>
-                ))}
+                )}
+
+                {(quote.detail?.extrasTotal ?? 0) > 0 && (
+                  <div className="flex justify-between text-gray-500">
+                    <span>Extras</span>
+                    <span>{fmt(quote.detail?.extrasTotal ?? 0)}</span>
+                  </div>
+                )}
+
+                {quote.after.discount > 0 && (
+                  <div className="flex justify-between text-emerald-700">
+                    <span>Luxotel saving</span>
+                    <span>−{fmt(quote.after.discount)}</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-baseline justify-between border-t border-gray-100 pt-2">

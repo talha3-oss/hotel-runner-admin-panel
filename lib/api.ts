@@ -983,9 +983,24 @@ export interface BookingChangeQuote {
     // Whether the room rates were taken afresh or held at what the guest
     // agreed when they booked.
     repriced: boolean
-    lines: { id: string; name: string; publicRate: number; currentRate: number; pricedByChannel: boolean }[]
+    lines: {
+      id: string
+      name: string
+      publicRate: number
+      currentRate: number
+      pricedByChannel: boolean
+      /** Children of 6–12 charged for in this room, and what they come to
+       *  for the whole stay. Null when the party was not given room by room,
+       *  because then the charge belongs to the booking rather than to any
+       *  one room. */
+      chargeableChildren?: number | null
+      childrenTotal?: number | null
+    }[]
     roomsTotal: number
     childrenTotal: number
+    chargeableChildren?: number
+    perChildStay?: number
+    childPricedByChannel?: boolean
     extrasTotal: number
     couponHeld: number
   }
