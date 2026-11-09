@@ -898,7 +898,13 @@ export async function fetchAdminBookings(
   // from/to are YYYY-MM-DD and mean "stays that touch these days", not
   // "stays that start in them" -- a guest who arrived before the window and
   // is still here during it belongs in the answer.
-  query: { search?: string; status?: string; page?: number; limit?: number; from?: string; to?: string } = {}
+  query: {
+    search?: string; status?: string; page?: number; limit?: number
+    from?: string; to?: string
+    /** One property's bookings. Matched on the hotel's name too, because
+     *  bookings taken before hotelId existed carry only the name. */
+    hotelId?: string
+  } = {}
 ) {
   const qs = new URLSearchParams(
     Object.fromEntries(
@@ -987,6 +993,40 @@ export interface BookingChangeQuote {
   // has closed. Empty means it can go ahead.
   blocked?: string[]
   difference?: number
+}
+
+/** A booking an admin writes down for a guest who rang up or walked in.
+ *  Everything about the stay is handled exactly as it is on the website --
+ *  the price is the server's, the rooms must be on sale, RateTiger is told.
+ *  The guest's confirmation can be held back; nothing else can. */
+export interface ManualBooking extends BookingChange {
+  hotelId: string
+  hotelName: string
+  rooms: { id: string }[]
+  nights: number
+  paymentMethod: 'hotel' | 'now'
+  sendEmail?: boolean
+}
+
+export async function quoteNewBooking(
+  token: string,
+  stay: { hotelId?: string; checkIn?: string; checkOut?: string; adults?: number; childrenAges?: string[]; roomOccupancy?: BookingChange['roomOccupancy']; roomIds?: string[] }
+): Promise<BookingChangeQuote> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/bookings/quote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(stay),
+  })
+  return res.json()
+}
+
+export async function createManualBooking(token: string, booking: ManualBooking) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/bookings/manual`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(booking),
+  })
+  return res.json()
 }
 
 export async function previewBookingChange(token: string, id: string, changes: BookingChange): Promise<BookingChangeQuote> {

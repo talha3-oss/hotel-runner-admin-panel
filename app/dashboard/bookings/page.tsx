@@ -8,8 +8,9 @@ import {
   PencilSquareIcon,
   ListBulletIcon,
   CalendarDaysIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline'
-import { fetchAdminBookings, BookingRecord } from '../../../lib/api'
+import { fetchAdminBookings, fetchHotels, BookingRecord, Hotel } from '../../../lib/api'
 import { formatMoney } from '../../../lib/currency'
 import { STATUS_COLORS, PAYMENT_COLORS, RT_LABELS, RT_COLORS, RT_HINTS } from './shared'
 import BookingsCalendar, { dayKey, monthWindow } from './BookingsCalendar'
@@ -23,6 +24,11 @@ export default function BookingsPage() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  // One property at a time. The list is read hotel by hotel far more often
+  // than it is read whole, and searching the name only matched the name as
+  // it was typed into the booking.
+  const [hotelFilter, setHotelFilter] = useState('')
+  const [hotels, setHotels] = useState<Hotel[]>([])
   // A date window on the list, in the same YYYY-MM-DD the bookings are kept
   // in. Empty means no window at all, which is the list as it always was.
   const [from, setFrom] = useState('')
@@ -40,7 +46,7 @@ export default function BookingsPage() {
   const [monthLoading, setMonthLoading] = useState(false)
 
   const load = useCallback(async (
-    q = '', s = 'all', p = 1, window: { from?: string; to?: string } = {}
+    q = '', s = 'all', p = 1, window: { from?: string; to?: string } = {}, hotel = ''
   ) => {
     const token = localStorage.getItem('adminToken')
     if (!token) { setError('Admin token not found.'); setLoading(false); return }
@@ -51,6 +57,7 @@ export default function BookingsPage() {
         ...(s && s !== 'all' ? { status: s } : {}),
         ...(window.from ? { from: window.from } : {}),
         ...(window.to ? { to: window.to } : {}),
+        ...(hotel ? { hotelId: hotel } : {}),
         page: p,
         limit,
       })
@@ -67,7 +74,21 @@ export default function BookingsPage() {
     }
   }, [])
 
-  useEffect(() => { load(search, statusFilter, page, { from, to }) }, [page, load, search, statusFilter, from, to])
+  useEffect(() => {
+    load(search, statusFilter, page, { from, to }, hotelFilter)
+  }, [page, load, search, statusFilter, from, to, hotelFilter])
+
+  // The properties to choose between. Loaded once; a hotel that is added
+  // while this page is open is one reload away.
+  useEffect(() => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    let live = true
+    fetchHotels(token)
+      .then((result) => { if (live) setHotels((result?.hotels || result?.data || []) as Hotel[]) })
+      .catch(() => {})
+    return () => { live = false }
+  }, [])
 
   // The month on screen, every stay that touches it. 500 is the endpoint's
   // own ceiling; a month past it would be a very good problem to have.
@@ -81,6 +102,7 @@ export default function BookingsPage() {
     fetchAdminBookings(token, {
       ...(search ? { search } : {}),
       ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+      ...(hotelFilter ? { hotelId: hotelFilter } : {}),
       from: span.from,
       to: span.to,
       page: 1,
@@ -90,10 +112,11 @@ export default function BookingsPage() {
       .catch(() => { if (live) setError('Unable to connect to server.') })
       .finally(() => { if (live) setMonthLoading(false) })
     return () => { live = false }
-  }, [view, cursor, search, statusFilter])
+  }, [view, cursor, search, statusFilter, hotelFilter])
 
   const handleSearch = (v: string) => { setSearch(v); setPage(1); setLoading(true) }
   const handleStatusFilter = (v: string) => { setStatusFilter(v); setPage(1); setLoading(true) }
+  const handleHotelFilter = (v: string) => { setHotelFilter(v); setPage(1); setLoading(true) }
   const handleFrom = (v: string) => { setFrom(v); setPage(1); setLoading(true) }
   const handleTo = (v: string) => { setTo(v); setPage(1); setLoading(true) }
 
@@ -136,6 +159,15 @@ export default function BookingsPage() {
           </p>
         </div>
 
+        <div className="flex items-center gap-3">
+        <Link
+          href="/dashboard/bookings/new"
+          className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+        >
+          <PlusIcon className="h-4 w-4" />
+          New booking
+        </Link>
+
         <div className="inline-flex overflow-hidden rounded-md border border-gray-200 bg-white">
           <button
             onClick={() => setView('list')}
@@ -149,6 +181,7 @@ export default function BookingsPage() {
           >
             <CalendarDaysIcon className="h-4 w-4" /> Calendar
           </button>
+        </div>
         </div>
       </div>
 
@@ -173,6 +206,17 @@ export default function BookingsPage() {
           <option value="CONFIRMED">Confirmed</option>
           <option value="PENDING">Pending</option>
           <option value="CANCELLED">Cancelled</option>
+        </select>
+
+        <select
+          value={hotelFilter}
+          onChange={(e) => handleHotelFilter(e.target.value)}
+          className="border border-gray-300 rounded-md text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+        >
+          <option value="">All hotels</option>
+          {hotels.map((h) => (
+            <option key={h.id} value={h.id}>{h.name}</option>
+          ))}
         </select>
 
         {/* Stays touching these days, so a guest already in the hotel on the
