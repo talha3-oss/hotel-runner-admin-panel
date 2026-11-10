@@ -392,6 +392,159 @@ function HotelMailboxes() {
   )
 }
 
+
+// ── The words on the Login and Sign up pages ────────────────────────────
+//
+// Every other page's copy is the admin's; these two were written into the
+// code, so changing "Not a member yet??" meant a release. A field left empty
+// goes back to what the page shipped with rather than leaving a blank band
+// across it, which is also why there is no "clear" here.
+interface AuthPageContent {
+  login: Record<string, string>
+  signup: Record<string, string | string[]>
+}
+
+const AUTH_FIELDS: { group: 'login' | 'signup'; field: string; label: string; hint?: string; lines?: number }[] = [
+  { group: 'login', field: 'heroTitle', label: 'Banner heading', hint: 'The large word over the picture.' },
+  { group: 'login', field: 'formHeading', label: 'Form heading' },
+  { group: 'login', field: 'sideHeading', label: 'Side heading', hint: 'Over the sign-up invitation.' },
+  { group: 'login', field: 'sideText', label: 'Side text', lines: 2 },
+  { group: 'login', field: 'sideButton', label: 'Sign-up button' },
+  { group: 'login', field: 'corporateText', label: 'Corporate text', lines: 2 },
+  { group: 'login', field: 'corporateButton', label: 'Corporate button' },
+  { group: 'signup', field: 'eyebrow', label: 'Small line above the title' },
+  { group: 'signup', field: 'titleLine1', label: 'Title, first line' },
+  { group: 'signup', field: 'titleLine2', label: 'Title, second line' },
+  { group: 'signup', field: 'promise', label: 'The promise beside it', lines: 2 },
+  { group: 'signup', field: 'promiseNote', label: 'Small print under it' },
+  { group: 'signup', field: 'savingsHeading', label: 'Savings heading' },
+  { group: 'signup', field: 'savingsText', label: 'Savings text', lines: 3 },
+  { group: 'signup', field: 'benefitsHeading', label: 'Benefits heading' },
+  { group: 'signup', field: 'faqHeading', label: 'Questions heading' },
+]
+
+function AuthPagesTab() {
+  const [content, setContent] = useState<AuthPageContent | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    const token = localStorage.getItem('adminToken') || ''
+    fetch(`${API_BASE_URL}/api/v1/admin/settings/auth-content`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(d => { if (d?.success) setContent(d.content) })
+      .catch(() => setMsg({ ok: false, text: 'Could not reach the server.' }))
+  }, [])
+
+  const set = (group: 'login' | 'signup', field: string, value: string) =>
+    setContent(prev => (prev ? { ...prev, [group]: { ...prev[group], [field]: value } } : prev))
+
+  const benefits = (content?.signup?.benefits as string[]) || []
+  const setBenefit = (i: number, value: string) =>
+    setContent(prev => {
+      if (!prev) return prev
+      const next = [...((prev.signup.benefits as string[]) || [])]
+      next[i] = value
+      return { ...prev, signup: { ...prev.signup, benefits: next } }
+    })
+
+  const save = async () => {
+    if (!content) return
+    setSaving(true); setMsg(null)
+    try {
+      const token = localStorage.getItem('adminToken') || ''
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/auth-content`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(content),
+      }).then(r => r.json())
+      if (res.success) { setContent(res.content); setMsg({ ok: true, text: 'Saved. The pages show it straight away.' }) }
+      else setMsg({ ok: false, text: res.message || 'Could not save.' })
+    } catch {
+      setMsg({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const field = (row: typeof AUTH_FIELDS[number]) => {
+    const value = String(content?.[row.group]?.[row.field] ?? '')
+    return (
+      <div key={`${row.group}.${row.field}`} className={row.lines ? 'sm:col-span-2' : ''}>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">{row.label}</label>
+        {row.lines ? (
+          <textarea rows={row.lines} value={value} onChange={e => set(row.group, row.field, e.target.value)} className={inputClass} />
+        ) : (
+          <input type="text" value={value} onChange={e => set(row.group, row.field, e.target.value)} className={inputClass} />
+        )}
+        {row.hint && <p className="mt-1 text-xs text-gray-400">{row.hint}</p>}
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+      <div className="px-6 py-4 border-b border-gray-100">
+        <h2 className="text-base font-semibold text-gray-800">Login &amp; Signup Pages</h2>
+        <p className="text-xs text-gray-400 mt-0.5">
+          The words on the two pages guests see when they sign in or join. Leave a field empty and
+          it goes back to the wording the site came with.
+        </p>
+      </div>
+
+      {!content ? (
+        <p className="p-6 text-sm text-gray-400">Loading…</p>
+      ) : (
+        <div className="p-6 space-y-8">
+          <section>
+            <h3 className="text-sm font-semibold text-gray-800 mb-4">Login page</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              {AUTH_FIELDS.filter(f => f.group === 'login').map(field)}
+            </div>
+          </section>
+
+          <section className="pt-6 border-t border-gray-100">
+            <h3 className="text-sm font-semibold text-gray-800 mb-4">Sign up page</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              {AUTH_FIELDS.filter(f => f.group === 'signup').map(field)}
+            </div>
+
+            <div className="mt-5">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">The three benefit cards</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[0, 1, 2].map(i => (
+                  <input
+                    key={i}
+                    type="text"
+                    value={benefits[i] || ''}
+                    onChange={e => setBenefit(i, e.target.value)}
+                    className={inputClass}
+                  />
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-gray-400">Their icons stay as they are; only the words change.</p>
+            </div>
+          </section>
+
+          {msg && (
+            <div className={`rounded-lg px-4 py-2.5 text-sm ${msg.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+              {msg.text}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button onClick={save} disabled={saving} className="px-5 py-2 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+              {saving ? 'Saving…' : 'Save Page Content'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface PartnerApiForm {
   partner_api_key: string; partner_id: string
   partner_basic_auth_username: string; partner_basic_auth_password: string
@@ -438,14 +591,14 @@ export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'partner-api' | 'ratetiger' | 'ratetiger-logs'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'auth-pages' | 'partner-api' | 'ratetiger' | 'ratetiger-logs'>('profile')
 
   // The header's menu links here with ?tab=..., so Profile and Settings land
   // where they say they will instead of always opening on Profile.
   const searchParams = useSearchParams()
   useEffect(() => {
     const wanted = searchParams.get('tab')
-    const allowed = ['profile', 'site', 'uploads', 'security', 'email', 'partner-api', 'ratetiger']
+    const allowed = ['profile', 'site', 'uploads', 'security', 'email', 'auth-pages', 'partner-api', 'ratetiger', 'ratetiger-logs']
     if (wanted && allowed.includes(wanted)) {
       setActiveTab(wanted as typeof activeTab)
     }
@@ -805,6 +958,7 @@ export default function SettingsPage() {
     { id: 'uploads' as const, name: 'Uploads', icon: ArrowUpTrayIcon },
     { id: 'security' as const, name: 'Security', icon: ShieldCheckIcon },
     { id: 'email' as const, name: 'Email (SMTP)', icon: EnvelopeIcon },
+    { id: 'auth-pages' as const, name: 'Login & Signup', icon: UserIcon },
     { id: 'partner-api' as const, name: 'Partner API', icon: KeyIcon },
     { id: 'ratetiger' as const, name: 'RateTiger', icon: PaperAirplaneIcon },
     // Its own tab rather than a section under RateTiger: the settings there
@@ -1275,6 +1429,8 @@ export default function SettingsPage() {
               <HotelMailboxes />
             </div>
           )}
+
+          {activeTab === 'auth-pages' && <AuthPagesTab />}
 
           {/* Partner API tab */}
           {activeTab === 'partner-api' && (
