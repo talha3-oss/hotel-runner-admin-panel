@@ -13,7 +13,7 @@
 // that are not on sale, and tells RateTiger. What is shown under "Check what
 // this costs" is what gets written.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
@@ -25,6 +25,7 @@ import {
 import { formatMoney } from '../../../../lib/currency'
 import { RoomParty } from '../shared'
 import { RoomLines, RoomOption, RoomLimits } from '../RoomPicker'
+import { ExtrasPicker, PickedExtras, extrasPayload, readHotelExtras } from '../ExtrasPicker'
 
 const fmt = formatMoney
 
@@ -51,6 +52,7 @@ export default function NewBookingPage() {
 
   const [roomIds, setRoomIds] = useState<string[]>([])
   const [occupancy, setOccupancy] = useState<RoomParty[]>([])
+  const [picked, setPicked] = useState<PickedExtras>({})
 
   const [limits, setLimits] = useState<RoomLimits>({ adults: 2, underSix: 2, olderChildren: 2, persons: 3 })
   const [adultMinAge, setAdultMinAge] = useState(13)
@@ -106,6 +108,13 @@ export default function NewBookingPage() {
 
   const hotel = hotels.find((h) => h.id === hotelId) || null
   const rooms = allRooms.filter((r) => r.hotelId === hotelId)
+  const hotelExtras = useMemo(() => readHotelExtras(hotel), [hotel])
+
+  // Up here rather than beside the heading it is printed in, because the
+  // extras are priced by the morning and a morning is a night of this stay.
+  // Zero while the dates are still being typed; the extras read it as one.
+  const nights = Math.max(0, Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86400000))
+  const stayNights = Math.max(1, nights)
 
   // What one room at this property holds, so an over-filled room says so
   // while the admin is typing rather than after pressing Check.
@@ -131,6 +140,9 @@ export default function NewBookingPage() {
     const first = allRooms.find((r) => r.hotelId === id)
     setRoomIds(first ? [first.id] : [])
     setOccupancy(first ? [{ adults: 2, underSix: 0, olderChildren: 0 }] : [])
+    // A different property sells different add-ons, so the ones chosen under
+    // the old one are not a thing this one offers.
+    setPicked({})
     setQuote(null)
   }
 
@@ -151,6 +163,9 @@ export default function NewBookingPage() {
     ],
     roomOccupancy: occupancy,
     roomIds,
+    // Only the id and the figure. The server reads the property's own price
+    // off the id and works the mornings back out of the figure.
+    extras: extrasPayload(hotelExtras, picked, Math.max(1, totals.adults), stayNights),
   })
 
   // What is missing before this can be asked about at all. Said plainly
@@ -193,10 +208,6 @@ export default function NewBookingPage() {
     setError('')
     setSaving(true)
     try {
-      const nights = Math.max(
-        1,
-        Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86400000)
-      )
       const result = await createManualBooking(token, {
         ...stay(),
         hotelName: hotel?.name || '',
@@ -220,8 +231,6 @@ export default function NewBookingPage() {
       setSaving(false)
     }
   }
-
-  const nights = Math.max(0, Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86400000))
 
   return (
     <div className="p-6 lg:p-8">
@@ -312,6 +321,16 @@ export default function NewBookingPage() {
                 setOccupancy(nextParty)
                 setQuote(null)
               }}
+            />
+          )}
+
+          {hotelId && (
+            <ExtrasPicker
+              extras={hotelExtras}
+              picked={picked}
+              adults={Math.max(1, totals.adults)}
+              nights={stayNights}
+              onChange={(next) => { setPicked(next); setQuote(null) }}
             />
           )}
 

@@ -958,6 +958,13 @@ export interface BookingChange {
    *  child in another. */
   roomOccupancy?: { adults: number; underSix: number; olderChildren: number }[]
   roomIds?: string[]
+  /** The add-ons on the stay. Only the id and the money are sent: the server
+   *  matches the id against what the property actually offers, re-reads its
+   *  own price and works the number of mornings back out of the total, so
+   *  nothing here can invent a price. Sending the key at all replaces the
+   *  whole list -- an empty array clears the extras, leaving it out keeps
+   *  them. */
+  extras?: { id: string; name?: string; total: number }[]
   firstName?: string
   lastName?: string
   email?: string
@@ -1025,7 +1032,7 @@ export interface ManualBooking extends BookingChange {
 
 export async function quoteNewBooking(
   token: string,
-  stay: { hotelId?: string; checkIn?: string; checkOut?: string; adults?: number; childrenAges?: string[]; roomOccupancy?: BookingChange['roomOccupancy']; roomIds?: string[] }
+  stay: { hotelId?: string; checkIn?: string; checkOut?: string; adults?: number; childrenAges?: string[]; roomOccupancy?: BookingChange['roomOccupancy']; roomIds?: string[]; extras?: BookingChange['extras'] }
 ): Promise<BookingChangeQuote> {
   const res = await fetch(`${API_BASE_URL}/api/v1/bookings/quote`, {
     method: 'POST',

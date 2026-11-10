@@ -21,6 +21,9 @@ import {
 import { formatMoney } from '../../../../lib/currency'
 import { RoomLines, RoomOption } from '../RoomPicker'
 import {
+  ExtrasPicker, PickedExtras, extrasPayload, pickedFromBooking, readHotelExtras,
+} from '../ExtrasPicker'
+import {
   STATUS_COLORS, STATUS_LABELS, STATUS_DOTS, STATUS_BORDERS, STATUS_ORDER,
   RT_LABELS, RT_COLORS, RT_HINTS, API_BASE_URL,
   fmtDate, partyPerRoom, partyLabel, partyParts, RoomParty,
@@ -169,6 +172,11 @@ export default function BookingPage() {
   const [quote, setQuote] = useState<BookingChangeQuote | null>(null)
   const [quoting, setQuoting] = useState(false)
   const [applying, setApplying] = useState(false)
+  const [picked, setPicked] = useState<PickedExtras>({})
+
+  // Kept, not read and thrown away, because the editor needs the property's
+  // add-ons as well as how many people one of its rooms holds.
+  const [hotelExtras, setHotelExtras] = useState<ReturnType<typeof readHotelExtras>>([])
 
   // A Room row is one (room, rate plan) pair, so the same room appears once
   // per plan under the same name and code.
@@ -248,6 +256,7 @@ export default function BookingPage() {
           persons: whole(hotel.maxPersonsPerRoom, 3, 1),
         })
         setAdultMinAge(whole(hotel.adultMinAge, 13, 1))
+        setHotelExtras(readHotelExtras(hotel))
       })
       .catch(() => {})
     return () => { live = false }
@@ -323,6 +332,10 @@ export default function BookingPage() {
   const openEditor = () => {
     if (!booking) return
     setQuote(null)
+    // What is already on the booking, as something the form can edit. Read
+    // back by name as well as id, so an add-on renamed since the booking was
+    // taken is still ticked rather than quietly dropped on the next change.
+    setPicked(pickedFromBooking(hotelExtras, extras, booking.adults, booking.nights))
     setForm({
       checkIn: booking.checkIn,
       checkOut: booking.checkOut,
@@ -353,7 +366,7 @@ export default function BookingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booking, editing])
 
-  const closeEditor = () => { setEditing(false); setQuote(null); setForm({}) }
+  const closeEditor = () => { setEditing(false); setQuote(null); setForm({}); setPicked({}) }
 
   // The rooms are what the admin edits; the totals are read off them, so the
   // two can never disagree about who is staying.
@@ -364,6 +377,13 @@ export default function BookingPage() {
     olderChildren: layout.reduce((sum, r) => sum + r.olderChildren, 0),
   }
 
+  // How long the stay would be after this change, which is what the extras
+  // are priced over -- not the nights the booking has now.
+  const editNights = Math.max(
+    1,
+    Math.round((Date.parse(form.checkOut || '') - Date.parse(form.checkIn || '')) / 86400000) || 1
+  )
+
   const changePayload = (): BookingChange => ({
     ...form,
     adults: Math.max(1, totals.adults),
@@ -371,6 +391,9 @@ export default function BookingPage() {
       ...Array(totals.underSix).fill('under6'),
       ...Array(totals.olderChildren).fill('6-12'),
     ],
+    // Always sent while the editor is open, so unticking the last add-on
+    // takes it off. Leaving the key out would keep what the booking has.
+    extras: extrasPayload(hotelExtras, picked, Math.max(1, totals.adults), editNights),
   })
 
   const runQuote = async () => {
@@ -520,6 +543,14 @@ export default function BookingPage() {
               }}
             />
 
+            <ExtrasPicker
+              extras={hotelExtras}
+              picked={picked}
+              adults={Math.max(1, totals.adults)}
+              nights={editNights}
+              onChange={(next) => { setPicked(next); setQuote(null) }}
+            />
+
             <button
               onClick={runQuote}
               disabled={quoting}
@@ -555,6 +586,18 @@ export default function BookingPage() {
                   <div className="text-gray-700">{fmt(quote.before.total)}</div>
                   <div className="font-semibold text-gray-900">{fmt(quote.after.total)}</div>
                 </div>
+
+                {/* What the add-ons come to after the change. The total
+                    carries it either way, but an admin who has just ticked
+                    breakfast wants to see the number it added. */}
+                {quote.detail && ((quote.detail.extrasTotal ?? 0) > 0 || extras.length > 0) && (
+                  <div className="flex justify-between border-t border-gray-100 pt-2 text-xs">
+                    <span className="text-gray-500">Extras</span>
+                    <span className="tabular-nums text-gray-900">
+                      {fmt(quote.detail.extrasTotal ?? 0)}
+                    </span>
+                  </div>
+                )}
 
                 {/* What the children come to, and in which room. The total
                     carries it either way; without this the admin cannot tell
