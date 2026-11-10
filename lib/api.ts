@@ -853,7 +853,15 @@ export interface BookingRecord {
   adults: number
   children: number
   rooms: { id: string; name: string; publicRate: number; claytonRate: number }[]
-  extras: { id: string; name: string; price: number; total: number }[]
+  extras: {
+    id: string; name: string; price: number; total: number
+    /** Which room it was taken for, and how many mornings. Null on a booking
+     *  taken before add-ons belonged to a room. */
+    roomIndex?: number | null
+    roomName?: string | null
+    mornings?: number | null
+  }[]
+  specialRequests?: string | null
   subtotal: number
   discount: number
   total: number
@@ -958,13 +966,16 @@ export interface BookingChange {
    *  child in another. */
   roomOccupancy?: { adults: number; underSix: number; olderChildren: number }[]
   roomIds?: string[]
-  /** The add-ons on the stay. Only the id and the money are sent: the server
-   *  matches the id against what the property actually offers, re-reads its
-   *  own price and works the number of mornings back out of the total, so
-   *  nothing here can invent a price. Sending the key at all replaces the
-   *  whole list -- an empty array clears the extras, leaving it out keeps
-   *  them. */
-  extras?: { id: string; name?: string; total: number }[]
+  /** The add-ons on the stay, one entry per add-on per room it is taken for.
+   *  `roomIndex` points into `roomIds`. Only the id, the room and the
+   *  mornings decide anything: the server checks the property offers it with
+   *  that room, re-reads its own price and prices it over whoever is in that
+   *  room, so nothing here can invent a price. Sending the key at all
+   *  replaces the whole list -- an empty array clears the extras, leaving it
+   *  out keeps them. */
+  extras?: { id: string; name?: string; roomIndex?: number; mornings?: number; total?: number }[]
+  /** Whatever the guest asked for, in their own words. */
+  specialRequests?: string | null
   firstName?: string
   lastName?: string
   email?: string

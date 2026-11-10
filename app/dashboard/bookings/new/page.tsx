@@ -25,7 +25,7 @@ import {
 import { formatMoney } from '../../../../lib/currency'
 import { RoomParty } from '../shared'
 import { RoomLines, RoomOption, RoomLimits } from '../RoomPicker'
-import { ExtrasPicker, PickedExtras, extrasPayload, readHotelExtras } from '../ExtrasPicker'
+import { ExtrasPicker, ExtrasRoom, PickedExtra, extrasPayload, readHotelExtras } from '../ExtrasPicker'
 
 const fmt = formatMoney
 
@@ -52,7 +52,8 @@ export default function NewBookingPage() {
 
   const [roomIds, setRoomIds] = useState<string[]>([])
   const [occupancy, setOccupancy] = useState<RoomParty[]>([])
-  const [picked, setPicked] = useState<PickedExtras>({})
+  const [picked, setPicked] = useState<PickedExtra[]>([])
+  const [requests, setRequests] = useState('')
 
   const [limits, setLimits] = useState<RoomLimits>({ adults: 2, underSix: 2, olderChildren: 2, persons: 3 })
   const [adultMinAge, setAdultMinAge] = useState(13)
@@ -142,9 +143,21 @@ export default function NewBookingPage() {
     setOccupancy(first ? [{ adults: 2, underSix: 0, olderChildren: 0 }] : [])
     // A different property sells different add-ons, so the ones chosen under
     // the old one are not a thing this one offers.
-    setPicked({})
+    setPicked([])
     setQuote(null)
   }
+
+  // The booking's rooms as the extras are priced over them: which room is
+  // which, and how many adults are in it.
+  const extrasRooms: ExtrasRoom[] = roomIds.map((id, index) => {
+    const room = rooms.find((r) => r.id === id)
+    return {
+      index,
+      code: String(room?.roomNumber || ''),
+      name: String(room?.name || ''),
+      adults: Math.max(1, occupancy[index]?.adults || 1),
+    }
+  })
 
   const totals = {
     adults: occupancy.reduce((sum, r) => sum + r.adults, 0),
@@ -163,9 +176,11 @@ export default function NewBookingPage() {
     ],
     roomOccupancy: occupancy,
     roomIds,
-    // Only the id and the figure. The server reads the property's own price
-    // off the id and works the mornings back out of the figure.
-    extras: extrasPayload(hotelExtras, picked, Math.max(1, totals.adults), stayNights),
+    // Only the id, the room and the mornings. The server reads the
+    // property's own price off the id and prices it over whoever is in that
+    // room.
+    extras: extrasPayload(hotelExtras, extrasRooms, picked, stayNights),
+    specialRequests: requests.trim() || null,
   })
 
   // What is missing before this can be asked about at all. Said plainly
@@ -327,12 +342,27 @@ export default function NewBookingPage() {
           {hotelId && (
             <ExtrasPicker
               extras={hotelExtras}
+              rooms={extrasRooms}
               picked={picked}
-              adults={Math.max(1, totals.adults)}
               nights={stayNights}
               onChange={(next) => { setPicked(next); setQuote(null) }}
             />
           )}
+
+          <label className="block text-xs text-gray-600">
+            Special requests
+            <textarea
+              value={requests}
+              onChange={(e) => setRequests(e.target.value)}
+              rows={2}
+              maxLength={1000}
+              placeholder="Anything the guest asked for — a quiet room, a late arrival, a cot."
+              className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+            />
+            <span className="mt-0.5 block text-[11px] text-gray-400">
+              Sent to the property with the booking.
+            </span>
+          </label>
 
           <div className="flex flex-wrap items-center gap-5">
             <label className="text-xs text-gray-600">

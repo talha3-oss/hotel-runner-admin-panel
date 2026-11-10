@@ -1,21 +1,21 @@
 'use client'
 
-// The add-ons on a booking, written by an admin.
+// The add-ons on a booking, room by room.
 //
-// There was no way to put one on a booking from this side at all -- not when
-// writing one down, not when changing one. The server has always taken them
-// (quote, preview-change and the manual create all read `extras`); only the
-// form was missing, so a guest who asked for breakfast over the phone could
-// not be given it.
+// An add-on belongs to a room: breakfast for the two in the King and not for
+// the one in the Twin, priced over the people in that room rather than over
+// the whole booking. The property decides which rooms sell which add-ons
+// (Extras → the add-on → Rooms); an add-on that names no rooms is sold with
+// all of them.
 //
 // Shared by the new-booking page and the editor on a booking's own page, for
 // the same reason the room picker is: two forms that price the same thing
 // must not disagree about how.
 //
-// What is held is the add-on's id and, for one sold by the morning, how many
-// mornings. The money is worked out from that -- never stored -- so changing
-// the dates or who is in the room moves the totals with it instead of
-// leaving a figure behind that was true an hour ago.
+// What is held is the add-on's id, which room it is for, and how many
+// mornings. The money is worked out from that -- never stored -- so moving
+// the dates or putting another adult in a room moves the totals with it
+// instead of leaving behind a figure that was true an hour ago.
 
 import { useMemo } from 'react'
 import { formatMoney } from '../../../lib/currency'
@@ -28,14 +28,38 @@ export interface HotelExtra {
   description: string
   price: number
   priceType: ExtraPriceType
+  /** The room codes it is sold with. Empty is every room. */
+  rooms: string[]
 }
 
-/** id -> how many mornings. The value is ignored for an add-on sold per
- *  booking; the key being present is what makes it chosen. */
-export type PickedExtras = Record<string, number>
+/** One of the booking's rooms, as the extras are priced over it. */
+export interface ExtrasRoom {
+  index: number
+  code: string
+  name: string
+  adults: number
+}
+
+/** One add-on taken for one room. The same add-on in two rooms is two
+ *  entries, because the two are priced apart. */
+export interface PickedExtra {
+  id: string
+  roomIndex: number
+  mornings: number
+}
 
 const clamp = (value: number, low: number, high: number) =>
   Math.min(Math.max(Math.round(Number(value) || low), low), Math.max(low, high))
+
+const codesOf = (raw: unknown): string[] => {
+  if (!Array.isArray(raw)) return []
+  const out: string[] = []
+  for (const value of raw) {
+    const code = String(value || '').trim()
+    if (code && !out.includes(code)) out.push(code)
+  }
+  return out
+}
 
 /** A property's add-ons, out of the loose JSON the hotel row keeps them in.
  *  Anything without a name or a usable price is not something that can be
@@ -57,146 +81,216 @@ export function readHotelExtras(hotel: { bookingExtras?: unknown } | null | unde
       description: String(row.description || '').trim(),
       price,
       priceType: row.priceType === 'per adult per morning' ? 'per adult per morning' : 'per booking',
+      rooms: codesOf(row.rooms),
     })
   })
   return out
 }
 
-/** What one add-on comes to. The same arithmetic the server does, so the
- *  figure on screen is the figure that gets written. */
-export function extraTotal(extra: HotelExtra, adults: number, mornings: number, nights: number): number {
+/** Whether a room sells this add-on. Naming no rooms means all of them. */
+export const soldWith = (extra: HotelExtra, room: ExtrasRoom) =>
+  extra.rooms.length === 0 ||
+  extra.rooms.some((code) => code.trim().toLowerCase() === room.code.trim().toLowerCase())
+
+/** What one add-on comes to in one room. The same arithmetic the server
+ *  does, so the figure on screen is the figure that gets written. */
+export function extraTotal(
+  extra: HotelExtra, room: ExtrasRoom, mornings: number, nights: number
+): number {
   if (extra.priceType === 'per booking') return extra.price
-  return extra.price * Math.max(1, adults) * clamp(mornings, 1, Math.max(1, nights))
+  return extra.price * Math.max(1, room.adults) * clamp(mornings, 1, Math.max(1, nights))
 }
 
-/** What goes in the request. The server matches on the id, re-reads the
- *  property's own price, and works the mornings back out of the total -- so
- *  an admin cannot invent a price by editing this. */
+/** What goes in the request. The server matches on the id, checks the room
+ *  sells it, re-reads the property's own price and prices it over whoever is
+ *  in that room -- so nothing here can invent a price. */
 export function extrasPayload(
-  extras: HotelExtra[],
-  picked: PickedExtras,
-  adults: number,
-  nights: number
-): { id: string; name: string; total: number }[] {
-  return extras
-    .filter((extra) => picked[extra.id] !== undefined)
-    .map((extra) => ({
+  extras: HotelExtra[], rooms: ExtrasRoom[], picked: PickedExtra[], nights: number
+): { id: string; name: string; roomIndex: number; mornings: number; total: number }[] {
+  const out: { id: string; name: string; roomIndex: number; mornings: number; total: number }[] = []
+  for (const choice of picked) {
+    const extra = extras.find((e) => e.id === choice.id)
+    const room = rooms[choice.roomIndex]
+    if (!extra || !room || !soldWith(extra, room)) continue
+    out.push({
       id: extra.id,
       name: extra.name,
-      total: extraTotal(extra, adults, picked[extra.id], nights),
-    }))
+      roomIndex: room.index,
+      mornings: clamp(choice.mornings, 1, Math.max(1, nights)),
+      total: extraTotal(extra, room, choice.mornings, nights),
+    })
+  }
+  return out
 }
 
 /** What a booking already has on it, as something this form can edit. Read
  *  back by name as well as id, because an add-on renamed since the booking
- *  was taken still has its id. */
+ *  was taken still has its id. A booking from before add-ons belonged to a
+ *  room carries no roomIndex; it is put in the first room, which is where a
+ *  single-room booking's add-on already was. */
 export function pickedFromBooking(
   extras: HotelExtra[],
-  on: { id?: string; name?: string; total?: number }[] | undefined,
-  adults: number,
+  on: { id?: string; name?: string; total?: number; mornings?: number | null; roomIndex?: number | null }[] | undefined,
+  rooms: ExtrasRoom[],
   nights: number
-): PickedExtras {
-  const picked: PickedExtras = {}
+): PickedExtra[] {
+  const out: PickedExtra[] = []
   for (const had of Array.isArray(on) ? on : []) {
     const key = String(had?.id || '').trim().toLowerCase()
     const name = String(had?.name || '').trim().toLowerCase()
-    const match = extras.find(
-      (extra) => extra.id.toLowerCase() === key || extra.name.toLowerCase() === name
+    const extra = extras.find(
+      (e) => e.id.toLowerCase() === key || e.name.toLowerCase() === name
     )
-    if (!match) continue
+    if (!extra) continue
+
+    const asked = had?.roomIndex
+    const roomIndex =
+      typeof asked === 'number' && Number.isInteger(asked) && asked >= 0 && asked < rooms.length
+        ? asked
+        : 0
+    const room = rooms[roomIndex]
+    if (!room || !soldWith(extra, room)) continue
+    if (out.some((p) => p.id === extra.id && p.roomIndex === roomIndex)) continue
 
     let mornings = Math.max(1, nights)
-    if (match.priceType === 'per adult per morning' && match.price > 0) {
-      const each = match.price * Math.max(1, adults)
-      const billed = Number(had?.total)
-      if (Number.isFinite(billed) && billed > 0) mornings = clamp(billed / each, 1, Math.max(1, nights))
+    if (extra.priceType === 'per adult per morning') {
+      const said = Number(had?.mornings)
+      if (Number.isFinite(said) && said > 0) {
+        mornings = clamp(said, 1, Math.max(1, nights))
+      } else {
+        // A booking from before the mornings were written down: read them
+        // back out of what it was billed.
+        const each = extra.price * Math.max(1, room.adults)
+        const billed = Number(had?.total)
+        if (each > 0 && Number.isFinite(billed) && billed > 0) {
+          mornings = clamp(billed / each, 1, Math.max(1, nights))
+        }
+      }
     }
-    picked[match.id] = mornings
+    out.push({ id: extra.id, roomIndex, mornings })
   }
-  return picked
+  return out
 }
 
 export function ExtrasPicker({
-  extras, picked, adults, nights, onChange,
+  extras, rooms, picked, nights, onChange,
 }: {
   extras: HotelExtra[]
-  picked: PickedExtras
-  adults: number
+  rooms: ExtrasRoom[]
+  picked: PickedExtra[]
   nights: number
-  onChange: (picked: PickedExtras) => void
+  onChange: (picked: PickedExtra[]) => void
 }) {
   const stay = Math.max(1, nights)
-  const subtotal = useMemo(
-    () =>
-      extras
-        .filter((extra) => picked[extra.id] !== undefined)
-        .reduce((sum, extra) => sum + extraTotal(extra, adults, picked[extra.id], stay), 0),
-    [extras, picked, adults, stay]
-  )
+
+  const subtotal = useMemo(() => {
+    let sum = 0
+    for (const choice of picked) {
+      const extra = extras.find((e) => e.id === choice.id)
+      const room = rooms[choice.roomIndex]
+      if (extra && room) sum += extraTotal(extra, room, choice.mornings, stay)
+    }
+    return sum
+  }, [extras, rooms, picked, stay])
+
+  if (rooms.length === 0) return null
 
   if (extras.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-gray-200 px-3 py-2 text-xs text-gray-500">
-        This property has no extras set up. They are added under Hotels → the property → Booking extras.
+        This property has no extras set up. They are added under Extras.
       </div>
     )
   }
 
-  const toggle = (extra: HotelExtra) => {
-    const next = { ...picked }
-    if (next[extra.id] !== undefined) delete next[extra.id]
-    else next[extra.id] = stay
-    onChange(next)
+  const chosen = (id: string, roomIndex: number) =>
+    picked.find((p) => p.id === id && p.roomIndex === roomIndex)
+
+  const toggle = (extra: HotelExtra, room: ExtrasRoom) => {
+    const on = chosen(extra.id, room.index)
+    onChange(on
+      ? picked.filter((p) => !(p.id === extra.id && p.roomIndex === room.index))
+      : [...picked, { id: extra.id, roomIndex: room.index, mornings: stay }])
   }
 
-  const setMornings = (extra: HotelExtra, value: number) => {
-    onChange({ ...picked, [extra.id]: clamp(value, 1, stay) })
+  const setMornings = (extra: HotelExtra, room: ExtrasRoom, value: number) => {
+    onChange(picked.map((p) =>
+      p.id === extra.id && p.roomIndex === room.index
+        ? { ...p, mornings: clamp(value, 1, stay) }
+        : p))
   }
 
   return (
     <div className="space-y-2">
       <div className="text-xs font-medium text-gray-600">Extras</div>
 
-      <div className="divide-y divide-gray-100 rounded-md border border-gray-200">
-        {extras.map((extra) => {
-          const on = picked[extra.id] !== undefined
-          const byMorning = extra.priceType === 'per adult per morning'
+      <div className="space-y-2">
+        {rooms.map((room) => {
+          const forThisRoom = extras.filter((extra) => soldWith(extra, room))
           return (
-            <div key={extra.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2">
-              <label className="flex min-w-0 flex-1 items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={on}
-                  onChange={() => toggle(extra)}
-                  className="h-4 w-4 rounded border-gray-300 text-primary-600"
-                />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm text-gray-900">{extra.name}</span>
-                  <span className="block text-xs text-gray-500">
-                    {formatMoney(extra.price)}{' '}
-                    {byMorning ? 'per adult, per morning' : 'per booking'}
-                  </span>
+            <div key={room.index} className="rounded-md border border-gray-200">
+              <div className="flex items-baseline justify-between border-b border-gray-100 bg-gray-50 px-3 py-1.5">
+                <span className="text-xs font-medium text-gray-700">
+                  Room {room.index + 1} — {room.name || room.code}
                 </span>
-              </label>
-
-              {on && byMorning && (
-                <label className="flex items-center gap-1.5 text-xs text-gray-600">
-                  Mornings
-                  <input
-                    type="number"
-                    min={1}
-                    max={stay}
-                    value={picked[extra.id]}
-                    onChange={(e) => setMornings(extra, Number(e.target.value))}
-                    className="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm"
-                  />
-                  <span className="text-gray-400">of {stay}</span>
-                </label>
-              )}
-
-              <div className="w-20 text-right text-sm tabular-nums text-gray-900">
-                {on ? formatMoney(extraTotal(extra, adults, picked[extra.id], stay)) : '—'}
+                <span className="text-xs text-gray-500">
+                  {room.adults} adult{room.adults === 1 ? '' : 's'}
+                </span>
               </div>
+
+              {forThisRoom.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-gray-500">
+                  Nothing is sold with this room.
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {forThisRoom.map((extra) => {
+                    const on = chosen(extra.id, room.index)
+                    const byMorning = extra.priceType === 'per adult per morning'
+                    return (
+                      <div
+                        key={extra.id}
+                        className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2"
+                      >
+                        <label className="flex min-w-0 flex-1 items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={!!on}
+                            onChange={() => toggle(extra, room)}
+                            className="h-4 w-4 rounded border-gray-300 text-primary-600"
+                          />
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm text-gray-900">{extra.name}</span>
+                            <span className="block text-xs text-gray-500">
+                              {formatMoney(extra.price)}{' '}
+                              {byMorning ? 'per adult, per morning' : 'per booking'}
+                            </span>
+                          </span>
+                        </label>
+
+                        {on && byMorning && (
+                          <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                            Mornings
+                            <input
+                              type="number"
+                              min={1}
+                              max={stay}
+                              value={on.mornings}
+                              onChange={(e) => setMornings(extra, room, Number(e.target.value))}
+                              className="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                            />
+                            <span className="text-gray-400">of {stay}</span>
+                          </label>
+                        )}
+
+                        <div className="w-20 text-right text-sm tabular-nums text-gray-900">
+                          {on ? formatMoney(extraTotal(extra, room, on.mornings, stay)) : '—'}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )
         })}

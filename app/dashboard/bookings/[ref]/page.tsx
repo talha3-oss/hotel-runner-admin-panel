@@ -21,7 +21,7 @@ import {
 import { formatMoney } from '../../../../lib/currency'
 import { RoomLines, RoomOption } from '../RoomPicker'
 import {
-  ExtrasPicker, PickedExtras, extrasPayload, pickedFromBooking, readHotelExtras,
+  ExtrasPicker, ExtrasRoom, PickedExtra, extrasPayload, pickedFromBooking, readHotelExtras,
 } from '../ExtrasPicker'
 import {
   STATUS_COLORS, STATUS_LABELS, STATUS_DOTS, STATUS_BORDERS, STATUS_ORDER,
@@ -172,7 +172,7 @@ export default function BookingPage() {
   const [quote, setQuote] = useState<BookingChangeQuote | null>(null)
   const [quoting, setQuoting] = useState(false)
   const [applying, setApplying] = useState(false)
-  const [picked, setPicked] = useState<PickedExtras>({})
+  const [picked, setPicked] = useState<PickedExtra[]>([])
 
   // Kept, not read and thrown away, because the editor needs the property's
   // add-ons as well as how many people one of its rooms holds.
@@ -268,7 +268,10 @@ export default function BookingPage() {
     ? (booking!.rooms as { id: string; name: string; publicRate: number; claytonRate: number }[])
     : []
   const extras = Array.isArray(booking?.extras)
-    ? (booking!.extras as { name: string; price: number; total: number }[])
+    ? (booking!.extras as {
+        id?: string; name: string; price: number; total: number
+        roomIndex?: number | null; roomName?: string | null; mornings?: number | null
+      }[])
     : []
 
   // Who is in which room. Recorded on the booking since 2026-11-05; spread
@@ -335,7 +338,16 @@ export default function BookingPage() {
     // What is already on the booking, as something the form can edit. Read
     // back by name as well as id, so an add-on renamed since the booking was
     // taken is still ticked rather than quietly dropped on the next change.
-    setPicked(pickedFromBooking(hotelExtras, extras, booking.adults, booking.nights))
+    const asBooked: ExtrasRoom[] = rooms.map((room, index) => {
+      const option = roomOptions.find((r) => r.id === room.id)
+      return {
+        index,
+        code: String(option?.roomNumber || ''),
+        name: String(option?.name || room.name || ''),
+        adults: Math.max(1, party.rooms[index]?.adults || 1),
+      }
+    })
+    setPicked(pickedFromBooking(hotelExtras, extras, asBooked, booking.nights))
     setForm({
       checkIn: booking.checkIn,
       checkOut: booking.checkOut,
@@ -343,6 +355,7 @@ export default function BookingPage() {
       roomOccupancy: party.rooms,
       firstName: booking.firstName, lastName: booking.lastName,
       email: booking.email, phone: booking.phone,
+      specialRequests: booking.specialRequests ?? '',
     })
     setEditing(true)
   }
@@ -366,16 +379,11 @@ export default function BookingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booking, editing])
 
-  const closeEditor = () => { setEditing(false); setQuote(null); setForm({}); setPicked({}) }
+  const closeEditor = () => { setEditing(false); setQuote(null); setForm({}); setPicked([]) }
 
   // The rooms are what the admin edits; the totals are read off them, so the
   // two can never disagree about who is staying.
   const layout = form.roomOccupancy || []
-  const totals = {
-    adults: layout.reduce((sum, r) => sum + r.adults, 0),
-    underSix: layout.reduce((sum, r) => sum + r.underSix, 0),
-    olderChildren: layout.reduce((sum, r) => sum + r.olderChildren, 0),
-  }
 
   // How long the stay would be after this change, which is what the extras
   // are priced over -- not the nights the booking has now.
@@ -383,6 +391,23 @@ export default function BookingPage() {
     1,
     Math.round((Date.parse(form.checkOut || '') - Date.parse(form.checkIn || '')) / 86400000) || 1
   )
+
+  // The rooms as the extras are priced over them.
+  const extrasRooms: ExtrasRoom[] = (form.roomIds || []).map((id, index) => {
+    const room = roomOptions.find((r) => r.id === id)
+    return {
+      index,
+      code: String(room?.roomNumber || ''),
+      name: String(room?.name || ''),
+      adults: Math.max(1, layout[index]?.adults || 1),
+    }
+  })
+
+  const totals = {
+    adults: layout.reduce((sum, r) => sum + r.adults, 0),
+    underSix: layout.reduce((sum, r) => sum + r.underSix, 0),
+    olderChildren: layout.reduce((sum, r) => sum + r.olderChildren, 0),
+  }
 
   const changePayload = (): BookingChange => ({
     ...form,
@@ -393,7 +418,8 @@ export default function BookingPage() {
     ],
     // Always sent while the editor is open, so unticking the last add-on
     // takes it off. Leaving the key out would keep what the booking has.
-    extras: extrasPayload(hotelExtras, picked, Math.max(1, totals.adults), editNights),
+    extras: extrasPayload(hotelExtras, extrasRooms, picked, editNights),
+    specialRequests: form.specialRequests ?? null,
   })
 
   const runQuote = async () => {
@@ -545,11 +571,26 @@ export default function BookingPage() {
 
             <ExtrasPicker
               extras={hotelExtras}
+              rooms={extrasRooms}
               picked={picked}
-              adults={Math.max(1, totals.adults)}
               nights={editNights}
               onChange={(next) => { setPicked(next); setQuote(null) }}
             />
+
+            <label className="block text-xs text-gray-600">
+              Special requests
+              <textarea
+                value={(form.specialRequests as string) || ''}
+                onChange={(e) => { setForm({ ...form, specialRequests: e.target.value }); setQuote(null) }}
+                rows={2}
+                maxLength={1000}
+                placeholder="Anything the guest asked for — a quiet room, a late arrival, a cot."
+                className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+              />
+              <span className="mt-0.5 block text-[11px] text-gray-400">
+                Sent to the property with the change.
+              </span>
+            </label>
 
             <button
               onClick={runQuote}
@@ -832,12 +873,31 @@ export default function BookingPage() {
             <Section title="Extras">
               <div className="space-y-1">
                 {extras.map((e, i) => (
-                  <div key={i} className="flex justify-between text-sm">
-                    <span className="text-gray-700">{e.name}</span>
-                    <span className="text-gray-500">{fmt(e.total || e.price)}</span>
+                  <div key={i} className="flex justify-between gap-3 text-sm">
+                    <span className="min-w-0 text-gray-700">
+                      {e.name}
+                      {/* Which room it is for, and how many mornings of it --
+                          an add-on belongs to a room now, and "Breakfast" on
+                          its own does not say whose. */}
+                      {e.roomName && <span className="text-gray-400"> — {e.roomName}</span>}
+                      {typeof e.mornings === 'number' && e.mornings > 0 && (
+                        <span className="text-gray-400">
+                          {' '}· {e.mornings} morning{e.mornings === 1 ? '' : 's'}
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-gray-500">{fmt(e.total || e.price)}</span>
                   </div>
                 ))}
               </div>
+            </Section>
+          )}
+
+          {booking.specialRequests && (
+            <Section title="Special requests">
+              {/* As the guest wrote it, line breaks and all. It goes to the
+                  property on the reservation as well. */}
+              <p className="whitespace-pre-wrap text-sm text-gray-700">{booking.specialRequests}</p>
             </Section>
           )}
 
