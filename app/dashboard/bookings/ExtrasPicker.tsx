@@ -17,7 +17,8 @@
 // the dates or putting another adult in a room moves the totals with it
 // instead of leaving behind a figure that was true an hour ago.
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { ChevronDownIcon } from '@heroicons/react/24/outline'
 import { formatMoney } from '../../../lib/currency'
 
 export type ExtraPriceType = 'per adult per morning' | 'per booking'
@@ -183,6 +184,27 @@ export function ExtrasPicker({
 }) {
   const stay = Math.max(1, nights)
 
+  // One room open at a time's worth of room -- six add-ons across three rooms
+  // filled the page and pushed the payment and the Check button off the
+  // bottom. The first is open because that is the one being filled in; the
+  // rest say what they hold and open on a press.
+  //
+  // A room that already has something chosen opens too, so reopening a
+  // booking to change it does not hide what is on it.
+  const [open, setOpen] = useState<number[]>([0])
+  useEffect(() => {
+    setOpen((prev) => {
+      const next = prev.slice()
+      for (const choice of picked) {
+        if (!next.includes(choice.roomIndex)) next.push(choice.roomIndex)
+      }
+      return next.length === prev.length ? prev : next
+    })
+    // Only when what is on the booking changes -- not on every keystroke
+    // somewhere else on the form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked.length])
+
   const subtotal = useMemo(() => {
     let sum = 0
     for (const choice of picked) {
@@ -227,18 +249,45 @@ export function ExtrasPicker({
       <div className="space-y-2">
         {rooms.map((room) => {
           const forThisRoom = extras.filter((extra) => soldWith(extra, room))
+          const isOpen = open.includes(room.index)
+          const mine = picked.filter((p) => p.roomIndex === room.index)
+          const roomTotal = mine.reduce((sum, choice) => {
+            const extra = extras.find((e) => e.id === choice.id)
+            return extra ? sum + extraTotal(extra, room, choice.mornings, stay) : sum
+          }, 0)
           return (
             <div key={room.index} className="rounded-md border border-gray-200">
-              <div className="flex items-baseline justify-between border-b border-gray-100 bg-gray-50 px-3 py-1.5">
-                <span className="text-xs font-medium text-gray-700">
+              <button
+                type="button"
+                aria-expanded={isOpen}
+                onClick={() => setOpen((prev) =>
+                  prev.includes(room.index)
+                    ? prev.filter((i) => i !== room.index)
+                    : [...prev, room.index])}
+                className="flex w-full items-center gap-2 rounded-t-md border-b border-gray-100 bg-gray-50 px-3 py-2 text-left hover:bg-gray-100"
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white">
+                  <ChevronDownIcon
+                    className={`h-3 w-3 transition-transform ${isOpen ? '' : '-rotate-90'}`}
+                    strokeWidth={3}
+                  />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-700">
                   Room {room.index + 1} — {room.name || room.code}
                 </span>
-                <span className="text-xs text-gray-500">
+                {/* What is on this room, said on the header, so a closed one
+                    is not a room whose add-ons have been forgotten. */}
+                {mine.length > 0 && (
+                  <span className="shrink-0 text-xs font-medium tabular-nums text-primary-700">
+                    {mine.length} · {formatMoney(roomTotal)}
+                  </span>
+                )}
+                <span className="shrink-0 text-xs text-gray-500">
                   {room.adults} adult{room.adults === 1 ? '' : 's'}
                 </span>
-              </div>
+              </button>
 
-              {forThisRoom.length === 0 ? (
+              {!isOpen ? null : forThisRoom.length === 0 ? (
                 <div className="px-3 py-2 text-xs text-gray-500">
                   Nothing is sold with this room.
                 </div>
