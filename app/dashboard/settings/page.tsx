@@ -606,7 +606,10 @@ export default function SettingsPage() {
   }, [searchParams])
 
   // Site settings — the name, logo and favicon the public site uses.
-  const [site, setSite] = useState<SiteSettings>({ siteName: '', siteTagline: '', logo: '', favicon: '', logoHeight: 56 })
+  const [site, setSite] = useState<SiteSettings>({
+    siteName: '', siteTagline: '', logo: '', favicon: '', logoHeight: 56,
+    termsUrl: '', privacyUrl: '',
+  })
   const [siteSaving, setSiteSaving] = useState(false)
   const [siteUploading, setSiteUploading] = useState<'logo' | 'favicon' | null>(null)
   const [siteMsg, setSiteMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -1165,6 +1168,40 @@ export default function SettingsPage() {
                     onChange={e => setSite(p => ({ ...p, siteTagline: e.target.value }))} />
                   <p className="mt-1 text-xs text-gray-400">Used as the site description.</p>
                 </div>
+              </div>
+
+              {/* Where the two links beside the guest's tick point. They were
+                  buttons that went nowhere, so a guest agreed to terms they
+                  could not open. */}
+              <div className="rounded-xl border border-gray-200 p-4">
+                <h3 className="text-sm font-medium text-gray-900">Terms &amp; Privacy</h3>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Where the two links go — beside &ldquo;I agree to the…&rdquo; on the payment
+                  step, and on the sign-up form. A page on this site
+                  (<code className="text-gray-600">/privacy-policy</code>) or a full
+                  address (<code className="text-gray-600">https://…</code>). Leave a box
+                  empty to go back to the built-in link.
+                </p>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Terms and Conditions
+                    </label>
+                    <input className={inp} value={site.termsUrl} placeholder="/terms-and-conditions"
+                      onChange={e => setSite(p => ({ ...p, termsUrl: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Privacy Policy
+                    </label>
+                    <input className={inp} value={site.privacyUrl} placeholder="/privacy-policy"
+                      onChange={e => setSite(p => ({ ...p, privacyUrl: e.target.value }))} />
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-gray-400">
+                  Pages are written under Pages. A link the server does not recognise as a
+                  path or a web address is ignored and the built-in one kept.
+                </p>
               </div>
 
               {/* Logo */}

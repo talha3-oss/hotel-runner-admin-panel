@@ -604,6 +604,12 @@ export interface SiteSettings {
   favicon: string
   /** Height of the logo in the site's header on a wide screen, in pixels. */
   logoHeight: number
+  /** Where "Terms and Conditions" and "Privacy Policy" point. They sit beside
+   *  the tick a guest gives before paying. A path on the site or a full
+   *  address; anything else is refused by the server and the built-in one is
+   *  kept. */
+  termsUrl: string
+  privacyUrl: string
 }
 
 export async function fetchSiteSettings(token: string) {
