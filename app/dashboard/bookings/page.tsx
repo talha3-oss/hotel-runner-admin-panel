@@ -186,8 +186,15 @@ export default function BookingsPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-lg shadow mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-        <div className="relative flex-1 min-w-[14rem] max-w-sm">
+      {/* One row, and wrapping below the width where one row fits.
+          What used to break it on a desktop was the search box reserving
+          24rem it did not need and the words "Staying between" taking as
+          much room as a date -- the dates say what they are.
+          The seven controls need about 960px between them before the search
+          box is down to something anybody can type in, so 1400 is where the
+          row holds; below that they wrap rather than being squeezed. */}
+      <div className="bg-white p-4 rounded-lg shadow mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center min-[1400px]:flex-nowrap">
+        <div className="relative flex-1 min-w-[11rem] sm:max-w-sm lg:max-w-none">
           <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-2.5 text-gray-400" />
           <input
             type="text"
@@ -200,7 +207,7 @@ export default function BookingsPage() {
         <select
           value={statusFilter}
           onChange={(e) => handleStatusFilter(e.target.value)}
-          className="border border-gray-300 rounded-md text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="shrink-0 w-36 border border-gray-300 rounded-md text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
         >
           <option value="all">All Statuses</option>
           <option value="CONFIRMED">Confirmed</option>
@@ -211,7 +218,9 @@ export default function BookingsPage() {
         <select
           value={hotelFilter}
           onChange={(e) => handleHotelFilter(e.target.value)}
-          className="border border-gray-300 rounded-md text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          /* Fixed, because a hotel called "Luxotel Aqaba Beach Resort & Spa
+             15+" would otherwise set the width of the whole bar. */
+          className="shrink-0 w-44 border border-gray-300 rounded-md text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
         >
           <option value="">All hotels</option>
           {hotels.map((h) => (
@@ -222,24 +231,33 @@ export default function BookingsPage() {
         {/* Stays touching these days, so a guest already in the hotel on the
             first of them still counts. */}
         {view === 'list' && (
-          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
-            <span className="text-xs uppercase tracking-wider text-gray-400">Staying between</span>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 text-sm text-gray-500 min-[1400px]:flex-nowrap">
+            {/* The words were "Staying between" and took as much of the row
+                as one of the dates. The icon carries it, and the title says
+                it for anyone who hovers or uses a screen reader. */}
+            <CalendarDaysIcon
+              className="h-5 w-5 shrink-0 text-gray-400"
+              title="Staying between"
+              aria-label="Staying between"
+            />
             <input
               type="date"
               value={from}
               onChange={(e) => handleFrom(e.target.value)}
-              className="border border-gray-300 rounded-md text-sm px-2 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              aria-label="Staying from"
+              className="w-[8.75rem] shrink-0 border border-gray-300 rounded-md text-sm px-2 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
-            <span className="text-gray-400">→</span>
+            <span className="shrink-0 text-gray-400">→</span>
             <input
               type="date"
               value={to}
               onChange={(e) => handleTo(e.target.value)}
-              className="border border-gray-300 rounded-md text-sm px-2 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              aria-label="Staying to"
+              className="w-[8.75rem] shrink-0 border border-gray-300 rounded-md text-sm px-2 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
-            <button onClick={thisMonth} className="rounded border border-gray-200 px-2.5 py-1.5 text-xs hover:bg-gray-50">This month</button>
+            <button onClick={thisMonth} className="shrink-0 whitespace-nowrap rounded border border-gray-200 px-2.5 py-1.5 text-xs hover:bg-gray-50">This month</button>
             {dated && (
-              <button onClick={clearDates} className="rounded border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50">Clear dates</button>
+              <button onClick={clearDates} className="shrink-0 whitespace-nowrap rounded border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50">Clear</button>
             )}
           </div>
         )}
