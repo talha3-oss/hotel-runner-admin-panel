@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { PlusIcon, PencilIcon, TrashIcon, PhotoIcon } from '@heroicons/react/24/outline'
 import { fetchHotels, updateHotel, fetchAdminRooms, Hotel, getApiAssetUrl } from '../../../lib/api'
+import { CURRENCY, formatMoneyExact } from '../../../lib/currency'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
@@ -327,7 +328,7 @@ export default function ExtrasPage() {
                   </td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{extra.name}</td>
                   <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{extra.description || <span className="text-gray-300">—</span>}</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">€{extra.price.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-sm text-gray-900">{formatMoneyExact(extra.price)}</td>
                   <td className="px-6 py-4">
                     <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
                       {extra.priceType}
@@ -410,7 +411,7 @@ export default function ExtrasPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Price (€) <span className="text-red-500">*</span>
+                    Price ({CURRENCY}) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
