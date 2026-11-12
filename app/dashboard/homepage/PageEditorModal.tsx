@@ -49,6 +49,10 @@ interface ContentSection {
   videoUrl?: string
   buttonLabel?: string
   buttonHref?: string
+  /** CTA only: the button opens the booking panel instead of going to a URL.
+   *  Absent or false is an ordinary link, which is what every section written
+   *  before this is. */
+  buttonOpensBooking?: boolean
   contactNote?: string
   /** Contact form only: where its enquiries are emailed, comma separated. */
   recipients?: string
@@ -162,7 +166,7 @@ function buildEmpty(type: SectionType): ContentSection {
   if (type === 'text')         return { type, title: '', content: '' }
   if (type === 'cards')        return { type, title: 'Why Choose Luxotel', items: DEFAULT_CARDS }
   if (type === 'offers')       return { type, title: 'Current Offers', subtitle: 'Exclusive deals for every occasion', items: DEFAULT_OFFERS }
-  if (type === 'cta')          return { type, title: 'Ready to Experience Luxury?', subtitle: 'Book your stay today and enjoy exclusive benefits.', buttonLabel: 'Book Now', buttonHref: '/booking', contactNote: '' }
+  if (type === 'cta')          return { type, title: 'Ready to Experience Luxury?', subtitle: 'Book your stay today and enjoy exclusive benefits.', buttonLabel: 'Book Now', buttonHref: '/booking', buttonOpensBooking: false, contactNote: '' }
   if (type === 'contact-info') return { type, title: 'Get in Touch', items: DEFAULT_CONTACTS }
   if (type === 'form')         return { type, title: 'Send Us a Message', content: '', recipients: '' }
   if (type === 'sitemap')      return { type, title: 'Site Map', columns: DEFAULT_SITEMAP_COLS }
@@ -570,15 +574,37 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
               <label className="block text-sm font-medium text-gray-700 mb-1">Subtext</label>
               <input className={inp} value={s.subtitle || ''} onChange={e => set({ subtitle: e.target.value })} placeholder="Book your stay today and enjoy exclusive benefits." />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            {/* What the button does. On, it opens the booking panel where the
+                guest already is -- no page change, and the label is free text,
+                so it need not say "Book Now". Off, it is an ordinary link and
+                the URL box comes back. */}
+            <div>
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <div
+                  onClick={() => set({ buttonOpensBooking: !s.buttonOpensBooking })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${s.buttonOpensBooking ? 'bg-primary-600' : 'bg-gray-300'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${s.buttonOpensBooking ? 'translate-x-6' : 'translate-x-1'}`} />
+                </div>
+                <span className="text-sm font-medium text-gray-700">Button opens the booking panel</span>
+              </label>
+              <p className="text-xs text-gray-400 mt-1 ml-14">
+                {s.buttonOpensBooking
+                  ? 'The search panel slides out on the same page. The label below can say anything.'
+                  : 'The button is a link. Put the address it goes to in the box below.'}
+              </p>
+            </div>
+            <div className={s.buttonOpensBooking ? '' : 'grid grid-cols-2 gap-3'}>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Button Label</label>
                 <input className={inp} value={s.buttonLabel || ''} onChange={e => set({ buttonLabel: e.target.value })} placeholder="Book Now" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Button URL</label>
-                <input className={monoInp} value={s.buttonHref || ''} onChange={e => set({ buttonHref: e.target.value })} placeholder="/booking" />
-              </div>
+              {!s.buttonOpensBooking && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Button URL</label>
+                  <input className={monoInp} value={s.buttonHref || ''} onChange={e => set({ buttonHref: e.target.value })} placeholder="/booking" />
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Contact Note <span className="text-xs text-gray-400 font-normal">(optional — shown below button)</span></label>
