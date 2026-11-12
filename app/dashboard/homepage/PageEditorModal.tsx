@@ -49,9 +49,9 @@ interface ContentSection {
   videoUrl?: string
   buttonLabel?: string
   buttonHref?: string
-  /** CTA only: the button opens the booking panel instead of going to a URL.
-   *  Absent or false is an ordinary link, which is what every section written
-   *  before this is. */
+  /** Hero and CTA: the button opens the booking panel instead of going to a
+   *  URL. Absent or false is an ordinary link, which is what every section
+   *  written before this is. */
   buttonOpensBooking?: boolean
   contactNote?: string
   /** Contact form only: where its enquiries are emailed, comma separated. */
@@ -153,6 +153,30 @@ const DEFAULT_PRICE_GROUPS: PriceGroup[] = [
 const inp     = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500'
 const monoInp = inp + ' font-mono'
 
+/** What a section's button does: open the booking panel where the guest
+ *  already is, or go to an address. Written once because the CTA and the
+ *  hero both offer it and the two would otherwise be worded differently. */
+function BookingPanelToggle({ on, onChange }: { on: boolean; onChange: (next: boolean) => void }) {
+  return (
+    <div>
+      <label className="flex items-center gap-3 cursor-pointer select-none">
+        <div
+          onClick={() => onChange(!on)}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${on ? 'bg-primary-600' : 'bg-gray-300'}`}
+        >
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
+        </div>
+        <span className="text-sm font-medium text-gray-700">Button opens the booking panel</span>
+      </label>
+      <p className="text-xs text-gray-400 mt-1 ml-14">
+        {on
+          ? 'The search panel slides out on the same page. The label below can say anything.'
+          : 'The button is a link. Put the address it goes to in the box below.'}
+      </p>
+    </div>
+  )
+}
+
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <div className="border-t border-gray-100 pt-5 mt-1">
@@ -162,7 +186,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 function buildEmpty(type: SectionType): ContentSection {
-  if (type === 'hero')         return { type, title: '', subtitle: '', image: '', videoUrl: '', buttonLabel: 'Book Now', buttonHref: '/booking' }
+  if (type === 'hero')         return { type, title: '', subtitle: '', image: '', videoUrl: '', buttonLabel: 'Book Now', buttonHref: '/booking', buttonOpensBooking: false }
   if (type === 'text')         return { type, title: '', content: '' }
   if (type === 'cards')        return { type, title: 'Why Choose Luxotel', items: DEFAULT_CARDS }
   if (type === 'offers')       return { type, title: 'Current Offers', subtitle: 'Exclusive deals for every occasion', items: DEFAULT_OFFERS }
@@ -400,15 +424,18 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
               </label>
               <input className={inp} value={s.title || ''} onChange={e => set({ title: e.target.value })} placeholder="e.g. Terms &amp; Conditions" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <BookingPanelToggle on={!!s.buttonOpensBooking} onChange={v => set({ buttonOpensBooking: v })} />
+            <div className={s.buttonOpensBooking ? '' : 'grid grid-cols-2 gap-3'}>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Button Label</label>
                 <input className={inp} value={s.buttonLabel || ''} onChange={e => set({ buttonLabel: e.target.value })} placeholder="Book Now" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Button URL</label>
-                <input className={monoInp} value={s.buttonHref || ''} onChange={e => set({ buttonHref: e.target.value })} placeholder="/booking" />
-              </div>
+              {!s.buttonOpensBooking && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Button URL</label>
+                  <input className={monoInp} value={s.buttonHref || ''} onChange={e => set({ buttonHref: e.target.value })} placeholder="/booking" />
+                </div>
+              )}
             </div>
             <MediaBox value={s.image || ''} onChange={url => set({ image: url })}
               label="Background Image (used when there is no video)" />
@@ -574,26 +601,7 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
               <label className="block text-sm font-medium text-gray-700 mb-1">Subtext</label>
               <input className={inp} value={s.subtitle || ''} onChange={e => set({ subtitle: e.target.value })} placeholder="Book your stay today and enjoy exclusive benefits." />
             </div>
-            {/* What the button does. On, it opens the booking panel where the
-                guest already is -- no page change, and the label is free text,
-                so it need not say "Book Now". Off, it is an ordinary link and
-                the URL box comes back. */}
-            <div>
-              <label className="flex items-center gap-3 cursor-pointer select-none">
-                <div
-                  onClick={() => set({ buttonOpensBooking: !s.buttonOpensBooking })}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${s.buttonOpensBooking ? 'bg-primary-600' : 'bg-gray-300'}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${s.buttonOpensBooking ? 'translate-x-6' : 'translate-x-1'}`} />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Button opens the booking panel</span>
-              </label>
-              <p className="text-xs text-gray-400 mt-1 ml-14">
-                {s.buttonOpensBooking
-                  ? 'The search panel slides out on the same page. The label below can say anything.'
-                  : 'The button is a link. Put the address it goes to in the box below.'}
-              </p>
-            </div>
+            <BookingPanelToggle on={!!s.buttonOpensBooking} onChange={v => set({ buttonOpensBooking: v })} />
             <div className={s.buttonOpensBooking ? '' : 'grid grid-cols-2 gap-3'}>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Button Label</label>
