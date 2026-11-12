@@ -320,6 +320,12 @@ export interface Hotel {
    *  and still hold only 3 people between them. */
   maxPersonsPerRoom?: number
   olderChildTakesAdultPlace?: boolean
+  /** How many rooms one guest may book online in a single go. Null or absent
+   *  means no ceiling of ours -- only what the property has free. */
+  maxRoomsPerBooking?: number | null
+  /** What the guest is told once they reach it. Empty falls back to a plain
+   *  English sentence. */
+  bulkBookingMessage?: string | null
   locationId: string
   location: string
   country: string

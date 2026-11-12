@@ -84,6 +84,9 @@ type HotelForm = {
   maxOlderChildrenPerRoom: string
   maxPersonsPerRoom: string
   olderChildTakesAdultPlace: boolean
+  limitRoomsPerBooking: boolean
+  maxRoomsPerBooking: string
+  bulkBookingMessage: string
 }
 
 /** Mirrors the backend's rule so the preview under the field is the address
@@ -154,6 +157,9 @@ const EMPTY_HOTEL: HotelForm = {
   maxOlderChildrenPerRoom: '2',
   maxPersonsPerRoom: '3',
   olderChildTakesAdultPlace: true,
+  limitRoomsPerBooking: false,
+  maxRoomsPerBooking: '5',
+  bulkBookingMessage: '',
 }
 
 const parseCsv = (value: string) =>
@@ -439,6 +445,11 @@ export default function HotelsPage() {
       maxOlderChildrenPerRoom: String(hotel.maxOlderChildrenPerRoom ?? 2),
       maxPersonsPerRoom: String(hotel.maxPersonsPerRoom ?? 3),
       olderChildTakesAdultPlace: hotel.olderChildTakesAdultPlace !== false,
+      // Null is the switch off. The number box keeps 5 behind it so turning
+      // the switch on offers something sensible rather than an empty field.
+      limitRoomsPerBooking: Number(hotel.maxRoomsPerBooking) >= 1,
+      maxRoomsPerBooking: String(hotel.maxRoomsPerBooking ?? 5),
+      bulkBookingMessage: hotel.bulkBookingMessage ?? '',
     })
     setNewAmenity('')
     setFormError('')
@@ -639,6 +650,12 @@ export default function HotelsPage() {
         maxOlderChildrenPerRoom: Math.max(0, Number(hotelForm.maxOlderChildrenPerRoom) || 0),
         maxPersonsPerRoom: Number(hotelForm.maxPersonsPerRoom) || 3,
         olderChildTakesAdultPlace: hotelForm.olderChildTakesAdultPlace,
+        // null, not 0 or "": the backend reads null as "no ceiling", and the
+        // number typed while the switch was off must not quietly take effect.
+        maxRoomsPerBooking: hotelForm.limitRoomsPerBooking
+          ? Math.max(1, Number(hotelForm.maxRoomsPerBooking) || 1)
+          : null,
+        bulkBookingMessage: hotelForm.bulkBookingMessage.trim() || null,
       }
 
       const result = hotelForm.id
@@ -1095,6 +1112,65 @@ export default function HotelsPage() {
                         freePlace={hotelForm.olderChildTakesAdultPlace}
                         adultMinAge={Math.max(1, Number(hotelForm.adultMinAge) || 13)}
                       />
+                    </div>
+                  </>
+                )}
+
+                {/* ── How many rooms at once ──
+                    Outside the children block on purpose: a ceiling on rooms
+                    has nothing to do with whether the property takes children,
+                    and hiding it behind that switch would lose it. */}
+                <div className="col-span-2 pt-2">
+                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <div
+                      onClick={() => setHotelForm((prev) => ({ ...prev, limitRoomsPerBooking: !prev.limitRoomsPerBooking }))}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${hotelForm.limitRoomsPerBooking ? 'bg-primary-600' : 'bg-gray-300'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${hotelForm.limitRoomsPerBooking ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </div>
+                    <span className="text-sm font-medium text-gray-700">Limit how many rooms one guest can book online</span>
+                  </label>
+                  <p className="text-xs text-gray-400 mt-1 ml-14">
+                    {hotelForm.limitRoomsPerBooking
+                      ? `Off the website, a guest can take ${Math.max(1, Number(hotelForm.maxRoomsPerBooking) || 1)} room${(Math.max(1, Number(hotelForm.maxRoomsPerBooking) || 1)) === 1 ? '' : 's'} at a time. Past that they are sent here. This desk is not limited.`
+                      : 'Off. A guest can book as many rooms as the property has free for those nights.'}
+                  </p>
+                </div>
+
+                {hotelForm.limitRoomsPerBooking && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Most rooms per booking</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="50"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                        placeholder="5"
+                        value={hotelForm.maxRoomsPerBooking}
+                        onChange={field('maxRoomsPerBooking')}
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Availability still applies. Whichever is smaller wins.
+                      </p>
+                    </div>
+                    <div />
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        What the guest is told at that point
+                      </label>
+                      <textarea
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                        placeholder={`You can book up to ${Math.max(1, Number(hotelForm.maxRoomsPerBooking) || 1)} rooms online. Email us or call and we will arrange the rest for you.`}
+                        value={hotelForm.bulkBookingMessage}
+                        onChange={field('bulkBookingMessage')}
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Shown under the heading &ldquo;Contact Reservation Team for Bulk booking&rdquo;, which is
+                        always there. Put an address or a telephone number in here so the guest has
+                        somewhere to go. Leave it empty for the sentence above.
+                      </p>
                     </div>
                   </>
                 )}
