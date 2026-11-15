@@ -1,7 +1,7 @@
 'use client'
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
-import { PlusIcon, PencilIcon, TrashIcon, PhotoIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PencilIcon, TrashIcon, PhotoIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
 import { fetchHotels, updateHotel, fetchAdminRooms, Hotel, getApiAssetUrl } from '../../../lib/api'
 import { CURRENCY, formatMoneyExact } from '../../../lib/currency'
 
@@ -168,6 +168,23 @@ export default function ExtrasPage() {
     }
   }
 
+  // The order they are shown in is the order they are stored in -- the
+  // website reads this list straight through -- so moving one here is the
+  // whole of it. No sort key to keep in step, and nothing to migrate.
+  //
+  // The list is written as soon as it moves rather than behind a Save
+  // button: everything else on this page saves on the spot, and a page with
+  // two different habits is worse than either.
+  const moveExtra = (index: number, delta: number) => {
+    const to = index + delta
+    if (to < 0 || to >= extras.length) return
+    const next = [...extras]
+    const [moved] = next.splice(index, 1)
+    next.splice(to, 0, moved)
+    setExtras(next)
+    saveExtras(next).catch(() => {})
+  }
+
   const openAddModal = () => {
     setEditingExtra(null)
     setFormData(EMPTY_FORM)
@@ -259,7 +276,8 @@ export default function ExtrasPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Extras</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Manage optional add-ons shown during booking (e.g. breakfast, parking, spa)
+            Manage optional add-ons shown during booking (e.g. breakfast, parking, spa).
+            The order here is the order a guest sees them in.
           </p>
         </div>
         <button
@@ -301,6 +319,7 @@ export default function ExtrasPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="w-16 px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Order</th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Image</th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Description</th>
@@ -311,8 +330,36 @@ export default function ExtrasPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
-              {extras.map((extra) => (
+              {extras.map((extra, index) => (
                 <tr key={extra.id} className="hover:bg-gray-50">
+                  {/* Up and down rather than dragging: it works with a
+                      finger, with a keyboard and with a screen reader, and
+                      there are rarely more than a handful to move. */}
+                  <td className="w-16 px-3 py-4">
+                    <div className="flex items-center gap-1">
+                      <span className="w-4 text-xs tabular-nums text-gray-400">{index + 1}</span>
+                      <div className="flex flex-col">
+                        <button
+                          onClick={() => moveExtra(index, -1)}
+                          disabled={index === 0 || saving}
+                          title="Move up"
+                          aria-label={`Move ${extra.name} up`}
+                          className="rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-600 disabled:pointer-events-none disabled:opacity-25"
+                        >
+                          <ChevronUpIcon className="h-4 w-4" strokeWidth={2.5} />
+                        </button>
+                        <button
+                          onClick={() => moveExtra(index, 1)}
+                          disabled={index === extras.length - 1 || saving}
+                          title="Move down"
+                          aria-label={`Move ${extra.name} down`}
+                          className="rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-600 disabled:pointer-events-none disabled:opacity-25"
+                        >
+                          <ChevronDownIcon className="h-4 w-4" strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    </div>
+                  </td>
                   <td className="px-6 py-4">
                     {extra.image ? (
                       <img
@@ -355,7 +402,7 @@ export default function ExtrasPage() {
               ))}
               {extras.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-sm text-gray-500">
+                  <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
                     No extras yet for this hotel. Add your first one above.
                   </td>
                 </tr>
