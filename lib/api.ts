@@ -326,6 +326,14 @@ export interface Hotel {
   /** What the guest is told once they reach it. Empty falls back to a plain
    *  English sentence. */
   bulkBookingMessage?: string | null
+  /** When a guest may have their room and when they must leave it, "HH:MM"
+   *  on a 24-hour clock, read against the zone below. */
+  checkInTime?: string
+  checkOutTime?: string
+  /** The property's own clock, as an IANA zone. Every email about the stay
+   *  is timed off it -- seven in the morning is a different moment in Amman
+   *  than in Paris, and the server's clock is neither. */
+  timezone?: string
   locationId: string
   location: string
   country: string

@@ -87,6 +87,9 @@ type HotelForm = {
   limitRoomsPerBooking: boolean
   maxRoomsPerBooking: string
   bulkBookingMessage: string
+  checkInTime: string
+  checkOutTime: string
+  timezone: string
 }
 
 /** Mirrors the backend's rule so the preview under the field is the address
@@ -160,6 +163,9 @@ const EMPTY_HOTEL: HotelForm = {
   limitRoomsPerBooking: false,
   maxRoomsPerBooking: '5',
   bulkBookingMessage: '',
+  checkInTime: '15:00',
+  checkOutTime: '12:00',
+  timezone: 'Asia/Amman',
 }
 
 const parseCsv = (value: string) =>
@@ -258,6 +264,30 @@ function RoomOccupancyPreview({
       )}
     </div>
   )
+}
+
+// Every zone this runtime knows. Asked of Intl rather than kept as a list of
+// ours, which would go stale. Older browsers have no supportedValuesOf, so a
+// short list of the ones these properties actually sit in is the fallback.
+const TIME_ZONES: string[] = (() => {
+  try {
+    const all = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] })
+      .supportedValuesOf?.('timeZone');
+    if (all?.length) return all;
+  } catch { /* not supported */ }
+  return ['Asia/Amman', 'Europe/Paris', 'Europe/Dublin', 'Europe/London', 'UTC'];
+})();
+
+/** What the clock says there right now, so whoever picks a zone can see at
+ *  once whether they have picked the right one. */
+function clockNow(zone: string) {
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date());
+  } catch {
+    return '—';
+  }
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -450,6 +480,9 @@ export default function HotelsPage() {
       limitRoomsPerBooking: Number(hotel.maxRoomsPerBooking) >= 1,
       maxRoomsPerBooking: String(hotel.maxRoomsPerBooking ?? 5),
       bulkBookingMessage: hotel.bulkBookingMessage ?? '',
+      checkInTime: hotel.checkInTime || '15:00',
+      checkOutTime: hotel.checkOutTime || '12:00',
+      timezone: hotel.timezone || 'Asia/Amman',
     })
     setNewAmenity('')
     setFormError('')
@@ -656,6 +689,9 @@ export default function HotelsPage() {
           ? Math.max(1, Number(hotelForm.maxRoomsPerBooking) || 1)
           : null,
         bulkBookingMessage: hotelForm.bulkBookingMessage.trim() || null,
+        checkInTime: hotelForm.checkInTime,
+        checkOutTime: hotelForm.checkOutTime,
+        timezone: hotelForm.timezone,
       }
 
       const result = hotelForm.id
@@ -1174,6 +1210,55 @@ export default function HotelsPage() {
                     </div>
                   </>
                 )}
+
+                {/* ── The property's own clock ──
+                    These were written into the website's code, so every
+                    hotel said "Check-in 3:00 PM" whoever it belonged to.
+                    They are the property's now, and the emails about a stay
+                    will be timed off them. */}
+                <SectionHeading>Check-in &amp; Check-out</SectionHeading>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Check-in from</label>
+                  <input
+                    type="time"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                    value={hotelForm.checkInTime}
+                    onChange={field('checkInTime')}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Shown on the website and in the guest&apos;s confirmation.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Check-out by</label>
+                  <input
+                    type="time"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                    value={hotelForm.checkOutTime}
+                    onChange={field('checkOutTime')}
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">This property&apos;s time zone</label>
+                  {/* The list is the runtime's own, not one of ours to keep
+                      up to date. Typing the first letters of a zone jumps to
+                      it, which is how a desk finds Europe/Paris. */}
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                    value={hotelForm.timezone}
+                    onChange={field('timezone')}
+                  >
+                    {TIME_ZONES.map((zone) => (
+                      <option key={zone} value={zone}>{zone}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">
+                    The times above are on this clock, and so is anything sent at a set hour
+                    &mdash; seven in the morning is a different moment in Amman than in Paris.
+                    It is now {clockNow(hotelForm.timezone)} there.
+                  </p>
+                </div>
 
                 {/* ── Contact ── */}
                 <SectionHeading>Contact Details</SectionHeading>
