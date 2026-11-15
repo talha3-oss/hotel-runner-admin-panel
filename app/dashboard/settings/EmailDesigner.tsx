@@ -31,6 +31,11 @@ const FIELD_LABEL: Record<string, string> = {
   image: 'Picture (full address)',
   label: 'Button label',
   url: 'Where it goes',
+  // The hotel's notice is one email with three occasions, so it carries
+  // three wordings and the sender picks whichever happened.
+  newText: 'When the booking is new',
+  changedText: 'When it has been changed',
+  cancelledText: 'When it has been cancelled',
 }
 
 export default function EmailDesigner() {
@@ -254,7 +259,10 @@ export default function EmailDesigner() {
           <div className="space-y-2">
             {blocks.map((b, i) => {
               const spec = specOf(b.type)
-              const writable = (spec?.fields || []).length > 0 && !spec?.locked
+              // A padlock means the content comes from the booking, not that
+              // there is nothing to write: the heading above it is still
+              // the admin's. Only what the section may carry decides.
+              const writable = (spec?.fields || []).length > 0
               const isOpen = expanded === i
               return (
                 <div key={`${b.type}-${i}`} className={`rounded-md border ${b.on ? 'border-gray-200' : 'border-dashed border-gray-300 bg-gray-50'}`}>
@@ -280,7 +288,7 @@ export default function EmailDesigner() {
                         {spec?.label || b.type}
                       </span>
                       {spec?.locked && (
-                        <span title="Its content comes from the booking" className="shrink-0 text-gray-300">
+                        <span title="Its content comes from the booking — the heading is still yours" className="shrink-0 text-gray-300">
                           <LockClosedIcon className="h-3.5 w-3.5" />
                         </span>
                       )}
@@ -299,7 +307,7 @@ export default function EmailDesigner() {
                     {/* Only the ones the admin added themselves can go. The
                         built-in sections turn off instead, so an email can
                         always be put back together. */}
-                    {writable && !['brand', 'banner', 'footer'].includes(b.type) && (
+                    {!spec?.locked && !['brand', 'banner', 'footer'].includes(b.type) && (
                       <button onClick={() => remove(i)} aria-label="Remove section"
                               className="shrink-0 rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-600">
                         <TrashIcon className="h-4 w-4" />
