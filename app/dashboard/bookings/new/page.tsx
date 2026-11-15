@@ -25,6 +25,12 @@ import {
 import { formatMoney } from '../../../../lib/currency'
 import { RoomParty } from '../shared'
 import { RoomLines, RoomOption, RoomLimits } from '../RoomPicker'
+import {
+  getCountries,
+  getCountryCallingCode,
+  parsePhoneNumberFromString,
+  type CountryCode,
+} from 'libphonenumber-js'
 import { ExtrasPicker, ExtrasRoom, PickedExtra, extrasPayload, readHotelExtras } from '../ExtrasPicker'
 
 const fmt = formatMoney
@@ -37,6 +43,20 @@ const dayAfter = (days: number) => {
   return d.toISOString().slice(0, 10)
 }
 
+// Every country libphonenumber knows, named by the browser itself so there
+// is no list of ours to go stale.
+const PHONE_COUNTRIES = (() => {
+  let display: Intl.DisplayNames | null = null
+  try { display = new Intl.DisplayNames(undefined, { type: 'region' }) } catch { display = null }
+  return getCountries()
+    .map((code) => ({
+      code,
+      name: (() => { try { return display?.of(code) || code } catch { return code } })(),
+      dial: `+${getCountryCallingCode(code)}`,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+})()
+
 export default function NewBookingPage() {
   const router = useRouter()
 
@@ -45,6 +65,20 @@ export default function NewBookingPage() {
   const [allRooms, setAllRooms] = useState<RoomOption[]>([])
 
   const [guest, setGuest] = useState({ firstName: '', lastName: '', email: '', phone: '' })
+  // Which country the guest's number belongs to. The desk types it the way
+  // the guest says it on the telephone -- "079..." -- and only this says
+  // what that means. The server is held to the same rule as the website, so
+  // without it a desk booking would be refused for a number that is fine.
+  const [phoneCountry, setPhoneCountry] = useState<CountryCode>('JO')
+
+  /** The number as E.164, or "" while it is not one yet. Worked out once so
+   *  the warning under the box and what gets sent cannot disagree. */
+  const phoneE164 = useMemo(() => {
+    const typed = guest.phone.trim()
+    if (!typed) return ''
+    const parsed = parsePhoneNumberFromString(typed, phoneCountry)
+    return parsed?.isValid() ? parsed.number : ''
+  }, [guest.phone, phoneCountry])
   const [checkIn, setCheckIn] = useState(dayAfter(1))
   const [checkOut, setCheckOut] = useState(dayAfter(2))
   const [paymentMethod, setPaymentMethod] = useState<'hotel' | 'now'>('hotel')
@@ -198,6 +232,10 @@ export default function NewBookingPage() {
     if (!guest.firstName.trim() || !guest.lastName.trim()) return 'The guest needs a first and last name.'
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(guest.email.trim())) return 'The guest needs a valid email address.'
     if (!guest.phone.trim()) return 'The guest needs a phone number.'
+    // Held to that country's own rules -- how many digits, and which ones it
+    // may start with. The server checks the same thing and would refuse the
+    // booking after the fact; better to say so here.
+    if (!phoneE164) return 'That is not a valid phone number for the country selected.'
     return null
   }
 
@@ -231,7 +269,8 @@ export default function NewBookingPage() {
         firstName: guest.firstName.trim(),
         lastName: guest.lastName.trim(),
         email: guest.email.trim(),
-        phone: guest.phone.trim(),
+        phone: phoneE164,
+        phoneCountry,
         paymentMethod,
         sendEmail,
       })
@@ -304,7 +343,7 @@ export default function NewBookingPage() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {([['firstName', 'First name'], ['lastName', 'Last name'], ['email', 'Email'], ['phone', 'Phone']] as const).map(([key, label]) => (
+            {([['firstName', 'First name'], ['lastName', 'Last name'], ['email', 'Email']] as const).map(([key, label]) => (
               <label key={key} className="text-xs text-gray-600">
                 {label}
                 <input
@@ -314,6 +353,36 @@ export default function NewBookingPage() {
                 />
               </label>
             ))}
+            <label className="text-xs text-gray-600">
+              Phone
+              <div className="mt-1 flex">
+                {/* A native select: two hundred and fifty countries, and
+                    typing the first letters of one jumps to it, which is as
+                    good as a search box for a desk that uses a keyboard. */}
+                <select
+                  value={phoneCountry}
+                  onChange={(e) => setPhoneCountry(e.target.value as CountryCode)}
+                  className="w-24 shrink-0 rounded-l-md border border-r-0 border-gray-300 px-1.5 py-1.5 text-sm"
+                >
+                  {PHONE_COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>{c.code} {c.dial}</option>
+                  ))}
+                </select>
+                <input
+                  value={guest.phone}
+                  onChange={(e) => setGuest({ ...guest, phone: e.target.value })}
+                  placeholder="79 000 0000"
+                  className={`w-full rounded-r-md border px-2 py-1.5 text-sm ${
+                    guest.phone.trim() && !phoneE164 ? 'border-red-400' : 'border-gray-300'
+                  }`}
+                />
+              </div>
+              {guest.phone.trim() && !phoneE164 && (
+                <span className="mt-0.5 block text-[11px] text-red-600">
+                  Not a valid number for {phoneCountry}.
+                </span>
+              )}
+            </label>
           </div>
 
           {!hotelId ? (

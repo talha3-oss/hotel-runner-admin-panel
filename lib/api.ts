@@ -1047,6 +1047,9 @@ export interface BookingChangeQuote {
  *  the price is the server's, the rooms must be on sale, RateTiger is told.
  *  The guest's confirmation can be held back; nothing else can. */
 export interface ManualBooking extends BookingChange {
+  /** Which country the guest's number belongs to, so the server can read a
+   *  locally written one. Ignored when the number carries its own code. */
+  phoneCountry?: string
   hotelId: string
   hotelName: string
   rooms: { id: string }[]
