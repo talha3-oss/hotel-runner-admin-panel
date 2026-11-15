@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
+import EmailDesigner from './EmailDesigner'
 import { useSearchParams } from 'next/navigation'
 import {
   UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, KeyIcon,
@@ -591,14 +592,14 @@ export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'auth-pages' | 'partner-api' | 'ratetiger' | 'ratetiger-logs'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'auth-pages' | 'partner-api' | 'ratetiger' | 'ratetiger-logs'>('profile')
 
   // The header's menu links here with ?tab=..., so Profile and Settings land
   // where they say they will instead of always opening on Profile.
   const searchParams = useSearchParams()
   useEffect(() => {
     const wanted = searchParams.get('tab')
-    const allowed = ['profile', 'site', 'uploads', 'security', 'email', 'auth-pages', 'partner-api', 'ratetiger', 'ratetiger-logs']
+    const allowed = ['profile', 'site', 'uploads', 'security', 'email', 'emails', 'auth-pages', 'partner-api', 'ratetiger', 'ratetiger-logs']
     if (wanted && allowed.includes(wanted)) {
       setActiveTab(wanted as typeof activeTab)
     }
@@ -961,6 +962,8 @@ export default function SettingsPage() {
     { id: 'uploads' as const, name: 'Uploads', icon: ArrowUpTrayIcon },
     { id: 'security' as const, name: 'Security', icon: ShieldCheckIcon },
     { id: 'email' as const, name: 'Email (SMTP)', icon: EnvelopeIcon },
+    // What the site sends, as opposed to how it sends it.
+    { id: 'emails' as const, name: 'Emails', icon: EnvelopeIcon },
     { id: 'auth-pages' as const, name: 'Login & Signup', icon: UserIcon },
     { id: 'partner-api' as const, name: 'Partner API', icon: KeyIcon },
     { id: 'ratetiger' as const, name: 'RateTiger', icon: PaperAirplaneIcon },
@@ -1369,6 +1372,8 @@ export default function SettingsPage() {
           )}
 
           {/* Email / SMTP tab */}
+          {activeTab === 'emails' && <EmailDesigner />}
+
           {activeTab === 'email' && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
               <div className="px-6 py-4 border-b border-gray-100">

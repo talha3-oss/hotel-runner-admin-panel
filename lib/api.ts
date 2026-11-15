@@ -1054,6 +1054,90 @@ export interface BookingChangeQuote {
  *  Everything about the stay is handled exactly as it is on the website --
  *  the price is the server's, the rooms must be on sale, RateTiger is told.
  *  The guest's confirmation can be held back; nothing else can. */
+// ── The emails the site sends ──────────────────────────────────────────────
+
+/** One section of an email. `type` says what it is; the rest is whatever
+ *  that type lets the admin write. Sections whose content comes from the
+ *  booking carry nothing but `on`. */
+export interface EmailBlock {
+  type: string
+  on: boolean
+  title?: string
+  subtitle?: string
+  text?: string
+  heading?: string
+  image?: string
+  label?: string
+  url?: string
+}
+
+export interface EmailTemplate {
+  kind: string
+  name: string
+  note: string
+  subject: string
+  blocks: EmailBlock[]
+  /** Whether the admin has saved an arrangement, or this is the built-in. */
+  custom: boolean
+}
+
+export interface EmailBlockKind {
+  type: string
+  label: string
+  /** Its content comes from the booking: it can be moved and turned off,
+   *  but not written. */
+  locked: boolean
+  fields: string[]
+  /** Only offered on these emails, or null for all of them. */
+  only: string[] | null
+}
+
+export async function fetchEmailTemplates(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/emails`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json() as Promise<{
+    success: boolean
+    emails?: EmailTemplate[]
+    blockKinds?: EmailBlockKind[]
+    tokens?: { name: string; about: string }[]
+    message?: string
+  }>
+}
+
+export async function saveEmailTemplate(
+  token: string, kind: string, payload: { subject: string; blocks: EmailBlock[] }
+) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/emails/${kind}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  })
+  return res.json()
+}
+
+export async function resetEmailTemplate(token: string, kind: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/emails/${kind}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}
+
+/** What it would look like, drawn against a made-up booking. Nothing is
+ *  sent and nothing is saved. */
+export async function previewEmailTemplate(
+  token: string, kind: string, payload: { subject: string; blocks: EmailBlock[] }
+) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/emails/${kind}/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  })
+  return res.json() as Promise<{ success: boolean; subject?: string; html?: string; message?: string }>
+}
+
 export interface ManualBooking extends BookingChange {
   /** Which country the guest's number belongs to, so the server can read a
    *  locally written one. Ignored when the number carries its own code. */

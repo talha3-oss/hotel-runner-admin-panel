@@ -1,0 +1,404 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  ChevronUpIcon, ChevronDownIcon, EyeIcon, PlusIcon, TrashIcon,
+  ArrowUturnLeftIcon, LockClosedIcon, XMarkIcon,
+} from '@heroicons/react/24/outline'
+import {
+  fetchEmailTemplates, saveEmailTemplate, resetEmailTemplate, previewEmailTemplate,
+  type EmailTemplate, type EmailBlock, type EmailBlockKind,
+} from '../../../lib/api'
+
+// The emails the site sends, as the admin arranges them.
+//
+// Every one of them was written into the code, so changing a word meant a
+// deploy. The layout is still ours -- a guest's receipt has to add up, and
+// an invoice table is not something anybody should be typing by hand -- but
+// which sections appear, in what order, and the writing in them is theirs.
+//
+// Sections marked with a padlock take their content from the booking. They
+// can be moved and turned off; there is nothing in them to write.
+
+/** How a field is asked for. Everything else is a single line. */
+const LONG_FIELDS = new Set(['text'])
+
+const FIELD_LABEL: Record<string, string> = {
+  title: 'Title',
+  subtitle: 'Line under the title',
+  text: 'Text',
+  heading: 'Heading',
+  image: 'Picture (full address)',
+  label: 'Button label',
+  url: 'Where it goes',
+}
+
+export default function EmailDesigner() {
+  const [emails, setEmails] = useState<EmailTemplate[]>([])
+  const [blockKinds, setBlockKinds] = useState<EmailBlockKind[]>([])
+  const [tokens, setTokens] = useState<{ name: string; about: string }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  // Which email is open, and the arrangement being edited. Held apart from
+  // the saved list so Cancel is simply closing it.
+  const [open, setOpen] = useState<string | null>(null)
+  const [subject, setSubject] = useState('')
+  const [blocks, setBlocks] = useState<EmailBlock[]>([])
+  const [expanded, setExpanded] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [note, setNote] = useState('')
+
+  const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+
+  const load = useCallback(async () => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) { setError('Admin token not found.'); setLoading(false); return }
+    setLoading(true)
+    try {
+      const result = await fetchEmailTemplates(token)
+      if (result.success) {
+        setEmails(result.emails || [])
+        setBlockKinds(result.blockKinds || [])
+        setTokens(result.tokens || [])
+        setError('')
+      } else {
+        setError(result.message || 'Could not read the emails.')
+      }
+    } catch {
+      setError('Unable to connect to server.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const current = emails.find((e) => e.kind === open) || null
+  const specOf = (type: string) => blockKinds.find((b) => b.type === type)
+
+  /** The sections the admin may add to this email: the ones with writing in
+   *  them, minus any already there that only make sense once. */
+  const addable = useMemo(() => {
+    if (!current) return []
+    return blockKinds.filter(
+      (b) => !b.locked && (!b.only || b.only.includes(current.kind)) &&
+             (b.fields.length > 0) &&
+             !['brand', 'banner', 'footer'].includes(b.type)
+    )
+  }, [blockKinds, current])
+
+  const openEmail = (email: EmailTemplate) => {
+    setOpen(email.kind)
+    setSubject(email.subject)
+    // Copied, not referenced: editing must not change the list behind it.
+    setBlocks(email.blocks.map((b) => ({ ...b })))
+    setExpanded(null)
+    setNote('')
+  }
+
+  const move = (index: number, delta: number) => {
+    const to = index + delta
+    if (to < 0 || to >= blocks.length) return
+    const next = [...blocks]
+    const [moved] = next.splice(index, 1)
+    next.splice(to, 0, moved)
+    setBlocks(next)
+    setExpanded(expanded === index ? to : expanded)
+  }
+
+  const setField = (index: number, field: string, value: string) =>
+    setBlocks(blocks.map((b, i) => (i === index ? { ...b, [field]: value } : b)))
+
+  const toggle = (index: number) =>
+    setBlocks(blocks.map((b, i) => (i === index ? { ...b, on: !b.on } : b)))
+
+  const remove = (index: number) => {
+    setBlocks(blocks.filter((_, i) => i !== index))
+    setExpanded(null)
+  }
+
+  const add = (type: string) => {
+    setBlocks([...blocks, { type, on: true }])
+    setExpanded(blocks.length)
+  }
+
+  const onSave = async () => {
+    if (!current) return
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setSaving(true)
+    setNote('')
+    try {
+      const result = await saveEmailTemplate(token, current.kind, { subject, blocks })
+      setNote(result.success ? 'Saved.' : result.message || 'Could not save that.')
+      if (result.success) await load()
+    } catch {
+      setNote('Unable to connect to server.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onReset = async () => {
+    if (!current) return
+    if (!confirm('Put this email back to how it came? Anything you have written here is lost.')) return
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setSaving(true)
+    try {
+      const result = await resetEmailTemplate(token, current.kind)
+      setNote(result.success ? 'Back to the default.' : result.message || 'Could not reset that.')
+      if (result.success) {
+        const fresh = await fetchEmailTemplates(token)
+        const got = (fresh.emails || []).find((e) => e.kind === current.kind)
+        if (got) { setEmails(fresh.emails || []); setSubject(got.subject); setBlocks(got.blocks.map((b) => ({ ...b }))) }
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onPreview = async () => {
+    if (!current) return
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setPreviewing(true)
+    try {
+      const result = await previewEmailTemplate(token, current.kind, { subject, blocks })
+      if (result.success) setPreview({ subject: result.subject || '', html: result.html || '' })
+      else setNote(result.message || 'Could not draw that.')
+    } catch {
+      setNote('Unable to connect to server.')
+    } finally {
+      setPreviewing(false)
+    }
+  }
+
+  if (loading) return <p className="text-sm text-gray-500">Reading the emails…</p>
+  if (error) return <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium text-gray-900">Emails</h3>
+        <p className="mt-1 text-sm text-gray-500">
+          What the site sends, and how it is put together. The layout is fixed — a receipt has to
+          add up — but you choose which sections appear, in what order, and what they say.
+        </p>
+      </div>
+
+      {/* ── The list ── */}
+      <div className="divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 bg-white">
+        {emails.map((email) => (
+          <div key={email.kind} className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                {email.name}
+                {email.custom && (
+                  <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700">
+                    Edited
+                  </span>
+                )}
+              </p>
+              <p className="mt-0.5 text-xs text-gray-500">{email.note}</p>
+              <p className="mt-1 truncate font-mono text-[11px] text-gray-400">{email.subject}</p>
+            </div>
+            <button
+              onClick={() => openEmail(email)}
+              className="shrink-0 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+            >
+              Edit
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* ── The editor ── */}
+      {current && (
+        <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h4 className="text-base font-medium text-gray-900">{current.name}</h4>
+              <p className="mt-0.5 text-xs text-gray-500">{current.note}</p>
+            </div>
+            <button onClick={() => setOpen(null)} className="text-gray-400 hover:text-gray-600">
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Subject</label>
+            <input
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+
+          {/* What may be dropped into any writing. */}
+          <div className="rounded-md bg-gray-50 px-3 py-2">
+            <p className="text-xs font-medium text-gray-600">You can use these anywhere you write:</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {tokens.map((t) => (
+                <span key={t.name} title={t.about}
+                      className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] text-gray-600 ring-1 ring-gray-200">
+                  {`{{${t.name}}}`}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* ── The sections ── */}
+          <div className="space-y-2">
+            {blocks.map((b, i) => {
+              const spec = specOf(b.type)
+              const writable = (spec?.fields || []).length > 0 && !spec?.locked
+              const isOpen = expanded === i
+              return (
+                <div key={`${b.type}-${i}`} className={`rounded-md border ${b.on ? 'border-gray-200' : 'border-dashed border-gray-300 bg-gray-50'}`}>
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <div className="flex flex-col">
+                      <button onClick={() => move(i, -1)} disabled={i === 0}
+                              aria-label="Move up"
+                              className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 disabled:pointer-events-none disabled:opacity-25">
+                        <ChevronUpIcon className="h-4 w-4" strokeWidth={2.5} />
+                      </button>
+                      <button onClick={() => move(i, 1)} disabled={i === blocks.length - 1}
+                              aria-label="Move down"
+                              className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 disabled:pointer-events-none disabled:opacity-25">
+                        <ChevronDownIcon className="h-4 w-4" strokeWidth={2.5} />
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => (writable ? setExpanded(isOpen ? null : i) : undefined)}
+                      className={`flex min-w-0 flex-1 items-center gap-2 text-left ${writable ? 'cursor-pointer' : 'cursor-default'}`}
+                    >
+                      <span className={`truncate text-sm ${b.on ? 'text-gray-900' : 'text-gray-400'}`}>
+                        {spec?.label || b.type}
+                      </span>
+                      {spec?.locked && (
+                        <span title="Its content comes from the booking" className="shrink-0 text-gray-300">
+                          <LockClosedIcon className="h-3.5 w-3.5" />
+                        </span>
+                      )}
+                    </button>
+
+                    <label className="flex shrink-0 cursor-pointer items-center gap-2">
+                      <span className="text-[11px] text-gray-400">{b.on ? 'Shown' : 'Hidden'}</span>
+                      <div
+                        onClick={() => toggle(i)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${b.on ? 'bg-primary-600' : 'bg-gray-300'}`}
+                      >
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${b.on ? 'translate-x-5' : 'translate-x-1'}`} />
+                      </div>
+                    </label>
+
+                    {/* Only the ones the admin added themselves can go. The
+                        built-in sections turn off instead, so an email can
+                        always be put back together. */}
+                    {writable && !['brand', 'banner', 'footer'].includes(b.type) && (
+                      <button onClick={() => remove(i)} aria-label="Remove section"
+                              className="shrink-0 rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-600">
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {isOpen && writable && (
+                    <div className="space-y-3 border-t border-gray-100 px-3 py-3">
+                      {(spec?.fields || []).map((field) => (
+                        <div key={field}>
+                          <label className="mb-1 block text-xs font-medium text-gray-600">
+                            {FIELD_LABEL[field] || field}
+                          </label>
+                          {LONG_FIELDS.has(field) ? (
+                            <textarea
+                              rows={3}
+                              value={b[field as keyof EmailBlock] as string || ''}
+                              onChange={(e) => setField(i, field, e.target.value)}
+                              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                          ) : (
+                            <input
+                              value={b[field as keyof EmailBlock] as string || ''}
+                              onChange={(e) => setField(i, field, e.target.value)}
+                              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* ── Adding one ── */}
+          {addable.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+              <span className="text-xs text-gray-500">Add a section:</span>
+              {addable.map((b) => (
+                <button key={b.type} onClick={() => add(b.type)}
+                        className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-700 transition-colors hover:bg-gray-50">
+                  <PlusIcon className="h-3.5 w-3.5" /> {b.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
+            <button onClick={onSave} disabled={saving}
+                    className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button onClick={onPreview} disabled={previewing}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              <EyeIcon className="h-4 w-4" /> {previewing ? 'Drawing…' : 'Preview'}
+            </button>
+            {current.custom && (
+              <button onClick={onReset} disabled={saving}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+                <ArrowUturnLeftIcon className="h-4 w-4" /> Back to default
+              </button>
+            )}
+            {note && <span className="text-sm text-gray-500">{note}</span>}
+          </div>
+        </div>
+      )}
+
+      {/* ── What it would look like ──
+          In an iframe, because the email brings its own styling and must not
+          be allowed to reach the panel's. Drawn against a made-up booking:
+          a preview that reached for a real guest's stay would be showing
+          somebody's name and money to whoever happened to be editing. */}
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+             onClick={() => setPreview(null)}>
+          <div className="flex h-full max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white"
+               onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-gray-400">Subject</p>
+                <p className="truncate text-sm font-medium text-gray-900">{preview.subject}</p>
+                <p className="mt-0.5 text-[11px] text-gray-400">Drawn against a made-up booking. Nothing was sent.</p>
+              </div>
+              <button onClick={() => setPreview(null)} className="shrink-0 text-gray-400 hover:text-gray-600">
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <iframe
+              title="Email preview"
+              sandbox=""
+              srcDoc={preview.html}
+              className="h-full w-full flex-1 border-0 bg-gray-100"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
