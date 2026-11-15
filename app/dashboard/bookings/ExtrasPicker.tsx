@@ -21,7 +21,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronDownIcon } from '@heroicons/react/24/outline'
 import { formatMoney } from '../../../lib/currency'
 
-export type ExtraPriceType = 'per adult per morning' | 'per booking'
+export type ExtraPriceType = 'per adult per day' | 'per booking'
 
 export interface HotelExtra {
   id: string
@@ -47,6 +47,9 @@ export interface PickedExtra {
   id: string
   roomIndex: number
   mornings: number
+  /** How many of the room's party it is for. The room's whole party unless
+   *  the guest said otherwise -- a bouquet is usually for one of a couple. */
+  people: number
 }
 
 const clamp = (value: number, low: number, high: number) =>
@@ -81,7 +84,11 @@ export function readHotelExtras(hotel: { bookingExtras?: unknown } | null | unde
       name,
       description: String(row.description || '').trim(),
       price,
-      priceType: row.priceType === 'per adult per morning' ? 'per adult per morning' : 'per booking',
+      // The wording changed on 2026-11-15. Both spellings are read and only
+      // the new one is written, so nothing had to be migrated.
+      priceType: row.priceType === 'per adult per day' || row.priceType === 'per adult per morning'
+        ? 'per adult per day'
+        : 'per booking',
       rooms: codesOf(row.rooms),
     })
   })
@@ -96,10 +103,14 @@ export const soldWith = (extra: HotelExtra, room: ExtrasRoom) =>
 /** What one add-on comes to in one room. The same arithmetic the server
  *  does, so the figure on screen is the figure that gets written. */
 export function extraTotal(
-  extra: HotelExtra, room: ExtrasRoom, mornings: number, nights: number
+  extra: HotelExtra, room: ExtrasRoom, mornings: number, nights: number, people?: number
 ): number {
   if (extra.priceType === 'per booking') return extra.price
-  return extra.price * Math.max(1, room.adults) * clamp(mornings, 1, Math.max(1, nights))
+  const party = Math.max(1, room.adults)
+  // Nothing said is everybody, which is every add-on taken before the guest
+  // could choose -- and what the server assumes too.
+  const heads = clamp(people && people > 0 ? people : party, 1, party)
+  return extra.price * heads * clamp(mornings, 1, Math.max(1, nights))
 }
 
 /** What goes in the request. The server matches on the id, checks the room
@@ -107,8 +118,8 @@ export function extraTotal(
  *  in that room -- so nothing here can invent a price. */
 export function extrasPayload(
   extras: HotelExtra[], rooms: ExtrasRoom[], picked: PickedExtra[], nights: number
-): { id: string; name: string; roomIndex: number; mornings: number; total: number }[] {
-  const out: { id: string; name: string; roomIndex: number; mornings: number; total: number }[] = []
+): { id: string; name: string; roomIndex: number; mornings: number; people: number; total: number }[] {
+  const out: { id: string; name: string; roomIndex: number; mornings: number; people: number; total: number }[] = []
   for (const choice of picked) {
     const extra = extras.find((e) => e.id === choice.id)
     const room = rooms[choice.roomIndex]
@@ -118,7 +129,8 @@ export function extrasPayload(
       name: extra.name,
       roomIndex: room.index,
       mornings: clamp(choice.mornings, 1, Math.max(1, nights)),
-      total: extraTotal(extra, room, choice.mornings, nights),
+      people: clamp(choice.people || room.adults, 1, Math.max(1, room.adults)),
+      total: extraTotal(extra, room, choice.mornings, nights, choice.people),
     })
   }
   return out
@@ -131,7 +143,7 @@ export function extrasPayload(
  *  single-room booking's add-on already was. */
 export function pickedFromBooking(
   extras: HotelExtra[],
-  on: { id?: string; name?: string; total?: number; mornings?: number | null; roomIndex?: number | null }[] | undefined,
+  on: { id?: string; name?: string; total?: number; mornings?: number | null; people?: number | null; roomIndex?: number | null }[] | undefined,
   rooms: ExtrasRoom[],
   nights: number
 ): PickedExtra[] {
@@ -153,22 +165,29 @@ export function pickedFromBooking(
     if (!room || !soldWith(extra, room)) continue
     if (out.some((p) => p.id === extra.id && p.roomIndex === roomIndex)) continue
 
+    // How many people it was taken for. A booking from before the guest
+    // could choose says nothing, and those were for the whole room.
+    const saidPeople = Number(had?.people)
+    const people = Number.isFinite(saidPeople) && saidPeople > 0
+      ? clamp(saidPeople, 1, Math.max(1, room.adults))
+      : Math.max(1, room.adults)
+
     let mornings = Math.max(1, nights)
-    if (extra.priceType === 'per adult per morning') {
+    if (extra.priceType === 'per adult per day') {
       const said = Number(had?.mornings)
       if (Number.isFinite(said) && said > 0) {
         mornings = clamp(said, 1, Math.max(1, nights))
       } else {
-        // A booking from before the mornings were written down: read them
-        // back out of what it was billed.
-        const each = extra.price * Math.max(1, room.adults)
+        // A booking from before the days were written down: read them back
+        // out of what it was billed, over the people it was billed for.
+        const each = extra.price * people
         const billed = Number(had?.total)
         if (each > 0 && Number.isFinite(billed) && billed > 0) {
           mornings = clamp(billed / each, 1, Math.max(1, nights))
         }
       }
     }
-    out.push({ id: extra.id, roomIndex, mornings })
+    out.push({ id: extra.id, roomIndex, mornings, people })
   }
   return out
 }
@@ -210,7 +229,7 @@ export function ExtrasPicker({
     for (const choice of picked) {
       const extra = extras.find((e) => e.id === choice.id)
       const room = rooms[choice.roomIndex]
-      if (extra && room) sum += extraTotal(extra, room, choice.mornings, stay)
+      if (extra && room) sum += extraTotal(extra, room, choice.mornings, stay, choice.people)
     }
     return sum
   }, [extras, rooms, picked, stay])
@@ -232,7 +251,17 @@ export function ExtrasPicker({
     const on = chosen(extra.id, room.index)
     onChange(on
       ? picked.filter((p) => !(p.id === extra.id && p.roomIndex === room.index))
-      : [...picked, { id: extra.id, roomIndex: room.index, mornings: stay }])
+      : [...picked, { id: extra.id, roomIndex: room.index, mornings: stay, people: Math.max(1, room.adults) }])
+  }
+
+  const setPeople = (extra: HotelExtra, room: ExtrasRoom, value: number) => {
+    onChange(
+      picked.map((p) =>
+        p.id === extra.id && p.roomIndex === room.index
+          ? { ...p, people: clamp(value, 1, Math.max(1, room.adults)) }
+          : p
+      )
+    )
   }
 
   const setMornings = (extra: HotelExtra, room: ExtrasRoom, value: number) => {
@@ -253,7 +282,7 @@ export function ExtrasPicker({
           const mine = picked.filter((p) => p.roomIndex === room.index)
           const roomTotal = mine.reduce((sum, choice) => {
             const extra = extras.find((e) => e.id === choice.id)
-            return extra ? sum + extraTotal(extra, room, choice.mornings, stay) : sum
+            return extra ? sum + extraTotal(extra, room, choice.mornings, stay, choice.people) : sum
           }, 0)
           return (
             <div key={room.index} className="rounded-md border border-gray-200">
@@ -295,7 +324,7 @@ export function ExtrasPicker({
                 <div className="divide-y divide-gray-100">
                   {forThisRoom.map((extra) => {
                     const on = chosen(extra.id, room.index)
-                    const byMorning = extra.priceType === 'per adult per morning'
+                    const byDay = extra.priceType === 'per adult per day'
                     return (
                       <div
                         key={extra.id}
@@ -312,28 +341,46 @@ export function ExtrasPicker({
                             <span className="block truncate text-sm text-gray-900">{extra.name}</span>
                             <span className="block text-xs text-gray-500">
                               {formatMoney(extra.price)}{' '}
-                              {byMorning ? 'per adult, per morning' : 'per booking'}
+                              {byDay ? 'per adult, per day' : 'per booking'}
                             </span>
                           </span>
                         </label>
 
-                        {on && byMorning && (
-                          <label className="flex items-center gap-1.5 text-xs text-gray-600">
-                            Mornings
-                            <input
-                              type="number"
-                              min={1}
-                              max={stay}
-                              value={on.mornings}
-                              onChange={(e) => setMornings(extra, room, Number(e.target.value))}
-                              className="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm"
-                            />
-                            <span className="text-gray-400">of {stay}</span>
-                          </label>
+                        {on && byDay && (
+                          <>
+                            <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                              Days
+                              <input
+                                type="number"
+                                min={1}
+                                max={stay}
+                                value={on.mornings}
+                                onChange={(e) => setMornings(extra, room, Number(e.target.value))}
+                                className="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                              />
+                              <span className="text-gray-400">of {stay}</span>
+                            </label>
+                            {/* Who it is for. Everybody in the room unless
+                                somebody says otherwise -- a bouquet is
+                                usually for one of a couple, and charging
+                                for two was simply wrong. */}
+                            <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                              People
+                              <input
+                                type="number"
+                                min={1}
+                                max={Math.max(1, room.adults)}
+                                value={on.people}
+                                onChange={(e) => setPeople(extra, room, Number(e.target.value))}
+                                className="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                              />
+                              <span className="text-gray-400">of {Math.max(1, room.adults)}</span>
+                            </label>
+                          </>
                         )}
 
                         <div className="w-20 text-right text-sm tabular-nums text-gray-900">
-                          {on ? formatMoney(extraTotal(extra, room, on.mornings, stay)) : '—'}
+                          {on ? formatMoney(extraTotal(extra, room, on.mornings, stay, on.people)) : '—'}
                         </div>
                       </div>
                     )

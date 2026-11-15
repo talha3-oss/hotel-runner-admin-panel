@@ -270,7 +270,7 @@ export default function BookingPage() {
   const extras = Array.isArray(booking?.extras)
     ? (booking!.extras as {
         id?: string; name: string; price: number; total: number
-        roomIndex?: number | null; roomName?: string | null; mornings?: number | null
+        roomIndex?: number | null; roomName?: string | null; mornings?: number | null; people?: number | null
       }[])
     : []
 
@@ -876,13 +876,16 @@ export default function BookingPage() {
                   <div key={i} className="flex justify-between gap-3 text-sm">
                     <span className="min-w-0 text-gray-700">
                       {e.name}
-                      {/* Which room it is for, and how many mornings of it --
-                          an add-on belongs to a room now, and "Breakfast" on
-                          its own does not say whose. */}
+                      {/* Which room it is for, how many days of it, and for
+                          how many people -- an add-on belongs to a room now,
+                          and "Breakfast" on its own does not say whose. */}
                       {e.roomName && <span className="text-gray-400"> — {e.roomName}</span>}
                       {typeof e.mornings === 'number' && e.mornings > 0 && (
                         <span className="text-gray-400">
-                          {' '}· {e.mornings} morning{e.mornings === 1 ? '' : 's'}
+                          {' '}· {e.mornings} day{e.mornings === 1 ? '' : 's'}
+                          {typeof e.people === 'number' && e.people > 0
+                            ? ` · ${e.people} ${e.people === 1 ? 'person' : 'people'}`
+                            : ''}
                         </span>
                       )}
                     </span>

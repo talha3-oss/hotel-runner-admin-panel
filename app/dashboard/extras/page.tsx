@@ -12,7 +12,7 @@ interface Extra {
   name: string
   description: string
   price: number
-  priceType: 'per booking' | 'per adult per morning'
+  priceType: 'per booking' | 'per adult per day'
   image: string
   /** The room codes this add-on is sold with. Empty means every room, which
    *  is what every extra written before 2026-11-10 is -- so none of them had
@@ -31,7 +31,7 @@ type ExtraFormData = {
   name: string
   description: string
   price: string
-  priceType: 'per booking' | 'per adult per morning'
+  priceType: 'per booking' | 'per adult per day'
   image: string
   rooms: string[]
 }
@@ -68,7 +68,13 @@ const toExtras = (raw: unknown): Extra[] => {
         name,
         description: typeof r.description === 'string' ? r.description : '',
         price: Number.isFinite(Number(r.price)) ? Math.max(0, Number(r.price)) : 0,
-        priceType: r.priceType === 'per adult per morning' ? 'per adult per morning' : 'per booking',
+        // The wording changed on 2026-11-15 -- a bouquet is not a breakfast
+        // and there was nothing about a morning in it. Both spellings are
+        // read and only the new one is written, so nothing had to be
+        // migrated and the data tidies itself as extras are edited.
+        priceType: r.priceType === 'per adult per day' || r.priceType === 'per adult per morning'
+          ? 'per adult per day'
+          : 'per booking',
         image: typeof r.image === 'string' ? r.image : '',
         rooms: codesOf(r.rooms),
       } as Extra
@@ -480,7 +486,7 @@ export default function ExtrasPage() {
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   >
                     <option value="per booking">Per booking</option>
-                    <option value="per adult per morning">Per adult per morning</option>
+                    <option value="per adult per day">Per adult per day</option>
                   </select>
                 </div>
               </div>
