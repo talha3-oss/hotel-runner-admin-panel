@@ -1,6 +1,7 @@
 'use client'
 
 import { ChangeEvent, FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import TimezonePicker, { clockNow } from '../../../components/TimezonePicker'
 import {
   MagnifyingGlassIcon,
   PlusIcon,
@@ -264,30 +265,6 @@ function RoomOccupancyPreview({
       )}
     </div>
   )
-}
-
-// Every zone this runtime knows. Asked of Intl rather than kept as a list of
-// ours, which would go stale. Older browsers have no supportedValuesOf, so a
-// short list of the ones these properties actually sit in is the fallback.
-const TIME_ZONES: string[] = (() => {
-  try {
-    const all = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] })
-      .supportedValuesOf?.('timeZone');
-    if (all?.length) return all;
-  } catch { /* not supported */ }
-  return ['Asia/Amman', 'Europe/Paris', 'Europe/Dublin', 'Europe/London', 'UTC'];
-})();
-
-/** What the clock says there right now, so whoever picks a zone can see at
- *  once whether they have picked the right one. */
-function clockNow(zone: string) {
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: zone, hour: '2-digit', minute: '2-digit', hour12: false,
-    }).format(new Date());
-  } catch {
-    return '—';
-  }
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -1241,18 +1218,13 @@ export default function HotelsPage() {
 
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">This property&apos;s time zone</label>
-                  {/* The list is the runtime's own, not one of ours to keep
-                      up to date. Typing the first letters of a zone jumps to
-                      it, which is how a desk finds Europe/Paris. */}
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                  {/* Searchable: a plain select of four hundred zones only
+                      jumps to what you type from the start of the name, so
+                      finding Paris meant knowing it is filed under Europe. */}
+                  <TimezonePicker
                     value={hotelForm.timezone}
-                    onChange={field('timezone')}
-                  >
-                    {TIME_ZONES.map((zone) => (
-                      <option key={zone} value={zone}>{zone}</option>
-                    ))}
-                  </select>
+                    onChange={(zone) => setHotelForm((prev) => ({ ...prev, timezone: zone }))}
+                  />
                   <p className="text-xs text-gray-400 mt-1">
                     The times above are on this clock, and so is anything sent at a set hour
                     &mdash; seven in the morning is a different moment in Amman than in Paris.
