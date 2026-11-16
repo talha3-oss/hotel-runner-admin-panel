@@ -181,78 +181,114 @@ function ScheduleBox({
 // hears from us anyway is annoyed twice, and the desk writing to them by hand
 // is the way that happens.
 
-function OptOutList() {
-  const [rows, setRows] = useState<EmailOptOut[]>([])
-  const [loading, setLoading] = useState(true)
-  const [shown, setShown] = useState(false)
+/** Which email carried the link they pressed, in words. The server stores
+ *  the kind, which reads like a column name. */
+const SOURCE_WORDS: Record<string, string> = {
+  offers_before_stay: 'Before the stay — offers',
+  online_check_in: 'Day before — online check-in',
+  online_check_out: 'Departure day — online check-out',
+  thank_you: 'After the stay — thank you',
+}
 
-  const load = useCallback(async () => {
-    const token = localStorage.getItem('adminToken')
-    if (!token) { setLoading(false); return }
-    setLoading(true)
-    try {
-      const result = await fetchEmailOptOuts(token)
-      setRows(result.optOuts || [])
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+function OptOutTable({
+  rows, loading, onPutBack,
+}: {
+  rows: EmailOptOut[]
+  loading: boolean
+  onPutBack: (row: EmailOptOut) => void
+}) {
+  const [find, setFind] = useState('')
 
-  useEffect(() => { load() }, [load])
-
-  const putBack = async (row: EmailOptOut) => {
-    if (!confirm(`Start sending to ${row.email} again?`)) return
-    const token = localStorage.getItem('adminToken')
-    if (!token) return
-    await removeEmailOptOut(token, row.id)
-    await load()
-  }
+  // Filtered here rather than at the server: the whole list is already in
+  // hand, and a list this size is not worth a round trip per keystroke.
+  const shown = useMemo(() => {
+    const needle = find.trim().toLowerCase()
+    if (!needle) return rows
+    return rows.filter(
+      (r) =>
+        r.email.toLowerCase().includes(needle) ||
+        (SOURCE_WORDS[r.source || ''] || r.source || '').toLowerCase().includes(needle)
+    )
+  }, [rows, find])
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white">
-      <button
-        onClick={() => setShown((p) => !p)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
-      >
-        <div>
-          <p className="text-sm font-medium text-gray-900">Unsubscribed</p>
-          <p className="mt-0.5 text-xs text-gray-500">
-            {loading
-              ? 'Reading…'
-              : rows.length === 0
-                ? 'Nobody has asked to stop receiving the timed emails.'
-                : `${rows.length} ${rows.length === 1 ? 'person has' : 'people have'} asked to stop receiving the timed emails.`}
-          </p>
-        </div>
-        {shown ? <ChevronUpIcon className="h-5 w-5 text-gray-400" /> : <ChevronDownIcon className="h-5 w-5 text-gray-400" />}
-      </button>
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-medium text-gray-900">Unsubscribed</h3>
+        <p className="mt-1 text-sm text-gray-500">
+          People who have asked to stop receiving the four timed emails. They still receive their
+          booking confirmation, any change to it, their invoice and anything to do with their
+          account — only the timed ones stop.
+        </p>
+      </div>
 
-      {shown && rows.length > 0 && (
-        <div className="border-t border-gray-200">
-          <p className="px-4 py-2 text-xs text-gray-500">
-            They still receive their booking confirmation, any change to it, and their invoice —
-            only the four timed emails stop.
+      {rows.length > 0 && (
+        <input
+          value={find}
+          onChange={(e) => setFind(e.target.value)}
+          placeholder="Search by address or email"
+          className="w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+        />
+      )}
+
+      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        {loading ? (
+          <p className="px-4 py-6 text-sm text-gray-500">Reading…</p>
+        ) : rows.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-gray-500">
+            Nobody has unsubscribed. The link sits at the foot of each timed email.
           </p>
-          <div className="divide-y divide-gray-100">
-            {rows.map((row) => (
-              <div key={row.id} className="flex items-center justify-between gap-4 px-4 py-2.5">
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-gray-900">{row.email}</p>
-                  <p className="mt-0.5 text-xs text-gray-500">
-                    {new Date(row.createdAt).toLocaleDateString()}
-                    {row.source && ` — from the ${row.source.replace(/_/g, ' ')} email`}
-                  </p>
-                </div>
-                <button
-                  onClick={() => putBack(row)}
-                  className="shrink-0 rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-700 transition-colors hover:bg-gray-50"
-                >
-                  Put back on
-                </button>
-              </div>
-            ))}
+        ) : shown.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-gray-500">Nothing matches “{find}”.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-medium text-gray-500">Email address</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-gray-500">Unsubscribed from</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-gray-500">When</th>
+                  <th className="px-4 py-2.5 text-right font-medium text-gray-500">
+                    <span className="sr-only">Put back on</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {shown.map((row) => (
+                  <tr key={row.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5 text-gray-900">{row.email}</td>
+                    <td className="px-4 py-2.5 text-gray-600">
+                      {/* Older rows may have none: the link only began
+                          carrying which email it came from later. */}
+                      {row.source ? SOURCE_WORDS[row.source] || row.source.replace(/_/g, ' ') : '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-gray-600">
+                      {new Date(row.createdAt).toLocaleDateString(undefined, {
+                        day: 'numeric', month: 'short', year: 'numeric',
+                      })}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                      <button
+                        onClick={() => onPutBack(row)}
+                        className="rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-700 transition-colors hover:bg-gray-50"
+                      >
+                        Put back on
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
+        )}
+      </div>
+
+      {rows.length > 0 && (
+        <p className="text-xs text-gray-500">
+          Put somebody back on only when they have asked you to. Writing to a person who
+          unsubscribed is what makes them press “report spam” instead, and that costs the
+          sending account.
+        </p>
       )}
     </div>
   )
@@ -276,6 +312,38 @@ export default function EmailDesigner() {
 
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null)
   const [previewing, setPreviewing] = useState(false)
+
+  // The two halves of this screen. The emails themselves, and who has asked
+  // not to receive the timed ones -- two different jobs, so two sub-tabs
+  // rather than one of them tucked under the other.
+  const [view, setView] = useState<'emails' | 'optouts'>('emails')
+
+  // Held here rather than inside the table, because the count is on the tab
+  // and the tab is drawn whichever half is showing.
+  const [optOuts, setOptOuts] = useState<EmailOptOut[]>([])
+  const [optOutsLoading, setOptOutsLoading] = useState(true)
+
+  const loadOptOuts = useCallback(async () => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) { setOptOutsLoading(false); return }
+    setOptOutsLoading(true)
+    try {
+      const result = await fetchEmailOptOuts(token)
+      setOptOuts(result.optOuts || [])
+    } finally {
+      setOptOutsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { loadOptOuts() }, [loadOptOuts])
+
+  const putBack = async (row: EmailOptOut) => {
+    if (!confirm(`Start sending the timed emails to ${row.email} again?`)) return
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    await removeEmailOptOut(token, row.id)
+    await loadOptOuts()
+  }
 
   const load = useCallback(async () => {
     const token = localStorage.getItem('adminToken')
@@ -406,6 +474,37 @@ export default function EmailDesigner() {
 
   return (
     <div className="space-y-6">
+      {/* ── The two halves ── */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {([
+          ['emails', 'Emails', emails.length],
+          ['optouts', 'Unsubscribed', optOutsLoading ? null : optOuts.length],
+        ] as const).map(([id, name, count]) => (
+          <button
+            key={id}
+            onClick={() => setView(id)}
+            className={`-mb-px flex items-center gap-2 border-b-2 px-3 py-2 text-sm transition-colors ${
+              view === id
+                ? 'border-primary-600 font-medium text-primary-700'
+                : 'border-transparent text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            {name}
+            {count !== null && (
+              <span className={`rounded-full px-1.5 py-0.5 text-[11px] ${
+                view === id ? 'bg-primary-50 text-primary-700' : 'bg-gray-100 text-gray-500'
+              }`}>
+                {count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {view === 'optouts' ? (
+        <OptOutTable rows={optOuts} loading={optOutsLoading} onPutBack={putBack} />
+      ) : (
+        <>
       <div>
         <h3 className="text-lg font-medium text-gray-900">Emails</h3>
         <p className="mt-1 text-sm text-gray-500">
@@ -448,8 +547,6 @@ export default function EmailDesigner() {
           </div>
         ))}
       </div>
-
-      <OptOutList />
 
       {/* ── The editor ── */}
       {current && (
@@ -653,6 +750,8 @@ export default function EmailDesigner() {
             />
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   )
