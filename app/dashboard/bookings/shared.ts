@@ -9,6 +9,10 @@ export const STATUS_COLORS: Record<string, string> = {
   CONFIRMED: 'bg-green-100 text-green-700',
   PENDING: 'bg-yellow-100 text-yellow-700',
   CANCELLED: 'bg-red-100 text-red-700',
+  // The two ends of the stay itself, set by the guest's own buttons, the
+  // desk, or the sweep that closes a stay at the property's check-out time.
+  CHECKED_IN: 'bg-sky-100 text-sky-700',
+  CHECKED_OUT: 'bg-gray-200 text-gray-700',
 }
 
 // The same three statuses, as a dropdown wants them: a label to read and a
@@ -18,12 +22,16 @@ export const STATUS_LABELS: Record<string, string> = {
   CONFIRMED: 'Confirmed',
   PENDING: 'Pending',
   CANCELLED: 'Cancelled',
+  CHECKED_IN: 'Checked in',
+  CHECKED_OUT: 'Checked out',
 }
 
 export const STATUS_DOTS: Record<string, string> = {
   CONFIRMED: 'bg-green-500',
   PENDING: 'bg-yellow-500',
   CANCELLED: 'bg-red-500',
+  CHECKED_IN: 'bg-sky-500',
+  CHECKED_OUT: 'bg-gray-500',
 }
 
 // A border in the status's own colour, so the control reads as a button
@@ -32,9 +40,12 @@ export const STATUS_BORDERS: Record<string, string> = {
   CONFIRMED: 'border-green-300',
   PENDING: 'border-yellow-300',
   CANCELLED: 'border-red-300',
+  CHECKED_IN: 'border-sky-300',
+  CHECKED_OUT: 'border-gray-400',
 }
 
-export const STATUS_ORDER = ['CONFIRMED', 'PENDING', 'CANCELLED']
+// In the order a stay goes through them, with cancelled last.
+export const STATUS_ORDER = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED']
 
 export const PAYMENT_COLORS: Record<string, string> = {
   PAID: 'bg-blue-100 text-blue-700',

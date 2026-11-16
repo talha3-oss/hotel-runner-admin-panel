@@ -152,6 +152,17 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
+/** An instant as the clock at the property read it. */
+const atProperty = (iso: string, zone: string) => {
+  try {
+    return new Date(iso).toLocaleString('en-GB', {
+      timeZone: zone, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+    })
+  } catch {
+    return new Date(iso).toLocaleString('en-GB')
+  }
+}
+
 export default function BookingPage() {
   const params = useParams<{ ref: string }>()
   const router = useRouter()
@@ -193,6 +204,8 @@ export default function BookingPage() {
   // bookings list did: it opens this page with the editor already open, and
   // the editor won the race every time.
   const [roomsReady, setRoomsReady] = useState(false)
+  // The property's zone, for saying when the guest actually arrived and left.
+  const [hotelZone, setHotelZone] = useState('Asia/Amman')
   const [extrasReady, setExtrasReady] = useState(false)
 
   // A Room row is one (room, rate plan) pair, so the same room appears once
@@ -279,6 +292,7 @@ export default function BookingPage() {
         })
         setAdultMinAge(whole(hotel.adultMinAge, 13, 1))
         setHotelExtras(readHotelExtras(hotel))
+        setHotelZone(String(hotel.timezone || 'Asia/Amman'))
       })
       .catch(() => {})
       .finally(() => { if (live) setExtrasReady(true) })
@@ -809,6 +823,21 @@ export default function BookingPage() {
               <Field label="Nights" value={nights} />
               <Field label="Check-in" value={booking.checkIn} />
               <Field label="Check-out" value={booking.checkOut} />
+              {/* When they actually arrived and left, in the property's own
+                  time -- the desk reading this is at the property. */}
+              {booking.checkedInAt && (
+                <Field label="Checked in" value={atProperty(booking.checkedInAt, hotelZone)} />
+              )}
+              {booking.checkedOutAt && (
+                <Field
+                  label="Checked out"
+                  value={`${atProperty(booking.checkedOutAt, hotelZone)}${
+                    booking.checkedOutBy === 'AUTO' ? ' — closed at check-out time'
+                    : booking.checkedOutBy === 'GUEST' ? ' — by the guest, online'
+                    : ''
+                  }`}
+                />
+              )}
               <div className="col-span-2">
                 <Field
                   label={`Guests — ${totalGuests} ${totalGuests === 1 ? 'person' : 'people'} in all`}

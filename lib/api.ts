@@ -865,6 +865,12 @@ export interface BookingRecord {
   createdAt: string
   bookingRef: string
   status: string
+  /** When the stay actually began and ended, and who closed it: GUEST from
+   *  their bookings page, ADMIN from here, AUTO by the sweep at the
+   *  property's check-out time. */
+  checkedInAt?: string | null
+  checkedOutAt?: string | null
+  checkedOutBy?: string | null
   firstName: string
   lastName: string
   email: string

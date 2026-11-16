@@ -212,6 +212,8 @@ export default function BookingsPage() {
           <option value="all">All Statuses</option>
           <option value="CONFIRMED">Confirmed</option>
           <option value="PENDING">Pending</option>
+          <option value="CHECKED_IN">Checked in</option>
+          <option value="CHECKED_OUT">Checked out</option>
           <option value="CANCELLED">Cancelled</option>
         </select>
 
@@ -323,7 +325,9 @@ export default function BookingsPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{fmt(b.total)}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[b.status] || 'bg-gray-100 text-gray-600'}`}>
-                        {b.status}
+                        {/* CHECKED_IN reads as a column name; the list keeps
+                            its capitals, so only the underscore goes. */}
+                        {String(b.status).replace(/_/g, ' ')}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

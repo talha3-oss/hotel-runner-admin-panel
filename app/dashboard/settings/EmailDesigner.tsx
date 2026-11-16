@@ -38,6 +38,8 @@ const FIELD_LABEL: Record<string, string> = {
   newText: 'When the booking is new',
   changedText: 'When it has been changed',
   cancelledText: 'When it has been cancelled',
+  checkedInText: 'When the guest checks in online',
+  checkedOutText: 'When the guest checks out online',
 }
 
 // ── When a timed email goes out ────────────────────────────────────────────
