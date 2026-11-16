@@ -334,6 +334,9 @@ export interface Hotel {
    *  is timed off it -- seven in the morning is a different moment in Amman
    *  than in Paris, and the server's clock is neither. */
   timezone?: string
+  /** This property's Google or TripAdvisor review page, for the thank-you
+   *  email's button. Null leaves the button out. */
+  reviewUrl?: string | null
   locationId: string
   location: string
   country: string
@@ -1071,6 +1074,23 @@ export interface EmailBlock {
   url?: string
 }
 
+/** When one of the four timed emails goes out.
+ *
+ *  `anchor` and `dir` are the server's and cannot be changed here: an email
+ *  called "the day before arrival" does not become one sent after departure
+ *  by typing in a box. `days`, `time` and `on` are the admin's. */
+export interface EmailSchedule {
+  on: boolean
+  days: number
+  /** "HH:MM" on a 24-hour clock, read at the property, not here. */
+  time: string
+  anchor: 'checkIn' | 'checkOut'
+  dir: 'before' | 'on' | 'after'
+  /** False for the check-out email, which is fixed to the day of departure
+   *  and can only have its hour moved. */
+  editDays: boolean
+}
+
 export interface EmailTemplate {
   kind: string
   name: string
@@ -1079,6 +1099,19 @@ export interface EmailTemplate {
   blocks: EmailBlock[]
   /** Whether the admin has saved an arrangement, or this is the built-in. */
   custom: boolean
+  /** True for the four that go out because a date arrived. */
+  timed?: boolean
+  /** Only on those four; null everywhere else. */
+  schedule?: EmailSchedule | null
+}
+
+/** Somebody who has asked not to receive the timed emails. */
+export interface EmailOptOut {
+  id: string
+  email: string
+  /** Which email carried the link they pressed. */
+  source: string | null
+  createdAt: string
 }
 
 export interface EmailBlockKind {
@@ -1136,6 +1169,38 @@ export async function previewEmailTemplate(
     body: JSON.stringify(payload),
   })
   return res.json() as Promise<{ success: boolean; subject?: string; html?: string; message?: string }>
+}
+
+/** Moving when a timed email goes out. Saved on its own, so changing the
+ *  hour does not count as rewriting the email. */
+export async function saveEmailSchedule(
+  token: string, kind: string, schedule: { on: boolean; days: number; time: string }
+) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/emails/${kind}/schedule`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(schedule),
+  })
+  return res.json() as Promise<{ success: boolean; message?: string; schedule?: EmailSchedule }>
+}
+
+/** Who has unsubscribed. The owner asked to be able to see this, so that a
+ *  guest who opted out is not written to again by hand either. */
+export async function fetchEmailOptOuts(token: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/email-optouts`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json() as Promise<{ success: boolean; optOuts?: EmailOptOut[]; message?: string }>
+}
+
+/** Putting somebody back on the list, for the guest who rings up and asks. */
+export async function removeEmailOptOut(token: string, id: string) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/email-optouts/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json() as Promise<{ success: boolean; message?: string }>
 }
 
 export interface ManualBooking extends BookingChange {

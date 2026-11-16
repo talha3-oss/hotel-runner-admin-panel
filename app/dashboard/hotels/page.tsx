@@ -91,6 +91,7 @@ type HotelForm = {
   checkInTime: string
   checkOutTime: string
   timezone: string
+  reviewUrl: string
 }
 
 /** Mirrors the backend's rule so the preview under the field is the address
@@ -167,6 +168,7 @@ const EMPTY_HOTEL: HotelForm = {
   checkInTime: '15:00',
   checkOutTime: '12:00',
   timezone: 'Asia/Amman',
+  reviewUrl: '',
 }
 
 const parseCsv = (value: string) =>
@@ -460,6 +462,7 @@ export default function HotelsPage() {
       checkInTime: hotel.checkInTime || '15:00',
       checkOutTime: hotel.checkOutTime || '12:00',
       timezone: hotel.timezone || 'Asia/Amman',
+      reviewUrl: hotel.reviewUrl ?? '',
     })
     setNewAmenity('')
     setFormError('')
@@ -669,6 +672,9 @@ export default function HotelsPage() {
         checkInTime: hotelForm.checkInTime,
         checkOutTime: hotelForm.checkOutTime,
         timezone: hotelForm.timezone,
+        // Null, not "": the thank-you email leaves its button out entirely
+        // when there is no page to send anybody to.
+        reviewUrl: hotelForm.reviewUrl.trim() || null,
       }
 
       const result = hotelForm.id
@@ -1229,6 +1235,21 @@ export default function HotelsPage() {
                     The times above are on this clock, and so is anything sent at a set hour
                     &mdash; seven in the morning is a different moment in Amman than in Paris.
                     It is now {clockNow(hotelForm.timezone)} there.
+                  </p>
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Where guests leave a review</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                    placeholder="https://g.page/r/…/review"
+                    value={hotelForm.reviewUrl}
+                    onChange={field('reviewUrl')}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    This property&apos;s Google or TripAdvisor review page. The thank-you email sent
+                    after a stay links to it. Leave it empty and that email simply carries no
+                    review button &mdash; better than one that goes nowhere.
                   </p>
                 </div>
 

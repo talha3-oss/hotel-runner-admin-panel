@@ -1,13 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronUpIcon, ChevronDownIcon, EyeIcon, PlusIcon, TrashIcon,
   ArrowUturnLeftIcon, LockClosedIcon, XMarkIcon,
 } from '@heroicons/react/24/outline'
 import {
   fetchEmailTemplates, saveEmailTemplate, resetEmailTemplate, previewEmailTemplate,
+  saveEmailSchedule, fetchEmailOptOuts, removeEmailOptOut,
   type EmailTemplate, type EmailBlock, type EmailBlockKind,
+  type EmailSchedule, type EmailOptOut,
 } from '../../../lib/api'
 
 // The emails the site sends, as the admin arranges them.
@@ -36,6 +38,224 @@ const FIELD_LABEL: Record<string, string> = {
   newText: 'When the booking is new',
   changedText: 'When it has been changed',
   cancelledText: 'When it has been cancelled',
+}
+
+// ── When a timed email goes out ────────────────────────────────────────────
+//
+// Four of the emails are sent because a date arrived rather than because
+// anybody did anything, and the owner asked to be able to move them.
+//
+// What can be moved is the day count and the hour. Which date it counts from,
+// and whether it counts forwards or backwards, is the server's -- an email
+// written around "you arrive tomorrow" does not become one sent after
+// departure by typing in a box.
+
+/** The sentence around the two boxes, so the admin reads what they are
+ *  setting rather than working it out from a field called "days". */
+const SCHEDULE_WORDS: Record<string, { before: string; after: string }> = {
+  before: { before: 'Goes out', after: 'days before arrival, at' },
+  after: { before: 'Goes out', after: 'days after departure, at' },
+  on: { before: 'Goes out on the day of departure, at', after: '' },
+}
+
+/** The timing in a handful of words, for the badge in the list. */
+const scheduleWords = (s: EmailSchedule) =>
+  s.dir === 'on'
+    ? `Departure day, ${s.time}`
+    : s.dir === 'before'
+      ? `${s.days} day${s.days === 1 ? '' : 's'} before, ${s.time}`
+      : `${s.days} day${s.days === 1 ? '' : 's'} after, ${s.time}`
+
+function ScheduleBox({
+  kind, schedule, onSaved,
+}: {
+  kind: string
+  schedule: EmailSchedule
+  onSaved: (s: EmailSchedule) => void
+}) {
+  const [on, setOn] = useState(schedule.on)
+  const [days, setDays] = useState(String(schedule.days))
+  const [time, setTime] = useState(schedule.time)
+  const [saving, setSaving] = useState(false)
+  const [note, setNote] = useState('')
+
+  // Reopening a different email reuses this component, so the boxes have to
+  // be refilled from whichever email is open now -- without this it would
+  // keep showing the last one's hour.
+  //
+  // Only when the email changes, though. Watching the saved values instead
+  // made saving wipe its own "Saved." the instant it appeared: the save
+  // hands the new timing up to the list, the list hands it back down, and
+  // this ran again.
+  const lastKind = useRef(kind)
+  useEffect(() => {
+    if (lastKind.current === kind) return
+    lastKind.current = kind
+    setOn(schedule.on); setDays(String(schedule.days)); setTime(schedule.time); setNote('')
+  }, [kind, schedule.on, schedule.days, schedule.time])
+
+  const dirty =
+    on !== schedule.on || Number(days) !== schedule.days || time !== schedule.time
+
+  const save = async () => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setSaving(true); setNote('')
+    try {
+      const result = await saveEmailSchedule(token, kind, { on, days: Number(days) || 0, time })
+      setNote(result.success ? 'Saved.' : result.message || 'Could not save that.')
+      if (result.success && result.schedule) onSaved(result.schedule)
+    } catch {
+      setNote('Unable to connect to server.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const words = SCHEDULE_WORDS[schedule.dir] || SCHEDULE_WORDS.before
+
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-amber-900">When it goes out</p>
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-amber-900">
+          <input
+            type="checkbox"
+            checked={on}
+            onChange={(e) => setOn(e.target.checked)}
+            className="h-4 w-4 rounded border-amber-300 text-primary-600 focus:ring-primary-500"
+          />
+          {on ? 'Sending' : 'Switched off'}
+        </label>
+      </div>
+
+      <div className={`mt-2 flex flex-wrap items-center gap-2 text-sm ${on ? 'text-amber-900' : 'text-amber-900/40'}`}>
+        <span>{words.before}</span>
+
+        {schedule.editDays && (
+          <input
+            type="number"
+            min={0}
+            max={90}
+            value={days}
+            disabled={!on}
+            onChange={(e) => setDays(e.target.value)}
+            className="w-16 rounded-md border border-amber-300 bg-white px-2 py-1 text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+        )}
+
+        {words.after && <span>{words.after}</span>}
+
+        <input
+          type="time"
+          value={time}
+          disabled={!on}
+          onChange={(e) => setTime(e.target.value)}
+          className="rounded-md border border-amber-300 bg-white px-2 py-1 text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
+        />
+      </div>
+
+      {/* The one thing that is easy to get wrong about these. */}
+      <p className="mt-2 text-xs text-amber-800/80">
+        That hour is read at each property, not here — 10:00 means ten in Amman for a Jordanian
+        hotel and ten in Paris for a French one. Set each hotel&apos;s time zone on its own page.
+      </p>
+
+      <div className="mt-2 flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={saving || !dirty}
+          className="rounded-md bg-amber-700 px-3 py-1.5 text-sm text-white transition-colors hover:bg-amber-800 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save timing'}
+        </button>
+        {note && <span className="text-xs text-amber-800">{note}</span>}
+      </div>
+    </div>
+  )
+}
+
+// ── Who has asked not to be written to ─────────────────────────────────────
+//
+// The owner asked to be able to see this. A guest who unsubscribed and then
+// hears from us anyway is annoyed twice, and the desk writing to them by hand
+// is the way that happens.
+
+function OptOutList() {
+  const [rows, setRows] = useState<EmailOptOut[]>([])
+  const [loading, setLoading] = useState(true)
+  const [shown, setShown] = useState(false)
+
+  const load = useCallback(async () => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) { setLoading(false); return }
+    setLoading(true)
+    try {
+      const result = await fetchEmailOptOuts(token)
+      setRows(result.optOuts || [])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const putBack = async (row: EmailOptOut) => {
+    if (!confirm(`Start sending to ${row.email} again?`)) return
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    await removeEmailOptOut(token, row.id)
+    await load()
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white">
+      <button
+        onClick={() => setShown((p) => !p)}
+        className="flex w-full items-center justify-between px-4 py-3 text-left"
+      >
+        <div>
+          <p className="text-sm font-medium text-gray-900">Unsubscribed</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            {loading
+              ? 'Reading…'
+              : rows.length === 0
+                ? 'Nobody has asked to stop receiving the timed emails.'
+                : `${rows.length} ${rows.length === 1 ? 'person has' : 'people have'} asked to stop receiving the timed emails.`}
+          </p>
+        </div>
+        {shown ? <ChevronUpIcon className="h-5 w-5 text-gray-400" /> : <ChevronDownIcon className="h-5 w-5 text-gray-400" />}
+      </button>
+
+      {shown && rows.length > 0 && (
+        <div className="border-t border-gray-200">
+          <p className="px-4 py-2 text-xs text-gray-500">
+            They still receive their booking confirmation, any change to it, and their invoice —
+            only the four timed emails stop.
+          </p>
+          <div className="divide-y divide-gray-100">
+            {rows.map((row) => (
+              <div key={row.id} className="flex items-center justify-between gap-4 px-4 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-gray-900">{row.email}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {new Date(row.createdAt).toLocaleDateString()}
+                    {row.source && ` — from the ${row.source.replace(/_/g, ' ')} email`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => putBack(row)}
+                  className="shrink-0 rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  Put back on
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function EmailDesigner() {
@@ -206,6 +426,15 @@ export default function EmailDesigner() {
                     Edited
                   </span>
                 )}
+                {/* Worth saying in the list: these four go out on their own,
+                    which is not true of any of the others. */}
+                {email.timed && email.schedule && (
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    email.schedule.on ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {email.schedule.on ? scheduleWords(email.schedule) : 'Switched off'}
+                  </span>
+                )}
               </p>
               <p className="mt-0.5 text-xs text-gray-500">{email.note}</p>
               <p className="mt-1 truncate font-mono text-[11px] text-gray-400">{email.subject}</p>
@@ -220,6 +449,8 @@ export default function EmailDesigner() {
         ))}
       </div>
 
+      <OptOutList />
+
       {/* ── The editor ── */}
       {current && (
         <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-5">
@@ -232,6 +463,22 @@ export default function EmailDesigner() {
               <XMarkIcon className="h-5 w-5" />
             </button>
           </div>
+
+          {/* Above the wording, because when an email goes out is the thing
+              most likely to be wrong and the easiest to miss. Saved on its
+              own button -- moving the hour is not rewriting the email, and
+              a half-finished edit below should not go with it. */}
+          {current.timed && current.schedule && (
+            <ScheduleBox
+              kind={current.kind}
+              schedule={current.schedule}
+              onSaved={(next) =>
+                setEmails((list) =>
+                  list.map((e) => (e.kind === current.kind ? { ...e, schedule: next } : e))
+                )
+              }
+            />
+          )}
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Subject</label>
