@@ -29,6 +29,9 @@ export interface HotelExtra {
   description: string
   price: number
   priceType: ExtraPriceType
+  /** On the booking but no longer in the property's own list. It can be
+   *  taken off, and not put back. */
+  retired?: boolean
   /** The room codes it is sold with. Empty is every room. */
   rooms: string[]
 }
@@ -95,6 +98,48 @@ export function readHotelExtras(hotel: { bookingExtras?: unknown } | null | unde
   return out
 }
 
+/** The property's add-ons, plus anything this booking has that is no longer
+ *  among them.
+ *
+ *  A property that stops offering an add-on, or renames one past recognising,
+ *  must not thereby take it off a stay somebody has already paid for. The
+ *  booking's own record carries everything needed to draw it -- what it was
+ *  called, what it cost, how it was priced -- so it is read from there, and
+ *  sold with every room, because the question of what it is sold with is
+ *  about adding one, not keeping one.
+ *
+ *  Marked `retired` so the editor can say what it is: a thing that may be
+ *  taken off, but not put back once it has been. */
+export function extrasWithBooked(
+  offered: HotelExtra[],
+  on: { id?: string; name?: string; price?: number; priceType?: string; description?: string }[] | undefined
+): HotelExtra[] {
+  const out = offered.slice()
+  for (const had of Array.isArray(on) ? on : []) {
+    const id = String(had?.id || '').trim()
+    const name = String(had?.name || '').trim()
+    if (!id && !name) continue
+    const known = out.some(
+      (e) => e.id.toLowerCase() === id.toLowerCase() || e.name.toLowerCase() === name.toLowerCase()
+    )
+    if (known) continue
+
+    const price = Number(had?.price)
+    out.push({
+      id: id || name,
+      name: name || id,
+      description: String(had?.description || '').trim(),
+      price: Number.isFinite(price) && price >= 0 ? price : 0,
+      priceType: had?.priceType === 'per adult per day' || had?.priceType === 'per adult per morning'
+        ? 'per adult per day'
+        : 'per booking',
+      rooms: [],
+      retired: true,
+    })
+  }
+  return out
+}
+
 /** Whether a room sells this add-on. Naming no rooms means all of them. */
 export const soldWith = (extra: HotelExtra, room: ExtrasRoom) =>
   extra.rooms.length === 0 ||
@@ -123,7 +168,11 @@ export function extrasPayload(
   for (const choice of picked) {
     const extra = extras.find((e) => e.id === choice.id)
     const room = rooms[choice.roomIndex]
-    if (!extra || !room || !soldWith(extra, room)) continue
+    // No soldWith here. Everything in `picked` is either on the booking
+    // already or was just ticked in a list that applied the rule -- and
+    // dropping something the admin can see ticked, without saying so, is
+    // how the guest's dinner went missing on an unrelated date change.
+    if (!extra || !room) continue
     out.push({
       id: extra.id,
       name: extra.name,
@@ -162,7 +211,12 @@ export function pickedFromBooking(
         ? asked
         : 0
     const room = rooms[roomIndex]
-    if (!room || !soldWith(extra, room)) continue
+    // Only that the room exists. Whether it still *sells* this add-on is a
+    // rule about what may be added; the guest has already bought this one,
+    // and the property's list may have changed since. It used to be checked
+    // here, and an add-on sold with one room type vanished from the editor
+    // the moment the panel could not work out the room's code.
+    if (!room) continue
     if (out.some((p) => p.id === extra.id && p.roomIndex === roomIndex)) continue
 
     // How many people it was taken for. A booking from before the guest
@@ -277,7 +331,15 @@ export function ExtrasPicker({
 
       <div className="space-y-2">
         {rooms.map((room) => {
-          const forThisRoom = extras.filter((extra) => soldWith(extra, room))
+          // What this room sells -- plus anything already chosen for it,
+          // which may be something the room no longer sells or the property
+          // no longer offers. Leaving those out hid a charge the guest had
+          // paid, with no way to take it off.
+          const forThisRoom = extras.filter(
+            (extra) =>
+              soldWith(extra, room) ||
+              picked.some((p) => p.id === extra.id && p.roomIndex === room.index)
+          )
           const isOpen = open.includes(room.index)
           const mine = picked.filter((p) => p.roomIndex === room.index)
           const roomTotal = mine.reduce((sum, choice) => {
@@ -338,10 +400,22 @@ export function ExtrasPicker({
                             className="h-4 w-4 rounded border-gray-300 text-primary-600"
                           />
                           <span className="min-w-0">
-                            <span className="block truncate text-sm text-gray-900">{extra.name}</span>
+                            <span className="block truncate text-sm text-gray-900">
+                              {extra.name}
+                              {/* On the booking but not on the property's
+                                  list any more, or not sold with this room.
+                                  Said plainly, because it can be taken off
+                                  and not put back on. */}
+                              {(extra.retired || !soldWith(extra, room)) && (
+                                <span className="ml-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                                  {extra.retired ? 'no longer offered' : 'not sold with this room'}
+                                </span>
+                              )}
+                            </span>
                             <span className="block text-xs text-gray-500">
                               {formatMoney(extra.price)}{' '}
                               {byDay ? 'per adult, per day' : 'per booking'}
+                              {(extra.retired || !soldWith(extra, room)) && ' — already on this booking'}
                             </span>
                           </span>
                         </label>

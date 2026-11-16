@@ -22,6 +22,7 @@ import { formatMoney } from '../../../../lib/currency'
 import { RoomLines, RoomOption } from '../RoomPicker'
 import {
   ExtrasPicker, ExtrasRoom, PickedExtra, extrasPayload, pickedFromBooking, readHotelExtras,
+  extrasWithBooked,
 } from '../ExtrasPicker'
 import {
   STATUS_COLORS, STATUS_LABELS, STATUS_DOTS, STATUS_BORDERS, STATUS_ORDER,
@@ -177,6 +178,11 @@ export default function BookingPage() {
   // Kept, not read and thrown away, because the editor needs the property's
   // add-ons as well as how many people one of its rooms holds.
   const [hotelExtras, setHotelExtras] = useState<ReturnType<typeof readHotelExtras>>([])
+
+  // What the editor offers while it is open: the above, plus whatever this
+  // booking already carries. Frozen when the editor opens rather than
+  // recomputed, so the list does not shift under the admin mid-edit.
+  const [editExtras, setEditExtras] = useState<ReturnType<typeof readHotelExtras>>([])
 
   // A Room row is one (room, rate plan) pair, so the same room appears once
   // per plan under the same name and code.
@@ -347,7 +353,11 @@ export default function BookingPage() {
         adults: Math.max(1, party.rooms[index]?.adults || 1),
       }
     })
-    setPicked(pickedFromBooking(hotelExtras, extras, asBooked, booking.nights))
+    // The property's add-ons plus anything this booking has that is no longer
+    // among them, so nothing already paid for can go missing from the form.
+    const offered = extrasWithBooked(hotelExtras, extras)
+    setEditExtras(offered)
+    setPicked(pickedFromBooking(offered, extras, asBooked, booking.nights))
     setForm({
       checkIn: booking.checkIn,
       checkOut: booking.checkOut,
@@ -418,7 +428,7 @@ export default function BookingPage() {
     ],
     // Always sent while the editor is open, so unticking the last add-on
     // takes it off. Leaving the key out would keep what the booking has.
-    extras: extrasPayload(hotelExtras, extrasRooms, picked, editNights),
+    extras: extrasPayload(editExtras, extrasRooms, picked, editNights),
     specialRequests: form.specialRequests ?? null,
   })
 
@@ -570,7 +580,7 @@ export default function BookingPage() {
             />
 
             <ExtrasPicker
-              extras={hotelExtras}
+              extras={editExtras}
               rooms={extrasRooms}
               picked={picked}
               nights={editNights}
