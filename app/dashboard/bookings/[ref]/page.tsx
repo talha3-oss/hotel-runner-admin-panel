@@ -184,6 +184,17 @@ export default function BookingPage() {
   // recomputed, so the list does not shift under the admin mid-edit.
   const [editExtras, setEditExtras] = useState<ReturnType<typeof readHotelExtras>>([])
 
+  // Whether the two lists the editor is built from have arrived.
+  //
+  // Flags rather than a length check, because both are legitimately empty --
+  // a property may sell no add-ons at all -- and "empty" has to be told from
+  // "not here yet". Opening the editor before they land gives it no room
+  // codes and no add-ons to offer, which is exactly what the pencil on the
+  // bookings list did: it opens this page with the editor already open, and
+  // the editor won the race every time.
+  const [roomsReady, setRoomsReady] = useState(false)
+  const [extrasReady, setExtrasReady] = useState(false)
+
   // A Room row is one (room, rate plan) pair, so the same room appears once
   // per plan under the same name and code.
   const [roomOptions, setRoomOptions] = useState<RoomOption[]>([])
@@ -237,6 +248,10 @@ export default function BookingPage() {
       )
     } catch {
       /* the dropdown falls back to ids */
+    } finally {
+      // Ready either way: a list that could not be read is not a reason to
+      // leave the editor shut for ever.
+      setRoomsReady(true)
     }
   }, [])
 
@@ -244,7 +259,8 @@ export default function BookingPage() {
 
   useEffect(() => {
     const token = localStorage.getItem('adminToken')
-    if (!token || !booking?.hotelId) return
+    // Nothing to wait for: no hotel on the booking means no add-ons to read.
+    if (!token || !booking?.hotelId) { if (booking) setExtrasReady(true); return }
     let live = true
     fetchHotels(token)
       .then((result) => {
@@ -265,6 +281,7 @@ export default function BookingPage() {
         setHotelExtras(readHotelExtras(hotel))
       })
       .catch(() => {})
+      .finally(() => { if (live) setExtrasReady(true) })
     return () => { live = false }
   }, [booking?.hotelId])
 
@@ -381,13 +398,20 @@ export default function BookingPage() {
     if (autoEdited.current || !booking || editing) return
     if (booking.status === 'CANCELLED') return
     if (!new URLSearchParams(window.location.search).has('edit')) return
+    // Wait for the rooms and the property's add-ons. Opening without them
+    // builds the form from nothing: no room codes, so nothing matches, and
+    // every add-on on the booking reads as one the property no longer
+    // offers. Pressing the pencil on the list hit this every time, while
+    // opening the editor by hand from this page never did -- by then both
+    // had long since arrived.
+    if (!roomsReady || !extrasReady) return
     autoEdited.current = true
     openEditor()
     window.history.replaceState(null, '', window.location.pathname)
     // openEditor reads this render's booking and rooms; listing it would
     // re-run this on every keystroke in the editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [booking, editing])
+  }, [booking, editing, roomsReady, extrasReady])
 
   const closeEditor = () => { setEditing(false); setQuote(null); setForm({}); setPicked([]) }
 
