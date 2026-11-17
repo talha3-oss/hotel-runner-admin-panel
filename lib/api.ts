@@ -298,6 +298,7 @@ export interface Hotel {
   status: HotelStatus
   rating?: number | null
   amenities: string[]
+  experiences?: unknown
   image?: string | null
   shortDescription?: string | null
   description?: string | null
@@ -438,6 +439,7 @@ export async function createHotel(
     status?: HotelStatus
     rating?: number
     amenities?: string[]
+    experiences?: unknown
     image?: string
     shortDescription?: string
     description?: string
@@ -470,6 +472,7 @@ export async function updateHotel(
     status?: HotelStatus
     rating?: number
     amenities?: string[]
+    experiences?: unknown
     image?: string
     shortDescription?: string
     description?: string

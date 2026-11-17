@@ -15,6 +15,25 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import {
+  Umbrella,
+  Flower2,
+  Mountain,
+  Waves,
+  Dumbbell,
+  UtensilsCrossed,
+  Wifi,
+  ParkingCircle,
+  PawPrint,
+  Wine,
+  Car,
+  Coffee,
+  Sparkles,
+  Anchor,
+  TreePine,
+  Sun,
+  type LucideIcon,
+} from 'lucide-react'
+import {
   createHotel,
   deleteHotel,
   fetchHotels,
@@ -29,6 +48,31 @@ import {
 import { SITE_URL } from '../../../lib/siteUrl'
 
 type NearbyPlace = { name: string; distance: string }
+
+type Experience = { icon: string; label: string }
+
+// Shown on the hotel page where the star rating used to be. The value is
+// what is saved to the hotel and must match the map the site renders with
+// (Front-end-luxotel/app/hotels/[slug]/page.tsx) -- adding an icon here only
+// is a dropdown option nobody's page can draw.
+const EXPERIENCE_ICONS: { value: string; label: string; Icon: LucideIcon }[] = [
+  { value: 'Umbrella', label: 'Beach', Icon: Umbrella },
+  { value: 'Flower2', label: 'Spa', Icon: Flower2 },
+  { value: 'Mountain', label: 'Desert', Icon: Mountain },
+  { value: 'Waves', label: 'Pool / Sea', Icon: Waves },
+  { value: 'Sun', label: 'Sunny', Icon: Sun },
+  { value: 'Dumbbell', label: 'Gym', Icon: Dumbbell },
+  { value: 'UtensilsCrossed', label: 'Dining', Icon: UtensilsCrossed },
+  { value: 'Wine', label: 'Bar', Icon: Wine },
+  { value: 'Coffee', label: 'Cafe', Icon: Coffee },
+  { value: 'Wifi', label: 'Free Wifi', Icon: Wifi },
+  { value: 'ParkingCircle', label: 'Parking', Icon: ParkingCircle },
+  { value: 'Car', label: 'Valet', Icon: Car },
+  { value: 'PawPrint', label: 'Pet Friendly', Icon: PawPrint },
+  { value: 'Anchor', label: 'Diving / Marina', Icon: Anchor },
+  { value: 'TreePine', label: 'Nature', Icon: TreePine },
+  { value: 'Sparkles', label: 'Wellness', Icon: Sparkles },
+]
 
 type HotelForm = {
   id: string
@@ -45,6 +89,7 @@ type HotelForm = {
   status: HotelStatus
   rating: string
   amenities: string[]
+  experiences: Experience[]
   image: string
   heroImage: string
   galleryImages: string
@@ -122,6 +167,7 @@ const EMPTY_HOTEL: HotelForm = {
   status: 'ACTIVE',
   rating: '',
   amenities: [],
+  experiences: [],
   image: '',
   heroImage: '',
   galleryImages: '',
@@ -204,6 +250,20 @@ const parseNearbyPlaces = (raw: unknown): NearbyPlace[] => {
       return { name, distance }
     })
     .filter((p): p is NearbyPlace => p !== null)
+}
+
+const parseExperiences = (raw: unknown): Experience[] => {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const r = item as Record<string, unknown>
+      const icon = typeof r.icon === 'string' ? r.icon.trim() : ''
+      const label = typeof r.label === 'string' ? r.label.trim() : ''
+      if (!icon || !label) return null
+      return { icon, label }
+    })
+    .filter((e): e is Experience => e !== null)
 }
 
 /** Every room layout the occupancy settings allow, and what each one costs.
@@ -413,6 +473,7 @@ export default function HotelsPage() {
       status: hotel.status,
       rating: hotel.rating != null ? String(hotel.rating) : '',
       amenities: hotel.amenities || [],
+      experiences: parseExperiences(hotel.experiences),
       image: hotel.image || '',
       heroImage: hotel.heroImage || '',
       galleryImages: hotel.galleryImages.join(', '),
@@ -544,6 +605,25 @@ export default function HotelsPage() {
     setHotelForm((prev) => ({ ...prev, nearbyPlaces: prev.nearbyPlaces.filter((_, i) => i !== index) }))
   }
 
+  const addExperience = () => {
+    setHotelForm((prev) => ({
+      ...prev,
+      experiences: [...prev.experiences, { icon: EXPERIENCE_ICONS[0].value, label: '' }],
+    }))
+  }
+
+  const updateExperience = (index: number, field: keyof Experience, value: string) => {
+    setHotelForm((prev) => {
+      const updated = [...prev.experiences]
+      updated[index] = { ...updated[index], [field]: value }
+      return { ...prev, experiences: updated }
+    })
+  }
+
+  const removeExperience = (index: number) => {
+    setHotelForm((prev) => ({ ...prev, experiences: prev.experiences.filter((_, i) => i !== index) }))
+  }
+
   const submitHotel = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const token = localStorage.getItem('adminToken')
@@ -599,6 +679,7 @@ export default function HotelsPage() {
       }
 
       const nearbyPlaces = hotelForm.nearbyPlaces.filter((p) => p.name.trim())
+      const experiences = hotelForm.experiences.filter((e) => e.label.trim())
 
       const bookingDefaults = (() => {
         const d = hotelForm.bookingDefaultArrivalDate.trim()
@@ -620,6 +701,7 @@ export default function HotelsPage() {
         email: hotelForm.email.trim(),
         status: hotelForm.status,
         rating: hotelForm.rating ? Number(hotelForm.rating) : undefined,
+        experiences,
         amenities: hotelForm.amenities,
         image: primaryImagePath,
         heroImage: heroImagePath,
@@ -1001,6 +1083,48 @@ export default function HotelsPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Star Rating</label>
                   <input type="number" min="1" max="5" step="0.1" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="e.g. 4.5" value={hotelForm.rating} onChange={field('rating')} />
+                  <p className="text-xs text-gray-400 mt-1">No longer shown on the hotel page -- use Experiences below for that spot.</p>
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Experiences</label>
+                  <p className="text-xs text-gray-400 mb-3">Icon + text shown on the hotel page where the star rating used to be. Leave empty to show nothing there.</p>
+                  <div className="space-y-2">
+                    {hotelForm.experiences.map((exp, index) => (
+                      <div key={index} className="flex gap-2 items-center">
+                        <select
+                          className="w-44 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                          value={exp.icon}
+                          onChange={(e) => updateExperience(index, 'icon', e.target.value)}
+                        >
+                          {EXPERIENCE_ICONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                        {(() => {
+                          const Icon = EXPERIENCE_ICONS.find((opt) => opt.value === exp.icon)?.Icon || Sparkles
+                          return (
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-primary-300 text-primary-600">
+                              <Icon className="h-4 w-4" />
+                            </span>
+                          )
+                        })()}
+                        <input
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                          placeholder="Text shown under the icon (e.g. Beach)"
+                          value={exp.label}
+                          onChange={(e) => updateExperience(index, 'label', e.target.value)}
+                        />
+                        <button type="button" onClick={() => removeExperience(index)} className="p-2 text-red-500 hover:text-red-700">
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={addExperience} className="mt-3 flex items-center gap-1 text-sm text-primary-600 hover:text-primary-800">
+                    <PlusIcon className="h-4 w-4" />
+                    Add Experience
+                  </button>
                 </div>
 
                 {/* ── Children Policy ── */}
