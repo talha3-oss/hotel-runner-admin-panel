@@ -711,20 +711,39 @@ export async function saveBookingPolicy(token: string, policy: BookingPolicy): P
   return res.json()
 }
 
-/** Where the desk reads a guest's passport. Not a public address: the file
- *  is outside everything the API serves as static files, and this endpoint
- *  is the only way to it, behind the admin check -- so it is opened with the
- *  token rather than linked to. */
-export function passportUrl(bookingId: string): string {
-  return `${API_BASE_URL}/api/v1/bookings/${encodeURIComponent(bookingId)}/passport`
+/** One adult's document on a booking, and whether it is in. One per adult
+ *  rather than one per booking: four adults across two rooms is four
+ *  documents, and the desk needs to know which of them is missing. */
+export interface PassportSlot {
+  roomIndex: number
+  person: number
+  roomName: string | null
+  lead: boolean
+  uploaded: boolean
+  fileName: string | null
+  fileType: string | null
+  uploadedAt: string | null
 }
 
-/** Opens the guest's document in a new tab. The browser will not send the
+/** Where the desk reads one. Not a public address: the files are outside
+ *  everything the API serves as static files, and this endpoint is the only
+ *  way to them, behind the admin check -- so it is opened with the token
+ *  rather than linked to. */
+export function passportUrl(bookingId: string, roomIndex: number, person: number): string {
+  return `${API_BASE_URL}/api/v1/bookings/${encodeURIComponent(bookingId)}/passport?room=${roomIndex}&person=${person}`
+}
+
+/** Opens one guest's document in a new tab. The browser will not send the
  *  admin token on an ordinary link, so the file is fetched here and shown
  *  from a blob instead. */
-export async function openPassport(token: string, bookingId: string): Promise<{ ok: boolean; message?: string }> {
+export async function openPassport(
+  token: string,
+  bookingId: string,
+  roomIndex: number,
+  person: number
+): Promise<{ ok: boolean; message?: string }> {
   try {
-    const res = await fetch(passportUrl(bookingId), { headers: { Authorization: `Bearer ${token}` } })
+    const res = await fetch(passportUrl(bookingId, roomIndex, person), { headers: { Authorization: `Bearer ${token}` } })
     if (!res.ok) {
       const said = await res.json().catch(() => null)
       return { ok: false, message: said?.message || 'That document could not be opened.' }
@@ -948,12 +967,11 @@ export interface BookingRecord {
   checkedInAt?: string | null
   checkedOutAt?: string | null
   checkedOutBy?: string | null
-  /** The passport or ID the guest sent ahead of arriving, so reception does
-   *  not ask for it again. The file itself is never named to the browser --
-   *  it is fetched through openPassport above. */
-  passportFileName?: string | null
-  passportFileType?: string | null
-  passportUploadedAt?: string | null
+  /** The documents the party sent ahead of arriving, one entry per adult,
+   *  so reception does not ask for them again. The files themselves are
+   *  never named to the browser -- they are fetched through openPassport
+   *  above. Absent on a server that predates this. */
+  passports?: PassportSlot[] | null
   firstName: string
   lastName: string
   email: string

@@ -180,6 +180,11 @@ export default function BookingPage() {
   // there any more" -- but a button that does nothing is a support call.
   const [passportProblem, setPassportProblem] = useState('')
 
+  // One line per adult: who has sent a document and who has not. An older
+  // server does not send this at all, which reads as nothing to show.
+  const passports = booking?.passports || []
+  const received = passports.filter((p) => p.uploaded).length
+
   // Changing the booking. Nothing is written until Apply, and the quote is
   // what Apply sends -- so the figure approved is the figure stored.
   const [editing, setEditing] = useState(false)
@@ -819,38 +824,61 @@ export default function BookingPage() {
             <p className="mt-1 text-sm text-gray-500">{booking.email}</p>
             <p className="text-sm text-gray-500">{booking.phone}</p>
 
-            {/* The passport they sent ahead of arriving. The whole point of
-                asking for it early is that reception does not ask again at
-                the counter -- so it is here, under the guest's name, and not
-                on a page somebody has to go looking for. */}
-            {booking.passportUploadedAt ? (
-              <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-                <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-800">
-                  <ShieldCheck className="h-4 w-4" /> Passport / ID received
+            {/* The documents the party sent ahead of arriving. The whole
+                point of asking early is that reception does not ask again at
+                the counter -- so it is here, under the guest's name, and one
+                line per adult, because "2 of 4" is the thing the desk needs
+                to know before it starts asking. */}
+            {passports.length > 0 && (
+              <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+                <p className="flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <span className="flex items-center gap-1.5">
+                    <ShieldCheck className="h-3.5 w-3.5" /> Passport / ID
+                  </span>
+                  <span className={received === passports.length ? 'text-emerald-700' : 'text-amber-700'}>
+                    {received} of {passports.length}
+                  </span>
                 </p>
-                <p className="mt-0.5 text-xs text-emerald-700/70">
-                  {atProperty(booking.passportUploadedAt, hotelZone)}
-                  {booking.passportFileName ? ` · ${booking.passportFileName}` : ''}
-                </p>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const token = localStorage.getItem('adminToken')
-                    if (!token) return
-                    setPassportProblem('')
-                    const r = await openPassport(token, booking.id)
-                    if (!r.ok) setPassportProblem(r.message || 'That document could not be opened.')
-                  }}
-                  className="mt-2 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
-                >
-                  View document
-                </button>
+
+                <ul className="mt-2 space-y-1.5">
+                  {passports.map((slot) => {
+                    const who = slot.lead
+                      ? `${booking.firstName} ${booking.lastName}`
+                      : `Room ${slot.roomIndex + 1} · Person ${slot.person}`
+                    return (
+                      <li key={`${slot.roomIndex}:${slot.person}`} className="flex items-center justify-between gap-3">
+                        <span className={`truncate text-sm ${slot.uploaded ? 'text-gray-700' : 'text-gray-400'}`}>
+                          {who}
+                          {slot.uploaded && slot.uploadedAt && (
+                            <span className="ml-1 text-xs text-gray-400">
+                              · {atProperty(slot.uploadedAt, hotelZone)}
+                            </span>
+                          )}
+                        </span>
+                        {slot.uploaded ? (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const token = localStorage.getItem('adminToken')
+                              if (!token) return
+                              setPassportProblem('')
+                              const r = await openPassport(token, booking.id, slot.roomIndex, slot.person)
+                              if (!r.ok) setPassportProblem(r.message || 'That document could not be opened.')
+                            }}
+                            className="shrink-0 rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
+                          >
+                            View
+                          </button>
+                        ) : (
+                          <span className="shrink-0 text-xs text-gray-400">Ask at desk</span>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+
                 {passportProblem && <p className="mt-2 text-xs text-red-600">{passportProblem}</p>}
               </div>
-            ) : (
-              <p className="mt-3 text-xs text-gray-400">
-                No passport sent yet — the guest is asked for one before arrival.
-              </p>
             )}
           </Section>
 
