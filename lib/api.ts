@@ -667,6 +667,80 @@ export async function uploadHomepageSectionImage(file: File) {
 
 // ── Upload limits ────────────────────────────────────────────────────────────
 
+// ── What a guest may still ask for ────────────────────────────────────────
+//
+// How late a guest may ask the desk to cancel, move the dates or change the
+// name on a booking, in days before arrival, and whether each is offered at
+// all. The guest's booking page draws its panel from this, and the endpoint
+// behind it checks the same thing.
+export interface BookingPolicyRule { on: boolean; days: number }
+export interface BookingPolicy {
+  cancel: BookingPolicyRule
+  dates: BookingPolicyRule
+  name: BookingPolicyRule
+}
+
+export interface BookingPolicyResult {
+  success: boolean
+  message?: string
+  policy?: BookingPolicy
+  defaults?: BookingPolicy
+  maxDays?: number
+}
+
+export const DEFAULT_BOOKING_POLICY: BookingPolicy = {
+  cancel: { on: true, days: 0 },
+  dates: { on: true, days: 0 },
+  name: { on: true, days: 0 },
+}
+
+export async function fetchBookingPolicy(token: string): Promise<BookingPolicyResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/booking-policy`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function saveBookingPolicy(token: string, policy: BookingPolicy): Promise<BookingPolicyResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/booking-policy`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ policy }),
+  })
+  return res.json()
+}
+
+/** Where the desk reads a guest's passport. Not a public address: the file
+ *  is outside everything the API serves as static files, and this endpoint
+ *  is the only way to it, behind the admin check -- so it is opened with the
+ *  token rather than linked to. */
+export function passportUrl(bookingId: string): string {
+  return `${API_BASE_URL}/api/v1/bookings/${encodeURIComponent(bookingId)}/passport`
+}
+
+/** Opens the guest's document in a new tab. The browser will not send the
+ *  admin token on an ordinary link, so the file is fetched here and shown
+ *  from a blob instead. */
+export async function openPassport(token: string, bookingId: string): Promise<{ ok: boolean; message?: string }> {
+  try {
+    const res = await fetch(passportUrl(bookingId), { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) {
+      const said = await res.json().catch(() => null)
+      return { ok: false, message: said?.message || 'That document could not be opened.' }
+    }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener')
+    // Long enough for the new tab to have read it; the object would
+    // otherwise sit in memory until the panel is reloaded.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    return { ok: true }
+  } catch {
+    return { ok: false, message: 'Could not reach the server.' }
+  }
+}
+
 export interface UploadLimits { image: number; video: number }
 
 export interface UploadLimitsResult {
@@ -874,6 +948,12 @@ export interface BookingRecord {
   checkedInAt?: string | null
   checkedOutAt?: string | null
   checkedOutBy?: string | null
+  /** The passport or ID the guest sent ahead of arriving, so reception does
+   *  not ask for it again. The file itself is never named to the browser --
+   *  it is fetched through openPassport above. */
+  passportFileName?: string | null
+  passportFileType?: string | null
+  passportUploadedAt?: string | null
   firstName: string
   lastName: string
   email: string

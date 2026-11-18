@@ -12,10 +12,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
-import { BedDouble, UtensilsCrossed, User, PersonStanding, Baby, Pencil, AlertTriangle, ChevronDown, Check } from 'lucide-react'
+import { BedDouble, UtensilsCrossed, User, PersonStanding, Baby, Pencil, AlertTriangle, ChevronDown, Check, ShieldCheck } from 'lucide-react'
 import {
   fetchAdminBooking, updateBookingStatus, fetchAdminRooms, fetchAdminRoomTypes,
-  previewBookingChange, applyBookingChange, fetchHotels,
+  previewBookingChange, applyBookingChange, fetchHotels, openPassport,
   BookingRecord, BookingChange, BookingChangeQuote, Hotel,
 } from '../../../../lib/api'
 import { formatMoney } from '../../../../lib/currency'
@@ -176,6 +176,9 @@ export default function BookingPage() {
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [rtSending, setRtSending] = useState(false)
   const [rtResult, setRtResult] = useState<{ ok: boolean; text: string } | null>(null)
+  // Why a guest's document would not open. Rare, and only ever "it is not
+  // there any more" -- but a button that does nothing is a support call.
+  const [passportProblem, setPassportProblem] = useState('')
 
   // Changing the booking. Nothing is written until Apply, and the quote is
   // what Apply sends -- so the figure approved is the figure stored.
@@ -815,6 +818,40 @@ export default function BookingPage() {
             <p className="text-sm font-semibold text-gray-900">{booking.firstName} {booking.lastName}</p>
             <p className="mt-1 text-sm text-gray-500">{booking.email}</p>
             <p className="text-sm text-gray-500">{booking.phone}</p>
+
+            {/* The passport they sent ahead of arriving. The whole point of
+                asking for it early is that reception does not ask again at
+                the counter -- so it is here, under the guest's name, and not
+                on a page somebody has to go looking for. */}
+            {booking.passportUploadedAt ? (
+              <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-800">
+                  <ShieldCheck className="h-4 w-4" /> Passport / ID received
+                </p>
+                <p className="mt-0.5 text-xs text-emerald-700/70">
+                  {atProperty(booking.passportUploadedAt, hotelZone)}
+                  {booking.passportFileName ? ` · ${booking.passportFileName}` : ''}
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const token = localStorage.getItem('adminToken')
+                    if (!token) return
+                    setPassportProblem('')
+                    const r = await openPassport(token, booking.id)
+                    if (!r.ok) setPassportProblem(r.message || 'That document could not be opened.')
+                  }}
+                  className="mt-2 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                >
+                  View document
+                </button>
+                {passportProblem && <p className="mt-2 text-xs text-red-600">{passportProblem}</p>}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-gray-400">
+                No passport sent yet — the guest is asked for one before arrival.
+              </p>
+            )}
           </Section>
 
           <Section title="Stay">

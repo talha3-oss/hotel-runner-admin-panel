@@ -6,12 +6,13 @@ import { useSearchParams } from 'next/navigation'
 import {
   UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, KeyIcon,
   PaperAirplaneIcon, GlobeAltIcon, PhotoIcon, TrashIcon, ArrowUpTrayIcon, VideoCameraIcon,
-  DocumentTextIcon,
+  DocumentTextIcon, CalendarDaysIcon,
 } from '@heroicons/react/24/outline'
 import {
   getAdminMe, updateAdminMe,
   fetchSiteSettings, saveSiteSettings, uploadHomepageSectionImage, getApiAssetUrl,
   fetchUploadLimits, saveUploadLimits, clearUploadLimitsCache, DEFAULT_UPLOAD_LIMITS, UploadLimits,
+  fetchBookingPolicy, saveBookingPolicy, DEFAULT_BOOKING_POLICY, BookingPolicy,
   SiteSettings,
 } from '../../../lib/api'
 import { passwordProblem } from '../../../lib/passwordRule'
@@ -592,7 +593,7 @@ export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'auth-pages' | 'partner-api' | 'ratetiger' | 'ratetiger-logs'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'booking-policy' | 'auth-pages' | 'partner-api' | 'ratetiger' | 'ratetiger-logs'>('profile')
 
   // The header's menu links here with ?tab=..., so Profile and Settings land
   // where they say they will instead of always opening on Profile.
@@ -956,6 +957,61 @@ export default function SettingsPage() {
     setLimitsDirty(true)
   }
 
+  // ── What a guest may still ask for ─────────────────────────────────────
+  //
+  // Cancel, move the dates, change the name: how many days before arrival
+  // each one closes, and whether it is offered at all. These used to be
+  // offered to anybody whose stay had not ended, which is how a guest could
+  // ask to cancel on the morning they arrived.
+  const [policy, setPolicy] = useState<BookingPolicy>(DEFAULT_BOOKING_POLICY)
+  const [policyMax, setPolicyMax] = useState(90)
+  const [policyDirty, setPolicyDirty] = useState(false)
+  const [policySaving, setPolicySaving] = useState(false)
+  const [policyLoaded, setPolicyLoaded] = useState(false)
+  const [policyMsg, setPolicyMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    if (activeTab !== 'booking-policy' || policyLoaded) return
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    fetchBookingPolicy(token)
+      .then(r => {
+        if (r.success && r.policy) setPolicy(r.policy)
+        if (r.maxDays) setPolicyMax(r.maxDays)
+        setPolicyLoaded(true)
+        setPolicyDirty(false)
+      })
+      .catch(() => {})
+  }, [activeTab, policyLoaded])
+
+  const editPolicy = (kind: keyof BookingPolicy, patch: Partial<BookingPolicy[keyof BookingPolicy]>) => {
+    setPolicy(prev => ({ ...prev, [kind]: { ...prev[kind], ...patch } }))
+    setPolicyDirty(true)
+  }
+
+  const handlePolicySave = async (e: FormEvent) => {
+    e.preventDefault()
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setPolicySaving(true)
+    try {
+      const r = await saveBookingPolicy(token, policy)
+      if (r.success) {
+        // What came back, not what was typed: a day count outside what the
+        // code allows is brought into range on the way in.
+        if (r.policy) setPolicy(r.policy)
+        setPolicyDirty(false)
+        setPolicyMsg({ ok: true, text: 'Saved. Guests see this on their booking page straight away.' })
+      } else {
+        setPolicyMsg({ ok: false, text: r.message || 'Could not save the policy.' })
+      }
+    } catch {
+      setPolicyMsg({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setPolicySaving(false)
+    }
+  }
+
   const tabs = [
     { id: 'profile' as const, name: 'Profile', icon: UserIcon },
     { id: 'site' as const, name: 'Site Settings', icon: GlobeAltIcon },
@@ -964,6 +1020,10 @@ export default function SettingsPage() {
     { id: 'email' as const, name: 'Email (SMTP)', icon: EnvelopeIcon },
     // What the site sends, as opposed to how it sends it.
     { id: 'emails' as const, name: 'Emails', icon: EnvelopeIcon },
+    // How late a guest may ask the desk for something. Its own tab rather
+    // than a corner of Site Settings: it is the one place three different
+    // rules are set, and it changes what the guest's page offers.
+    { id: 'booking-policy' as const, name: 'Booking Policy', icon: CalendarDaysIcon },
     { id: 'auth-pages' as const, name: 'Login & Signup', icon: UserIcon },
     { id: 'partner-api' as const, name: 'Partner API', icon: KeyIcon },
     { id: 'ratetiger' as const, name: 'RateTiger', icon: PaperAirplaneIcon },
@@ -1373,6 +1433,97 @@ export default function SettingsPage() {
 
           {/* Email / SMTP tab */}
           {activeTab === 'emails' && <EmailDesigner />}
+
+          {/* Booking Policy tab — how late a guest may ask the desk for
+              something about a booking they already have. */}
+          {activeTab === 'booking-policy' && (
+            <form onSubmit={handlePolicySave} className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-gray-800">Booking Policy</h2>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  How late a guest may ask the reservations desk to cancel, move or rename a booking from
+                  their own booking page. Nothing here changes a booking by itself &mdash; it decides what
+                  the guest is offered, and what reaches your desk.
+                </p>
+              </div>
+
+              {policyMsg && (
+                <div className={`rounded-lg border px-4 py-3 text-sm ${policyMsg.ok
+                  ? 'border-green-200 bg-green-50 text-green-700'
+                  : 'border-red-200 bg-red-50 text-red-700'}`}>
+                  {policyMsg.text}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {([
+                  ['cancel', 'Cancel booking', 'The guest asks you to cancel the whole booking.'],
+                  ['dates', 'Change dates', 'The guest asks for a different arrival date or a different number of nights.'],
+                  ['name', 'Change guest name', 'The guest asks for the booking to be in somebody else\u2019s name.'],
+                ] as const).map(([kind, label, note]) => (
+                  <div key={kind} className="rounded-xl border border-gray-200 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">{label}</p>
+                        <p className="mt-0.5 text-xs text-gray-400">{note}</p>
+                      </div>
+                      <label className="flex shrink-0 items-center gap-2 text-sm text-gray-600">
+                        <input
+                          type="checkbox"
+                          checked={policy[kind].on}
+                          onChange={(e) => editPolicy(kind, { on: e.target.checked })}
+                          className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        Offer this
+                      </label>
+                    </div>
+
+                    <div className={`mt-3 flex items-center gap-2 ${policy[kind].on ? '' : 'opacity-40'}`}>
+                      <span className="text-sm text-gray-500">Closes</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={policyMax}
+                        disabled={!policy[kind].on}
+                        value={policy[kind].days}
+                        onChange={(e) => {
+                          const n = Number(e.target.value)
+                          editPolicy(kind, { days: Number.isFinite(n) ? n : policy[kind].days })
+                        }}
+                        className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50"
+                      />
+                      <span className="text-sm text-gray-500">days before arrival</span>
+                    </div>
+
+                    <p className="mt-2 text-xs text-gray-400">
+                      {policy[kind].on
+                        ? policy[kind].days === 0
+                          ? 'No day limit \u2014 the guest can ask right up to the end of the day they arrive.'
+                          : `The guest can ask up to the end of the day ${policy[kind].days} day${policy[kind].days === 1 ? '' : 's'} before they arrive. After that the option is shown closed, with a note to call the property.`
+                        : 'Not offered. The guest is told to contact the property directly.'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                <p className="font-medium">Days are counted on the property&rsquo;s own calendar.</p>
+                <p className="mt-1 text-xs">
+                  Three days before arrival means three days where the hotel is, not three here &mdash; the
+                  same as the timed emails. A guest who has already checked in is offered none of the three,
+                  whatever is set above.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={policySaving || !policyDirty}
+                className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-40"
+              >
+                {policySaving ? 'Saving…' : 'Save Policy'}
+              </button>
+            </form>
+          )}
 
           {activeTab === 'email' && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
