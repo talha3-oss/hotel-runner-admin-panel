@@ -718,7 +718,14 @@ export async function saveBookingPolicy(token: string, policy: BookingPolicy): P
 // before Luxotel's own direct-booking discount, which is never sent out. So
 // there is no figure here to keep in step by hand.
 export interface RateCompareItem { name: string; logo: string }
-export interface RateCompare { on: boolean; items: RateCompareItem[] }
+export interface RateCompare {
+  on: boolean
+  items: RateCompareItem[]
+  /** How tall every logo in the row is drawn, in pixels. One height for the
+   *  whole row: the marks arrive at every proportion, and a shared baseline
+   *  is what makes it read as a row rather than a pile. */
+  logoHeight: number
+}
 
 export interface RateCompareResult {
   success: boolean
@@ -726,6 +733,7 @@ export interface RateCompareResult {
   rateCompare?: RateCompare
   defaults?: RateCompareItem[]
   maxItems?: number
+  heightRange?: { min: number; max: number; default: number }
 }
 
 export const DEFAULT_RATE_COMPARE: RateCompare = {
@@ -735,6 +743,7 @@ export const DEFAULT_RATE_COMPARE: RateCompare = {
     { name: 'Expedia', logo: '' },
     { name: 'Airbnb', logo: '' },
   ],
+  logoHeight: 20,
 }
 
 export async function fetchRateCompare(token: string): Promise<RateCompareResult> {

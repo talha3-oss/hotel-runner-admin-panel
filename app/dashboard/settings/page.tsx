@@ -1022,6 +1022,7 @@ export default function SettingsPage() {
   // there is no price to type here and nothing that can go stale.
   const [compare, setCompare] = useState<RateCompare>(DEFAULT_RATE_COMPARE)
   const [compareMax, setCompareMax] = useState(6)
+  const [compareHeightRange, setCompareHeightRange] = useState({ min: 12, max: 56, default: 20 })
   const [compareDirty, setCompareDirty] = useState(false)
   const [compareSaving, setCompareSaving] = useState(false)
   const [compareLoaded, setCompareLoaded] = useState(false)
@@ -1039,6 +1040,7 @@ export default function SettingsPage() {
       .then(r => {
         if (r.success && r.rateCompare) setCompare(r.rateCompare)
         if (r.maxItems) setCompareMax(r.maxItems)
+        if (r.heightRange) setCompareHeightRange(r.heightRange)
         setCompareLoaded(true)
         setCompareDirty(false)
       })
@@ -1603,7 +1605,8 @@ export default function SettingsPage() {
                 </p>
                 <p className="mt-1 text-xs text-gray-400">
                   Logos can be chosen from the media library or uploaded. This is the one place an
-                  SVG is accepted &mdash; a logo stays sharp at any size as a vector.
+                  SVG is accepted &mdash; a logo stays sharp at any size as a vector. One height applies
+                  to the whole row, so the logos line up however different their shapes are.
                 </p>
               </div>
 
@@ -1625,13 +1628,48 @@ export default function SettingsPage() {
                 Show this comparison on the booking page
               </label>
 
+              <div className={`flex items-center gap-3 ${compare.on ? '' : 'opacity-40'}`}>
+                <label className="shrink-0 text-xs font-medium text-gray-600" htmlFor="compareLogoHeight">
+                  Logo size
+                </label>
+                <input
+                  id="compareLogoHeight"
+                  type="range"
+                  min={compareHeightRange.min}
+                  max={compareHeightRange.max}
+                  step={1}
+                  disabled={!compare.on}
+                  value={compare.logoHeight}
+                  onChange={e => { setCompare(p => ({ ...p, logoHeight: Number(e.target.value) })); setCompareDirty(true) }}
+                  className="h-1.5 max-w-xs flex-1 cursor-pointer accent-primary-600"
+                />
+                <span className="w-14 shrink-0 text-right font-mono text-xs text-gray-500">{compare.logoHeight}px</span>
+                {compare.logoHeight !== compareHeightRange.default && (
+                  <button
+                    type="button"
+                    onClick={() => { setCompare(p => ({ ...p, logoHeight: compareHeightRange.default })); setCompareDirty(true) }}
+                    className="shrink-0 text-xs text-gray-400 underline hover:text-gray-600"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+
               <div className={`space-y-3 ${compare.on ? '' : 'opacity-40'}`}>
                 {compare.items.map((item, i) => (
                   <div key={i} className="flex items-center gap-4 rounded-xl border border-gray-200 p-4">
-                    <div className="flex h-12 w-28 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
+                    <div className="flex h-14 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
                       {item.logo ? (
+                        /* Drawn at the height it will have on the booking page,
+                           so the slider below is judged against the real thing
+                           rather than a number. */
                         /* eslint-disable-next-line @next/next/no-img-element */
-                        <img src={getApiAssetUrl(item.logo)} alt={item.name} className="max-h-8 max-w-[96px] object-contain" />
+                        <img
+                          src={getApiAssetUrl(item.logo)}
+                          alt={item.name}
+                          className="w-auto max-w-[104px] object-contain"
+                          style={{ height: compare.logoHeight }}
+                        />
                       ) : (
                         <span className="px-2 text-center text-[11px] leading-tight text-gray-400">No logo &mdash; the name is shown</span>
                       )}
