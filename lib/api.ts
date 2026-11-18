@@ -711,6 +711,49 @@ export async function saveBookingPolicy(token: string, policy: BookingPolicy): P
   return res.json()
 }
 
+// ── The travel sites named in the booking page's savings banner ───────────
+//
+// Only their names and logos are settings. The price shown under each one is
+// the rate this property already publishes to them -- the room's full price,
+// before Luxotel's own direct-booking discount, which is never sent out. So
+// there is no figure here to keep in step by hand.
+export interface RateCompareItem { name: string; logo: string }
+export interface RateCompare { on: boolean; items: RateCompareItem[] }
+
+export interface RateCompareResult {
+  success: boolean
+  message?: string
+  rateCompare?: RateCompare
+  defaults?: RateCompareItem[]
+  maxItems?: number
+}
+
+export const DEFAULT_RATE_COMPARE: RateCompare = {
+  on: true,
+  items: [
+    { name: 'Booking.com', logo: '' },
+    { name: 'Expedia', logo: '' },
+    { name: 'Airbnb', logo: '' },
+  ],
+}
+
+export async function fetchRateCompare(token: string): Promise<RateCompareResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/rate-compare`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function saveRateCompare(token: string, rateCompare: RateCompare): Promise<RateCompareResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/rate-compare`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ rateCompare }),
+  })
+  return res.json()
+}
+
 /** One adult's document on a booking, and whether it is in. One per adult
  *  rather than one per booking: four adults across two rooms is four
  *  documents, and the desk needs to know which of them is missing. */

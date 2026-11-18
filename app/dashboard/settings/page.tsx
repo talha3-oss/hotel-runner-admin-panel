@@ -6,13 +6,14 @@ import { useSearchParams } from 'next/navigation'
 import {
   UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, KeyIcon,
   PaperAirplaneIcon, GlobeAltIcon, PhotoIcon, TrashIcon, ArrowUpTrayIcon, VideoCameraIcon,
-  DocumentTextIcon, CalendarDaysIcon,
+  DocumentTextIcon, CalendarDaysIcon, ScaleIcon,
 } from '@heroicons/react/24/outline'
 import {
   getAdminMe, updateAdminMe,
   fetchSiteSettings, saveSiteSettings, uploadHomepageSectionImage, getApiAssetUrl,
   fetchUploadLimits, saveUploadLimits, clearUploadLimitsCache, DEFAULT_UPLOAD_LIMITS, UploadLimits,
   fetchBookingPolicy, saveBookingPolicy, DEFAULT_BOOKING_POLICY, BookingPolicy,
+  fetchRateCompare, saveRateCompare, DEFAULT_RATE_COMPARE, RateCompare,
   SiteSettings,
 } from '../../../lib/api'
 import { passwordProblem } from '../../../lib/passwordRule'
@@ -593,7 +594,7 @@ export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'booking-policy' | 'auth-pages' | 'partner-api' | 'ratetiger' | 'ratetiger-logs'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'booking-policy' | 'rate-compare' | 'auth-pages' | 'partner-api' | 'ratetiger' | 'ratetiger-logs'>('profile')
 
   // The header's menu links here with ?tab=..., so Profile and Settings land
   // where they say they will instead of always opening on Profile.
@@ -1012,6 +1013,84 @@ export default function SettingsPage() {
     }
   }
 
+  // ── The travel sites the booking page compares against ─────────────────
+  //
+  // Names and logos only. The price under each one is the rate this property
+  // already publishes to them through RateTiger -- the room's full price,
+  // before Luxotel's own discount, which is deliberately never sent out. So
+  // there is no price to type here and nothing that can go stale.
+  const [compare, setCompare] = useState<RateCompare>(DEFAULT_RATE_COMPARE)
+  const [compareMax, setCompareMax] = useState(6)
+  const [compareDirty, setCompareDirty] = useState(false)
+  const [compareSaving, setCompareSaving] = useState(false)
+  const [compareLoaded, setCompareLoaded] = useState(false)
+  const [compareUploading, setCompareUploading] = useState<number | null>(null)
+  const [compareMsg, setCompareMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    if (activeTab !== 'rate-compare' || compareLoaded) return
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    fetchRateCompare(token)
+      .then(r => {
+        if (r.success && r.rateCompare) setCompare(r.rateCompare)
+        if (r.maxItems) setCompareMax(r.maxItems)
+        setCompareLoaded(true)
+        setCompareDirty(false)
+      })
+      .catch(() => {})
+  }, [activeTab, compareLoaded])
+
+  const editCompareItem = (index: number, patch: Partial<{ name: string; logo: string }>) => {
+    setCompare(prev => ({
+      ...prev,
+      items: prev.items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+    }))
+    setCompareDirty(true)
+  }
+
+  const uploadCompareLogo = async (index: number, file: File) => {
+    setCompareUploading(index)
+    setCompareMsg(null)
+    try {
+      const r = await uploadHomepageSectionImage(file)
+      if (r.success && r.data?.fileUrl) {
+        editCompareItem(index, { logo: r.data.fileUrl })
+        // Uploaded but not yet live -- Save is what publishes it.
+        setCompareMsg({ ok: true, text: 'Uploaded. Click Save to put it on the booking page.' })
+      } else {
+        setCompareMsg({ ok: false, text: r.message || 'Upload failed.' })
+      }
+    } catch {
+      setCompareMsg({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setCompareUploading(null)
+    }
+  }
+
+  const handleCompareSave = async (e: FormEvent) => {
+    e.preventDefault()
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setCompareSaving(true)
+    try {
+      const r = await saveRateCompare(token, compare)
+      if (r.success) {
+        // What came back, not what was typed: a row left without a name is
+        // dropped on the way in, which is also how one is deleted.
+        if (r.rateCompare) setCompare(r.rateCompare)
+        setCompareDirty(false)
+        setCompareMsg({ ok: true, text: 'Saved. The booking page shows this straight away.' })
+      } else {
+        setCompareMsg({ ok: false, text: r.message || 'Could not save.' })
+      }
+    } catch {
+      setCompareMsg({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setCompareSaving(false)
+    }
+  }
+
   const tabs = [
     { id: 'profile' as const, name: 'Profile', icon: UserIcon },
     { id: 'site' as const, name: 'Site Settings', icon: GlobeAltIcon },
@@ -1024,6 +1103,10 @@ export default function SettingsPage() {
     // than a corner of Site Settings: it is the one place three different
     // rules are set, and it changes what the guest's page offers.
     { id: 'booking-policy' as const, name: 'Booking Policy', icon: CalendarDaysIcon },
+    // The travel sites the booking page compares prices against. Beside
+    // Booking Policy because both change what the guest is shown, not what
+    // anything costs.
+    { id: 'rate-compare' as const, name: 'Price Comparison', icon: ScaleIcon },
     { id: 'auth-pages' as const, name: 'Login & Signup', icon: UserIcon },
     { id: 'partner-api' as const, name: 'Partner API', icon: KeyIcon },
     { id: 'ratetiger' as const, name: 'RateTiger', icon: PaperAirplaneIcon },
@@ -1521,6 +1604,126 @@ export default function SettingsPage() {
                 className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-40"
               >
                 {policySaving ? 'Saving…' : 'Save Policy'}
+              </button>
+            </form>
+          )}
+
+          {activeTab === 'rate-compare' && (
+            <form onSubmit={handleCompareSave} className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-gray-800">Price Comparison</h2>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  The travel sites named in the &ldquo;Instant Savings&rdquo; banner on the booking page,
+                  each shown with the nightly rate you publish to them, next to the lower Luxotel one.
+                </p>
+              </div>
+
+              {compareMsg && (
+                <div className={`rounded-lg border px-4 py-3 text-sm ${compareMsg.ok
+                  ? 'border-green-200 bg-green-50 text-green-700'
+                  : 'border-red-200 bg-red-50 text-red-700'}`}>
+                  {compareMsg.text}
+                </div>
+              )}
+
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={compare.on}
+                  onChange={(e) => { setCompare(p => ({ ...p, on: e.target.checked })); setCompareDirty(true) }}
+                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                Show this comparison on the booking page
+              </label>
+
+              <div className={`space-y-3 ${compare.on ? '' : 'opacity-40'}`}>
+                {compare.items.map((item, i) => (
+                  <div key={i} className="flex items-center gap-4 rounded-xl border border-gray-200 p-4">
+                    <div className="flex h-12 w-28 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
+                      {item.logo ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={getApiAssetUrl(item.logo)} alt={item.name} className="max-h-8 max-w-[96px] object-contain" />
+                      ) : (
+                        <span className="px-2 text-center text-[11px] leading-tight text-gray-400">No logo &mdash; the name is shown</span>
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      value={item.name}
+                      maxLength={40}
+                      disabled={!compare.on}
+                      placeholder="Site name, e.g. Booking.com"
+                      onChange={(e) => editCompareItem(i, { name: e.target.value })}
+                      className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50"
+                    />
+
+                    <label className={`shrink-0 cursor-pointer rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 ${compare.on ? '' : 'pointer-events-none'}`}>
+                      {compareUploading === i ? 'Uploading…' : item.logo ? 'Replace' : 'Upload logo'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadCompareLogo(i, f) }}
+                      />
+                    </label>
+
+                    {item.logo && (
+                      <button
+                        type="button"
+                        onClick={() => editCompareItem(i, { logo: '' })}
+                        className="shrink-0 rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-500 hover:bg-gray-50"
+                      >
+                        Clear logo
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      title="Remove this site"
+                      onClick={() => { setCompare(p => ({ ...p, items: p.items.filter((_, j) => j !== i) })); setCompareDirty(true) }}
+                      className="shrink-0 rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+
+                {compare.items.length === 0 && (
+                  <p className="rounded-xl border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-400">
+                    No sites listed &mdash; the banner shows its heading only.
+                  </p>
+                )}
+
+                {compare.items.length < compareMax && (
+                  <button
+                    type="button"
+                    onClick={() => { setCompare(p => ({ ...p, items: [...p.items, { name: '', logo: '' }] })); setCompareDirty(true) }}
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    + Add a site
+                  </button>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                <p className="font-medium">You are not typing any prices here.</p>
+                <p className="mt-1 text-xs">
+                  The figure under every logo is the rate this property publishes to those sites &mdash;
+                  the room&rsquo;s full price, before the per-room discount, which is the one thing never
+                  sent out. The Luxotel figure beside it is the same room after that discount. Change a
+                  room&rsquo;s price or its discount and this follows the same minute. If a room has no
+                  discount there is nothing to show, so the comparison hides itself rather than printing
+                  the same number four times.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={compareSaving || !compareDirty}
+                className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-40"
+              >
+                {compareSaving ? 'Saving…' : 'Save Comparison'}
               </button>
             </form>
           )}
