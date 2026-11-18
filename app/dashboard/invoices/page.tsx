@@ -233,6 +233,14 @@ export default function InvoicesPage() {
                 <div className="flex justify-between text-sm text-green-600">
                   <span>Luxotel Saving</span><span>−{fmt(b.discount)}</span>
                 </div>
+                {/* Its own line, or the three figures do not add up and an
+                    invoice that does not add up is one somebody queries. */}
+                {Number(b.couponAmount) > 0 && (
+                  <div className="flex justify-between text-sm text-green-600">
+                    <span>Coupon{b.couponCode ? ` ${b.couponCode}` : ''}</span>
+                    <span>−{fmt(Number(b.couponAmount))}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-base font-bold text-gray-900 pt-2 border-t border-gray-200">
                   <span>Total</span><span>{fmt(b.total)}</span>
                 </div>

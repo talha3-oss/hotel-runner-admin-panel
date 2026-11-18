@@ -276,6 +276,12 @@ export default function PaymentsPage() {
                 ['Adults / Children', `${selected.adults} / ${selected.children}`],
                 ['Subtotal', fmtCurrency(selected.subtotal)],
                 ['Discount', fmtCurrency(selected.discount)],
+                // Shown only when there was one, and named, so the figures
+                // above and below it add up on the page somebody is reading
+                // when they ask why a payment is short.
+                ...(Number(selected.couponAmount) > 0
+                  ? [[`Coupon${selected.couponCode ? ` ${selected.couponCode}` : ''}`, fmtCurrency(Number(selected.couponAmount))] as [string, string]]
+                  : []),
                 ['Total', fmtCurrency(selected.total)],
                 ['Payment Method', methodLabel(selected.paymentMethod)],
                 ['Payment Status', selected.paymentStatus],
