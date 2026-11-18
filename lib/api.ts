@@ -972,6 +972,11 @@ export interface BookingRecord {
    *  never named to the browser -- they are fetched through openPassport
    *  above. Absent on a server that predates this. */
   passports?: PassportSlot[] | null
+  /** The coupon redeemed on this booking and what it took off, as the
+   *  server worked it out. Null where no coupon was used, and on every
+   *  booking taken before 2026-11-18. */
+  couponCode?: string | null
+  couponAmount?: number | null
   firstName: string
   lastName: string
   email: string
@@ -1560,6 +1565,12 @@ export interface Coupon {
   isActive: boolean
   maxUses: number | null
   usedCount: number
+  /** Which property the code is for. Null is the whole website, which is
+   *  what every coupon written before 2026-11-18 is. */
+  hotelId: string | null
+  /** The property's name, so the list does not have to look it up. Null
+   *  when the coupon is site-wide, or when the hotel is gone. */
+  hotelName?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -1570,6 +1581,8 @@ export type CouponPayload = {
   description?: string
   isActive?: boolean
   maxUses?: number | null
+  /** Empty or null means the whole website. */
+  hotelId?: string | null
 }
 
 export async function fetchAdminCoupons(token: string) {

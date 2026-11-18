@@ -5,9 +5,11 @@ import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon } from '@
 import {
   Coupon,
   CouponPayload,
+  Hotel,
   createAdminCoupon,
   deleteAdminCoupon,
   fetchAdminCoupons,
+  fetchHotels,
   updateAdminCoupon,
 } from '../../../lib/api'
 
@@ -20,6 +22,10 @@ const EMPTY_FORM: FormState = {
   description: '',
   isActive: true,
   maxUses: null,
+  // Empty means the whole website, which is what a coupon has always been
+  // until now -- so a code made without touching the dropdown behaves the
+  // way every existing code does.
+  hotelId: '',
 }
 
 export default function CouponsPage() {
@@ -32,6 +38,7 @@ export default function CouponsPage() {
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<FormState | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [hotels, setHotels] = useState<Hotel[]>([])
 
   const load = useCallback(async () => {
     const token = localStorage.getItem('adminToken')
@@ -47,6 +54,17 @@ export default function CouponsPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // The properties a coupon can be tied to. Loaded once with the page: the
+  // dropdown is in a modal, and fetching it when the modal opens makes the
+  // field sit empty for a moment every time.
+  useEffect(() => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    fetchHotels(token)
+      .then(r => { if (r.success) setHotels(r.hotels || []) })
+      .catch(() => {})
+  }, [])
 
   const openCreate = () => {
     setEditing(null)
@@ -64,6 +82,7 @@ export default function CouponsPage() {
       description: coupon.description || '',
       isActive: coupon.isActive,
       maxUses: coupon.maxUses ?? null,
+      hotelId: coupon.hotelId || '',
     }
     setEditing(f)
     setForm(f)
@@ -85,6 +104,7 @@ export default function CouponsPage() {
         description: form.description?.trim() || undefined,
         isActive: form.isActive,
         maxUses: form.maxUses != null && form.maxUses > 0 ? Number(form.maxUses) : null,
+        hotelId: form.hotelId || null,
       }
       const result = editing?.id
         ? await updateAdminCoupon(token, editing.id, payload)
@@ -154,6 +174,7 @@ export default function CouponsPage() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Code</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Discount</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Applies to</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Usage</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
@@ -177,7 +198,27 @@ export default function CouponsPage() {
                       <span className="text-sm font-semibold text-primary-600">{coupon.discount}% off</span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm text-gray-600">{coupon.description || <span className="text-gray-300">—</span>}</span>
+                      {coupon.hotelId ? (
+                        <span className="inline-block rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700">
+                          {coupon.hotelName || 'One property'}
+                        </span>
+                      ) : (
+                        <span className="inline-block rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
+                          All hotels
+                        </span>
+                      )}
+                    </td>
+                    {/* A long description used to make the row three lines
+                        tall and push everything else down. Given a width and
+                        a ceiling, with its own scrollbar past that. */}
+                    <td className="px-6 py-4 align-top">
+                      {coupon.description ? (
+                        <div className="max-h-20 w-64 overflow-y-auto pr-1 text-sm leading-relaxed text-gray-600">
+                          {coupon.description}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-300">—</span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       {max == null ? (
@@ -291,6 +332,25 @@ export default function CouponsPage() {
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Applies to</label>
+                <select
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  value={form.hotelId || ''}
+                  onChange={e => setForm(prev => ({ ...prev, hotelId: e.target.value }))}
+                >
+                  <option value="">All hotels — the whole website</option>
+                  {hotels.map(h => (
+                    <option key={h.id} value={h.id}>{h.name}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-400">
+                  Pick a property and the code is refused on a stay anywhere else. A guest uses one
+                  coupon per booking either way — a site-wide code and a property&rsquo;s own code
+                  cannot both be applied.
+                </p>
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Maximum Uses <span className="text-gray-400">(optional — leave empty for unlimited)</span>
                 </label>
@@ -308,9 +368,13 @@ export default function CouponsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description <span className="text-gray-400">(optional)</span></label>
-                <input
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="e.g. Summer promotion 2026"
+                {/* A one-line input for something that is shown to guests as
+                    a sentence or two: anything past about forty characters
+                    scrolled sideways and could not be read back. */}
+                <textarea
+                  rows={4}
+                  className="w-full resize-y overflow-y-auto rounded-lg border border-gray-300 px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="e.g. Celebrate the new developments at Luxotel Group with us! Enjoy 15% off as our thank-you."
                   value={form.description || ''}
                   onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
                 />

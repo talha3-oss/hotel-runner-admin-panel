@@ -929,6 +929,14 @@ export default function BookingPage() {
               <div className="flex justify-between text-sm text-green-600">
                 <span>Luxotel saving</span><span>−{fmt(booking.discount)}</span>
               </div>
+              {/* Its own line, or the three figures do not add up and the
+                  desk reads it as a mistake. */}
+              {Number(booking.couponAmount) > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Coupon{booking.couponCode ? ` ${booking.couponCode}` : ''}</span>
+                  <span>−{fmt(Number(booking.couponAmount))}</span>
+                </div>
+              )}
               <div className="flex justify-between border-t border-gray-100 pt-2 text-base font-bold text-gray-900">
                 <span>Total</span><span>{fmt(booking.total)}</span>
               </div>
