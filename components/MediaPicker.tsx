@@ -34,10 +34,16 @@ type Kind = 'image' | 'video'
 
 export default function MediaPicker({
   kind,
+  allowSvg = false,
   onPick,
   onClose,
 }: {
   kind: Kind
+  /** Offer and accept vectors as well. Only the price-comparison logo field
+   *  sets this: a logo is a vector everywhere it comes from, and has to stay
+   *  sharp at any size. The server takes an SVG from nowhere else, cleans the
+   *  one it does take, and refuses it if anything scriptable survives. */
+  allowSvg?: boolean
   onPick: (url: string) => void
   onClose: () => void
 }) {
@@ -74,7 +80,7 @@ export default function MediaPicker({
     if (!token) return
     setLoading(true)
     try {
-      const result = await fetchGallery(token, { search: term, page, limit: PER_PAGE, kind })
+      const result = await fetchGallery(token, { search: term, page, limit: PER_PAGE, kind, includeSvg: allowSvg })
       if (result.success) {
         setFiles(result.files || [])
         setPages(result.pages || 1)
@@ -87,7 +93,7 @@ export default function MediaPicker({
     } finally {
       setLoading(false)
     }
-  }, [term, page, kind])
+  }, [term, page, kind, allowSvg])
 
   useEffect(() => { load() }, [load])
 
@@ -129,7 +135,7 @@ export default function MediaPicker({
     setPercent(0)
     setError('')
     setSlowWarning('')
-    const result = await uploadMedia(file, setPercent, limitMb)
+    const result = await uploadMedia(file, setPercent, limitMb, allowSvg)
     setUploading(false)
 
     if (result.success && result.data?.fileUrl) {
@@ -201,7 +207,7 @@ export default function MediaPicker({
             type="file"
             accept={kind === 'video'
               ? 'video/mp4,video/webm,video/ogg,video/quicktime'
-              : 'image/jpeg,image/png,image/webp,image/gif,image/avif'}
+              : `image/jpeg,image/png,image/webp,image/gif,image/avif${allowSvg ? ',image/svg+xml' : ''}`}
             className="hidden"
             onChange={(e) => { upload(e.target.files?.[0]); e.target.value = '' }}
           />
@@ -269,7 +275,12 @@ export default function MediaPicker({
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={galleryThumbUrl(file, 240)} alt={file.name} loading="lazy" decoding="async"
-                        className="h-full w-full object-cover" />
+                        // A logo is nearly always wider than it is tall, and
+                        // cropping one to a square hides the half that says
+                        // whose it is. Shown whole, with room around it.
+                        className={file.name.toLowerCase().endsWith('.svg')
+                          ? 'h-full w-full object-contain p-2'
+                          : 'h-full w-full object-cover'} />
                     )}
                   </div>
                   <p className="truncate px-1.5 py-1 text-[11px] text-gray-500">{file.name}</p>

@@ -884,11 +884,16 @@ export const isVideoFile = (file: File) =>
 export function uploadMedia(
   file: File,
   onProgress?: (percent: number | null) => void,
-  limitMb?: number
+  limitMb?: number,
+  /** Let this one upload be a vector. The server refuses SVG everywhere
+   *  else, cleans the file it does accept, and refuses it outright if
+   *  anything scriptable survives. */
+  allowSvg?: boolean
 ): Promise<UploadResult> {
   const video = isVideoFile(file)
   const field = video ? 'video' : 'image'
   const url = `${API_BASE_URL}/${video ? 'upload-video-multer' : 'upload-image-multer'}`
+    + (!video && allowSvg ? '?svg=1' : '')
 
   return new Promise((resolve) => {
     const form = new FormData()
@@ -1995,7 +2000,14 @@ export interface GalleryListResult {
 
 export async function fetchGallery(
   token: string,
-  params: { search?: string; page?: number; limit?: number; folder?: string; kind?: 'image' | 'video' } = {}
+  params: {
+    search?: string; page?: number; limit?: number; folder?: string
+    kind?: 'image' | 'video'
+    /** Offer vectors too. Only the price-comparison logo field asks for this:
+     *  an SVG is accepted nowhere else, so it is not put in front of a field
+     *  that cannot take one. */
+    includeSvg?: boolean
+  } = {}
 ): Promise<GalleryListResult> {
   const query = new URLSearchParams()
   if (params.search) query.set('search', params.search)
@@ -2003,6 +2015,7 @@ export async function fetchGallery(
   if (params.limit) query.set('limit', String(params.limit))
   if (params.folder) query.set('folder', params.folder)
   if (params.kind) query.set('kind', params.kind)
+  if (params.includeSvg) query.set('includeSvg', 'true')
 
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/gallery?${query.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },

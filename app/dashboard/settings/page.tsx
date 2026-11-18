@@ -18,6 +18,7 @@ import {
 } from '../../../lib/api'
 import { passwordProblem } from '../../../lib/passwordRule'
 import RateTigerLogs from '@/components/RateTigerLogs'
+import MediaPicker from '@/components/MediaPicker'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
 
@@ -1024,7 +1025,10 @@ export default function SettingsPage() {
   const [compareDirty, setCompareDirty] = useState(false)
   const [compareSaving, setCompareSaving] = useState(false)
   const [compareLoaded, setCompareLoaded] = useState(false)
-  const [compareUploading, setCompareUploading] = useState<number | null>(null)
+  // Which row's logo is being chosen. The library and the upload -- with its
+  // progress bar -- both live in MediaPicker, so this screen only has to say
+  // which row the chosen file belongs to.
+  const [comparePicking, setComparePicking] = useState<number | null>(null)
   const [compareMsg, setCompareMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => {
@@ -1047,25 +1051,6 @@ export default function SettingsPage() {
       items: prev.items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
     }))
     setCompareDirty(true)
-  }
-
-  const uploadCompareLogo = async (index: number, file: File) => {
-    setCompareUploading(index)
-    setCompareMsg(null)
-    try {
-      const r = await uploadHomepageSectionImage(file)
-      if (r.success && r.data?.fileUrl) {
-        editCompareItem(index, { logo: r.data.fileUrl })
-        // Uploaded but not yet live -- Save is what publishes it.
-        setCompareMsg({ ok: true, text: 'Uploaded. Click Save to put it on the booking page.' })
-      } else {
-        setCompareMsg({ ok: false, text: r.message || 'Upload failed.' })
-      }
-    } catch {
-      setCompareMsg({ ok: false, text: 'Could not reach the server.' })
-    } finally {
-      setCompareUploading(null)
-    }
   }
 
   const handleCompareSave = async (e: FormEvent) => {
@@ -1616,6 +1601,10 @@ export default function SettingsPage() {
                   The travel sites named in the &ldquo;Instant Savings&rdquo; banner on the booking page,
                   each shown with the nightly rate you publish to them, next to the lower Luxotel one.
                 </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Logos can be chosen from the media library or uploaded. This is the one place an
+                  SVG is accepted &mdash; a logo stays sharp at any size as a vector.
+                </p>
               </div>
 
               {compareMsg && (
@@ -1658,15 +1647,14 @@ export default function SettingsPage() {
                       className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50"
                     />
 
-                    <label className={`shrink-0 cursor-pointer rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 ${compare.on ? '' : 'pointer-events-none'}`}>
-                      {compareUploading === i ? 'Uploading…' : item.logo ? 'Replace' : 'Upload logo'}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadCompareLogo(i, f) }}
-                      />
-                    </label>
+                    <button
+                      type="button"
+                      disabled={!compare.on}
+                      onClick={() => setComparePicking(i)}
+                      className="shrink-0 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                    >
+                      {item.logo ? 'Replace' : 'Choose logo'}
+                    </button>
 
                     {item.logo && (
                       <button
@@ -1705,6 +1693,21 @@ export default function SettingsPage() {
                   </button>
                 )}
               </div>
+
+              {comparePicking !== null && (
+                <MediaPicker
+                  kind="image"
+                  // The one field in the panel that takes a vector: a company
+                  // logo is drawn as one everywhere it comes from, and stays
+                  // sharp at any size. Accepted nowhere else.
+                  allowSvg
+                  onPick={(url) => {
+                    editCompareItem(comparePicking, { logo: url })
+                    setCompareMsg({ ok: true, text: 'Logo chosen. Click Save to put it on the booking page.' })
+                  }}
+                  onClose={() => setComparePicking(null)}
+                />
+              )}
 
               <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                 <p className="font-medium">You are not typing any prices here.</p>
