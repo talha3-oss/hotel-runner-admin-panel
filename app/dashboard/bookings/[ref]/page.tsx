@@ -1061,6 +1061,15 @@ export default function BookingPage() {
               {booking.rateTigerLastError && booking.rateTigerStatus !== 'SENT' && (
                 <p className="mt-1 break-words text-xs text-red-600">{booking.rateTigerLastError}</p>
               )}
+              {/* A delivered push can still have gone to the wrong property:
+                  RateTiger echoes the hotel it filed the booking against, and
+                  a reply that names another one is recorded here. Amber, not
+                  red — it did arrive, just not where it should have. */}
+              {booking.rateTigerLastError && booking.rateTigerStatus === 'SENT' && (
+                <p className="mt-2 break-words rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {booking.rateTigerLastError}
+                </p>
+              )}
               {(booking.rateTigerAttempts ?? 0) > 1 && (
                 <p className="mt-1 text-xs text-gray-400">{booking.rateTigerAttempts} attempts</p>
               )}

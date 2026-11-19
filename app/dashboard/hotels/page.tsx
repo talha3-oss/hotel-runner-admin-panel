@@ -1051,13 +1051,15 @@ export default function HotelsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">RateTiger Reservation Code</label>
                   <input
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono tracking-wider focus:ring-2 focus:ring-primary-500 focus:outline-none placeholder:font-sans placeholder:tracking-normal"
-                    placeholder="e.g. luxotel_test"
+                    placeholder="e.g. 57962"
                     value={hotelForm.rateTigerReservationCode}
                     onChange={field('rateTigerReservationCode')}
                   />
                   <p className="mt-1 text-xs text-gray-400">
                     The property code RateTiger expects on a reservation. It is often different from
                     the hotel code above — ask them for it. Leave empty to reuse the hotel code.
+                    It must belong to this property alone: two hotels sharing one code send their
+                    bookings to the same place, and the save is refused.
                   </p>
                 </div>
 
