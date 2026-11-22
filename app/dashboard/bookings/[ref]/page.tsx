@@ -183,6 +183,8 @@ export default function BookingPage() {
   // One line per adult: who has sent a document and who has not. An older
   // server does not send this at all, which reads as nothing to show.
   const passports = booking?.passports || []
+  // Counted as received even once the file has been deleted: the question
+  // this answers is "did this party send their documents", and they did.
   const received = passports.filter((p) => p.uploaded).length
 
   // Changing the booking. Nothing is written until Apply, and the quote is
@@ -855,7 +857,17 @@ export default function BookingPage() {
                             </span>
                           )}
                         </span>
-                        {slot.uploaded ? (
+                        {slot.uploaded && slot.deletedAt ? (
+                          // Sent, and since removed under the retention
+                          // setting. Shown rather than offering a View that
+                          // can only fail.
+                          <span
+                            className="shrink-0 text-xs text-gray-400"
+                            title={`Deleted ${atProperty(slot.deletedAt, hotelZone)} under the passport retention setting`}
+                          >
+                            Deleted
+                          </span>
+                        ) : slot.uploaded ? (
                           <button
                             type="button"
                             onClick={async () => {

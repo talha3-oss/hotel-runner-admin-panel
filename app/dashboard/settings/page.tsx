@@ -6,13 +6,15 @@ import { useSearchParams } from 'next/navigation'
 import {
   UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, KeyIcon,
   PaperAirplaneIcon, GlobeAltIcon, PhotoIcon, TrashIcon, ArrowUpTrayIcon, VideoCameraIcon,
-  DocumentTextIcon, CalendarDaysIcon, ScaleIcon,
+  DocumentTextIcon, CalendarDaysIcon, ScaleIcon, IdentificationIcon,
 } from '@heroicons/react/24/outline'
 import {
   getAdminMe, updateAdminMe,
   fetchSiteSettings, saveSiteSettings, uploadHomepageSectionImage, getApiAssetUrl,
   fetchUploadLimits, saveUploadLimits, clearUploadLimitsCache, DEFAULT_UPLOAD_LIMITS, UploadLimits,
   fetchBookingPolicy, saveBookingPolicy, DEFAULT_BOOKING_POLICY, BookingPolicy,
+  fetchPassportRetention, savePassportRetention, runPassportPurge,
+  DEFAULT_PASSPORT_RETENTION, PassportRetention,
   fetchRateCompare, saveRateCompare, DEFAULT_RATE_COMPARE, RateCompare,
   SiteSettings,
 } from '../../../lib/api'
@@ -595,7 +597,7 @@ export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'booking-policy' | 'rate-compare' | 'auth-pages' | 'partner-api' | 'ratetiger' | 'ratetiger-logs'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'booking-policy' | 'passports' | 'rate-compare' | 'auth-pages' | 'partner-api' | 'ratetiger' | 'ratetiger-logs'>('profile')
 
   // The header's menu links here with ?tab=..., so Profile and Settings land
   // where they say they will instead of always opening on Profile.
@@ -1014,6 +1016,85 @@ export default function SettingsPage() {
     }
   }
 
+  // ── How long a guest's passport is kept ────────────────────────────────
+  //
+  // The files are encrypted where they sit, which protects a copy that has
+  // left the server. Against somebody who has the server it buys nothing --
+  // the key is in .env beside them -- and the only thing that does is not
+  // holding the document any longer than the desk needs it.
+  //
+  // Off until somebody turns it on. This deletes guests' data for good, so
+  // it is not something a deploy should quietly begin doing.
+  const [retention, setRetention] = useState<PassportRetention>(DEFAULT_PASSPORT_RETENTION)
+  const [retentionRange, setRetentionRange] = useState({ min: 1, max: 365 })
+  const [retentionDirty, setRetentionDirty] = useState(false)
+  const [retentionSaving, setRetentionSaving] = useState(false)
+  const [retentionLoaded, setRetentionLoaded] = useState(false)
+  const [retentionRunning, setRetentionRunning] = useState(false)
+  const [retentionMsg, setRetentionMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    if (activeTab !== 'passports' || retentionLoaded) return
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    fetchPassportRetention(token)
+      .then(r => {
+        if (r.success && r.retention) setRetention(r.retention)
+        if (r.minDays && r.maxDays) setRetentionRange({ min: r.minDays, max: r.maxDays })
+        setRetentionLoaded(true)
+        setRetentionDirty(false)
+      })
+      .catch(() => {})
+  }, [activeTab, retentionLoaded])
+
+  const handleRetentionSave = async (e: FormEvent) => {
+    e.preventDefault()
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setRetentionSaving(true)
+    try {
+      const r = await savePassportRetention(token, retention)
+      if (r.success) {
+        // What came back, not what was typed: a day count outside what the
+        // code allows is brought into range on the way in.
+        if (r.retention) setRetention(r.retention)
+        setRetentionDirty(false)
+        setRetentionMsg({
+          ok: true,
+          text: r.retention?.on
+            ? `Saved. Documents are deleted ${r.retention.days} day${r.retention.days === 1 ? '' : 's'} after check-out, from the next hourly sweep.`
+            : 'Saved. Nothing is being deleted.',
+        })
+      } else {
+        setRetentionMsg({ ok: false, text: r.message || 'Could not save.' })
+      }
+    } catch {
+      setRetentionMsg({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setRetentionSaving(false)
+    }
+  }
+
+  const handleRetentionRun = async () => {
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    if (!confirm('Delete now every passport whose stay ended longer ago than the number of days above?\n\nThis cannot be undone.')) return
+    setRetentionRunning(true)
+    try {
+      const r = await runPassportPurge(token)
+      setRetentionMsg({
+        ok: r.success,
+        text: r.success
+          ? `${r.message}${r.failed ? ` ${r.failed} could not be removed — see the server log.` : ''}`
+          : r.message || 'Could not run it.',
+      })
+    } catch {
+      setRetentionMsg({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setRetentionRunning(false)
+    }
+  }
+
   // ── The travel sites the booking page compares against ─────────────────
   //
   // Names and logos only. The price under each one is the rate this property
@@ -1093,6 +1174,10 @@ export default function SettingsPage() {
     // The travel sites the booking page compares prices against. Beside
     // Booking Policy because both change what the guest is shown, not what
     // anything costs.
+    // Its own tab rather than a line under Security: it is the only setting
+    // that deletes a guest's data for good, and it deserves to be read before
+    // it is switched on rather than found by somebody changing a password.
+    { id: 'passports' as const, name: 'Guest Passports', icon: IdentificationIcon },
     { id: 'rate-compare' as const, name: 'Price Comparison', icon: ScaleIcon },
     { id: 'auth-pages' as const, name: 'Login & Signup', icon: UserIcon },
     { id: 'partner-api' as const, name: 'Partner API', icon: KeyIcon },
@@ -1592,6 +1677,106 @@ export default function SettingsPage() {
               >
                 {policySaving ? 'Saving…' : 'Save Policy'}
               </button>
+            </form>
+          )}
+
+          {activeTab === 'passports' && (
+            <form onSubmit={handleRetentionSave} className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-gray-800">Guest Passports</h2>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  Guests can send their passport ahead of arrival so there is nothing to hand over at the
+                  desk. This decides how long the file is kept once the stay is over.
+                </p>
+              </div>
+
+              {retentionMsg && (
+                <div className={`rounded-lg border px-4 py-3 text-sm ${retentionMsg.ok
+                  ? 'border-green-200 bg-green-50 text-green-700'
+                  : 'border-red-200 bg-red-50 text-red-700'}`}>
+                  {retentionMsg.text}
+                </div>
+              )}
+
+              <div className="rounded-xl border border-gray-200 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Delete passports after the stay</p>
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      The file is removed from the server for good. The booking still records that the guest
+                      sent one and when &mdash; only the image goes.
+                    </p>
+                  </div>
+                  <label className="flex shrink-0 items-center gap-2 text-sm text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={retention.on}
+                      onChange={(e) => { setRetention(p => ({ ...p, on: e.target.checked })); setRetentionDirty(true) }}
+                      className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    Delete them
+                  </label>
+                </div>
+
+                <div className={`mt-3 flex items-center gap-2 ${retention.on ? '' : 'opacity-40'}`}>
+                  <span className="text-sm text-gray-500">Keep for</span>
+                  <input
+                    type="number"
+                    min={retentionRange.min}
+                    max={retentionRange.max}
+                    disabled={!retention.on}
+                    value={retention.days}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      setRetention(p => ({ ...p, days: Number.isFinite(n) ? n : p.days }))
+                      setRetentionDirty(true)
+                    }}
+                    className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50"
+                  />
+                  <span className="text-sm text-gray-500">days after check-out</span>
+                </div>
+
+                <p className="mt-2 text-xs text-gray-400">
+                  {retention.on
+                    ? `A guest who checks out today has their passport deleted in ${retention.days} day${retention.days === 1 ? '' : 's'}. The sweep runs every hour, so it goes within an hour of becoming due.`
+                    : 'Nothing is deleted. Every passport ever sent stays on the server until somebody removes it by hand.'}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <p className="font-medium">Why this matters more than the encryption does.</p>
+                <p className="mt-1 text-xs">
+                  Passport files are encrypted where they sit, which protects a copy that has left the server
+                  &mdash; a stolen disk, a backup in the wrong place. It does <strong>not</strong> protect
+                  against somebody who gets into the server itself, because the key has to live there for the
+                  panel to show you the document. A file that is no longer on the server is the one thing that
+                  cannot be taken. Keeping identity documents longer than you need them is also a
+                  responsibility in itself.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={retentionSaving || !retentionDirty}
+                  className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-40"
+                >
+                  {retentionSaving ? 'Saving…' : 'Save'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRetentionRun}
+                  disabled={retentionRunning || !retention.on || retentionDirty}
+                  title={retentionDirty ? 'Save first' : !retention.on ? 'Switch deletion on first' : undefined}
+                  className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                >
+                  {retentionRunning ? 'Running…' : 'Run the clean-up now'}
+                </button>
+                <span className="text-xs text-gray-400">
+                  Runs by itself every hour. This button is for seeing it work without waiting.
+                </span>
+              </div>
             </form>
           )}
 

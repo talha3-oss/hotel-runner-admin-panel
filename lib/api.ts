@@ -711,6 +711,66 @@ export async function saveBookingPolicy(token: string, policy: BookingPolicy): P
   return res.json()
 }
 
+// ── How long a guest's passport is kept ───────────────────────────────────
+//
+// The files are encrypted where they sit, which protects a copy that has
+// left the server -- a stolen disk, a backup in the wrong place. Against
+// somebody who has the server it buys nothing, because the key is in .env
+// beside them. Not holding the document any longer than the desk needs it is
+// the part that does, which is what this sets.
+export interface PassportRetention { on: boolean; days: number }
+
+export interface PassportRetentionResult {
+  success: boolean
+  message?: string
+  retention?: PassportRetention
+  defaults?: PassportRetention
+  minDays?: number
+  maxDays?: number
+}
+
+export interface PassportPurgeResult {
+  success: boolean
+  message?: string
+  on?: boolean
+  days?: number
+  cutoff?: string
+  bookings?: number
+  files?: number
+  failed?: number
+}
+
+// Off, because starting to delete guests' documents is a decision somebody
+// makes, not something a deploy begins doing.
+export const DEFAULT_PASSPORT_RETENTION: PassportRetention = { on: false, days: 7 }
+
+export async function fetchPassportRetention(token: string): Promise<PassportRetentionResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/passport-retention`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function savePassportRetention(token: string, retention: PassportRetention): Promise<PassportRetentionResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/passport-retention`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ retention }),
+  })
+  return res.json()
+}
+
+// Sweeps now rather than on the hourly timer. Here because the alternative
+// way to see whether this is working is to wait a week.
+export async function runPassportPurge(token: string): Promise<PassportPurgeResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/passport-retention/run`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.json()
+}
+
 // ── The travel sites named in the booking page's savings banner ───────────
 //
 // Only their names and logos are settings. The price shown under each one is
@@ -772,6 +832,10 @@ export interface PassportSlot {
   roomName: string | null
   lead: boolean
   uploaded: boolean
+  // Stays true once the retention sweep has taken the file away -- they did
+  // send one, and saying otherwise would have the desk chase a guest who
+  // did everything right. This is what says the image itself has gone.
+  deletedAt: string | null
   fileName: string | null
   fileType: string | null
   uploadedAt: string | null
