@@ -1,7 +1,7 @@
 'use client'
 
 import { FormEvent, useCallback, useEffect, useState } from 'react'
-import { PlusIcon, PencilIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PencilIcon, TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
 import {
   fetchAdminRoomTypes,
   createAdminRoomType,
@@ -109,10 +109,10 @@ export default function RatePlansPage() {
   const [formData, setFormData] = useState<FormData>(EMPTY_FORM)
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState('')
-  // Reordering. Arrows rather than dragging: there are a handful of plans,
-  // the list is a table, and a drag library is a dependency and a bundle to
-  // carry for something two buttons do -- and do on a phone, which dragging
-  // a table row does not.
+  // Reordering, with the same control the Extras screen uses. Chevrons rather
+  // than dragging: they work with a finger, with a keyboard and with a screen
+  // reader, and a drag library is a dependency and a bundle to carry for
+  // something two buttons do.
   const [orderSaving, setOrderSaving] = useState(false)
   const [orderMsg, setOrderMsg] = useState('')
 
@@ -309,7 +309,7 @@ export default function RatePlansPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="w-20 px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className="w-16 px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   Order
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
@@ -334,26 +334,32 @@ export default function RatePlansPage() {
                 const builtin = isBuiltin(plan)
                 return (
                   <tr key={plan.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-4">
+                    {/* The same control the Extras screen uses: the position,
+                        then the two chevrons stacked. Two tables that reorder
+                        the same way should look and behave the same way. */}
+                    <td className="w-16 px-3 py-4">
                       <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => movePlan(index, -1)}
-                          disabled={index === 0 || orderSaving}
-                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:bg-transparent"
-                          title="Move up"
-                          aria-label={`Move ${plan.name} up`}
-                        >
-                          <ArrowUpIcon className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => movePlan(index, 1)}
-                          disabled={index === plans.length - 1 || orderSaving}
-                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:bg-transparent"
-                          title="Move down"
-                          aria-label={`Move ${plan.name} down`}
-                        >
-                          <ArrowDownIcon className="h-4 w-4" />
-                        </button>
+                        <span className="w-4 text-xs tabular-nums text-gray-400">{index + 1}</span>
+                        <div className="flex flex-col">
+                          <button
+                            onClick={() => movePlan(index, -1)}
+                            disabled={index === 0 || orderSaving}
+                            title="Move up"
+                            aria-label={`Move ${plan.name} up`}
+                            className="rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-600 disabled:pointer-events-none disabled:opacity-25"
+                          >
+                            <ChevronUpIcon className="h-4 w-4" strokeWidth={2.5} />
+                          </button>
+                          <button
+                            onClick={() => movePlan(index, 1)}
+                            disabled={index === plans.length - 1 || orderSaving}
+                            title="Move down"
+                            aria-label={`Move ${plan.name} down`}
+                            className="rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-600 disabled:pointer-events-none disabled:opacity-25"
+                          >
+                            <ChevronDownIcon className="h-4 w-4" strokeWidth={2.5} />
+                          </button>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{plan.name}</td>
