@@ -1,12 +1,13 @@
 'use client'
 
 import { FormEvent, useCallback, useEffect, useState } from 'react'
-import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PencilIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon } from '@heroicons/react/24/outline'
 import {
   fetchAdminRoomTypes,
   createAdminRoomType,
   updateAdminRoomType,
   deleteAdminRoomType,
+  reorderAdminRoomTypes,
   RoomTypeOption,
   PlanLine,
 } from '../../../lib/api'
@@ -108,6 +109,12 @@ export default function RatePlansPage() {
   const [formData, setFormData] = useState<FormData>(EMPTY_FORM)
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState('')
+  // Reordering. Arrows rather than dragging: there are a handful of plans,
+  // the list is a table, and a drag library is a dependency and a bundle to
+  // carry for something two buttons do -- and do on a phone, which dragging
+  // a table row does not.
+  const [orderSaving, setOrderSaving] = useState(false)
+  const [orderMsg, setOrderMsg] = useState('')
 
   const loadPlans = useCallback(async () => {
     const token = localStorage.getItem('adminToken')
@@ -129,6 +136,44 @@ export default function RatePlansPage() {
   }, [])
 
   useEffect(() => { loadPlans() }, [loadPlans])
+
+  /** Moves one plan up or down and saves the whole list.
+   *
+   *  The new order is shown straight away and only rolled back if the save
+   *  fails: waiting for a round trip before the row moves makes two clicks in
+   *  a row feel broken, and this is a screen where somebody reorders six
+   *  things at once. */
+  const movePlan = async (index: number, direction: -1 | 1) => {
+    const to = index + direction
+    if (to < 0 || to >= plans.length || orderSaving) return
+
+    const before = plans
+    const next = [...plans]
+    ;[next[index], next[to]] = [next[to], next[index]]
+    setPlans(next)
+    setOrderMsg('')
+    setOrderSaving(true)
+
+    const token = localStorage.getItem('adminToken')
+    if (!token) { setPlans(before); setOrderSaving(false); setError('Admin token not found.'); return }
+
+    try {
+      // Derived plans have no row behind them, so there is nothing to save
+      // for one -- the server ignores them, and they sort last regardless.
+      const r = await reorderAdminRoomTypes(token, next.filter(p => !p.derived).map(p => p.id))
+      if (r.success) {
+        setOrderMsg('Order saved. The booking page lists them this way.')
+      } else {
+        setPlans(before)
+        setError(r.message || 'Could not save the order.')
+      }
+    } catch {
+      setPlans(before)
+      setError('Unable to connect to server.')
+    } finally {
+      setOrderSaving(false)
+    }
+  }
 
   const openAddModal = () => {
     setEditingPlan(null)
@@ -232,7 +277,8 @@ export default function RatePlansPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Rate Plans</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Manage rate plan types used across all hotel rooms
+            Manage rate plan types used across all hotel rooms. The arrows set the order guests read
+            them in on the booking page — top of this list is top of that page.
           </p>
         </div>
         <button
@@ -250,6 +296,12 @@ export default function RatePlansPage() {
         </div>
       )}
 
+      {orderMsg && (
+        <div className="mb-6 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          {orderMsg}
+        </div>
+      )}
+
       {loading ? (
         <div className="rounded-md bg-white p-6 text-sm text-gray-600 shadow">Loading rate plans...</div>
       ) : (
@@ -257,6 +309,9 @@ export default function RatePlansPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="w-20 px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  Order
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   Name
                 </th>
@@ -275,10 +330,32 @@ export default function RatePlansPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
-              {plans.map((plan) => {
+              {plans.map((plan, index) => {
                 const builtin = isBuiltin(plan)
                 return (
                   <tr key={plan.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => movePlan(index, -1)}
+                          disabled={index === 0 || orderSaving}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:bg-transparent"
+                          title="Move up"
+                          aria-label={`Move ${plan.name} up`}
+                        >
+                          <ArrowUpIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => movePlan(index, 1)}
+                          disabled={index === plans.length - 1 || orderSaving}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:bg-transparent"
+                          title="Move down"
+                          aria-label={`Move ${plan.name} down`}
+                        >
+                          <ArrowDownIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{plan.name}</td>
                     <td className="px-6 py-4">
                       <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
@@ -323,7 +400,7 @@ export default function RatePlansPage() {
               })}
               {plans.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-500">
+                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">
                     No rate plans found. Add your first one above.
                   </td>
                 </tr>

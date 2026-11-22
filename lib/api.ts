@@ -82,6 +82,11 @@ export interface RoomTypeOption {
   includes?: PlanLine[]
   stayIncludes?: PlanLine[]
   cancellationText?: string | null
+  // Where this plan sits in the list the guest reads, smallest first. Plans
+  // nobody has placed share 0 and fall back to being sorted by name; a
+  // derived plan -- a name typed on a room with no Rate Plan row behind it --
+  // is sent as 9999 so it cannot outrank one somebody set up.
+  sortOrder?: number
   createdAt: string | null
   updatedAt: string | null
   derived: boolean
@@ -171,6 +176,18 @@ export async function fetchAdminRoomTypes(token: string) {
   const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms/types`, {
     headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
     cache: 'no-store',
+  })
+  return res.json()
+}
+
+/** Saves the order of the rate plans: the ids, in the order they should read
+ *  on this screen and on the guest's booking page. Derived plans have no row
+ *  to write to and are ignored. */
+export async function reorderAdminRoomTypes(token: string, ids: string[]) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/rooms/types/order`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ ids }),
   })
   return res.json()
 }
