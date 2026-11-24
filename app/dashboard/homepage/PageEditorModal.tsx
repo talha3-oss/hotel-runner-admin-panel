@@ -185,6 +185,39 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   )
 }
 
+/** Up, the position, down -- the one reorder control this editor uses.
+ *
+ *  Arrows rather than dragging, for the reason the Extras screen gives: it
+ *  works with a finger, with a keyboard and with a screen reader, and there
+ *  are rarely more than a handful of rows to move.
+ *
+ *  It was written out three times before this, in the same twelve lines, and
+ *  the price list -- the one place with two levels to arrange -- had none at
+ *  all. One component instead, so the four of them cannot drift apart.
+ */
+function Reorder({ index, count, onMove, what }: {
+  index: number
+  count: number
+  onMove: (by: -1 | 1) => void
+  /** Named in the aria-label, so a screen reader says what is moving. */
+  what: string
+}) {
+  const btn = 'rounded p-1 hover:bg-gray-200 disabled:pointer-events-none disabled:opacity-20'
+  return (
+    <div className="flex flex-shrink-0 flex-col items-center gap-0.5 pt-1">
+      <button type="button" onClick={() => onMove(-1)} disabled={index === 0}
+        title="Move up" aria-label={`Move ${what} up`} className={btn}>
+        <ChevronUpIcon className="h-3.5 w-3.5 text-gray-400" />
+      </button>
+      <span className="w-4 text-center font-mono text-xs text-gray-300">{index + 1}</span>
+      <button type="button" onClick={() => onMove(1)} disabled={index === count - 1}
+        title="Move down" aria-label={`Move ${what} down`} className={btn}>
+        <ChevronDownIcon className="h-3.5 w-3.5 text-gray-400" />
+      </button>
+    </div>
+  )
+}
+
 function buildEmpty(type: SectionType): ContentSection {
   if (type === 'hero')         return { type, title: '', subtitle: '', image: '', videoUrl: '', buttonLabel: 'Book Now', buttonHref: '/booking', buttonOpensBooking: false }
   if (type === 'text')         return { type, title: '', content: '' }
@@ -373,6 +406,20 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
     const arr = [...groups]
     const items = [...(arr[gi].items || [])]; items[pi] = { ...items[pi], [f]: v }
     arr[gi] = { ...arr[gi], items }; setGroups(arr)
+  }
+  // The chips run along the top of the public section in this order, and the
+  // cards underneath in theirs, so both are the admin's to arrange.
+  const moveGroup = (gi: number, by: -1 | 1) => {
+    const to = gi + by
+    if (to < 0 || to >= groups.length) return
+    const arr = [...groups]; [arr[gi], arr[to]] = [arr[to], arr[gi]]; setGroups(arr)
+  }
+  const movePrice = (gi: number, pi: number, by: -1 | 1) => {
+    const items = [...(groups[gi]?.items || [])]
+    const to = pi + by
+    if (to < 0 || to >= items.length) return
+    ;[items[pi], items[to]] = [items[to], items[pi]]
+    const arr = [...groups]; arr[gi] = { ...arr[gi], items }; setGroups(arr)
   }
 
   return (
@@ -835,13 +882,8 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
             <div className="space-y-3">
               {shots.map((shot, i) => (
                 <div key={i} className="flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
-                  <div className="flex flex-col items-center gap-0.5 pt-1">
-                    <button type="button" onClick={() => moveShot(i, -1)} disabled={i === 0}
-                      className="rounded p-1 hover:bg-gray-200 disabled:opacity-20"><ChevronUpIcon className="h-3.5 w-3.5 text-gray-400" /></button>
-                    <span className="w-4 text-center font-mono text-xs text-gray-300">{i + 1}</span>
-                    <button type="button" onClick={() => moveShot(i, 1)} disabled={i === shots.length - 1}
-                      className="rounded p-1 hover:bg-gray-200 disabled:opacity-20"><ChevronDownIcon className="h-3.5 w-3.5 text-gray-400" /></button>
-                  </div>
+                  <Reorder index={i} count={shots.length} what={shot.caption || `image ${i + 1}`}
+                    onMove={by => moveShot(i, by)} />
                   {shot.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={shot.image.startsWith('http') ? shot.image : getApiAssetUrl(shot.image)} alt=""
@@ -909,40 +951,48 @@ function SectionFormModal({ initial, isNew, onSave, onClose }: {
             {groups.length === 0 && <p className="text-sm text-gray-400">No groups yet.</p>}
             <div className="space-y-4">
               {groups.map((group, gi) => (
-                <div key={gi} className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Chip Label</label>
-                      <input className={inp} value={group.label} onChange={e => updGroupLabel(gi, e.target.value)}
-                        placeholder="e.g. Body Massage" />
-                    </div>
-                    <button type="button" onClick={() => rmGroup(gi)}
-                      className="flex items-center gap-1 pb-2 text-xs text-red-400 hover:text-red-600">
-                      <TrashIcon className="h-3.5 w-3.5" /> Remove group
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {(group.items || []).map((item, pi) => (
-                      <div key={pi} className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
-                        <div className="grid grid-cols-3 gap-2">
-                          <input className={inp} value={item.title} onChange={e => updPrice(gi, pi, 'title', e.target.value)} placeholder="Swedish Massage" />
-                          <input className={inp} value={item.price} onChange={e => updPrice(gi, pi, 'price', e.target.value)} placeholder="70 JOD" />
-                          <input className={inp} value={item.duration} onChange={e => updPrice(gi, pi, 'duration', e.target.value)} placeholder="60 Minutes" />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input className={inp} value={item.description} onChange={e => updPrice(gi, pi, 'description', e.target.value)}
-                            placeholder="Short description." />
-                          <button type="button" onClick={() => rmPrice(gi, pi)} className="flex-shrink-0 text-red-400 hover:text-red-600">
-                            <TrashIcon className="h-4 w-4" />
-                          </button>
-                        </div>
+                <div key={gi} className="flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <Reorder index={gi} count={groups.length} what={group.label || `group ${gi + 1}`}
+                    onMove={by => moveGroup(gi, by)} />
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Chip Label</label>
+                        <input className={inp} value={group.label} onChange={e => updGroupLabel(gi, e.target.value)}
+                          placeholder="e.g. Body Massage" />
                       </div>
-                    ))}
-                    <button type="button" onClick={() => addPrice(gi)}
-                      className="inline-flex items-center gap-1 pt-1 text-xs font-medium text-primary-600 hover:text-primary-700">
-                      <PlusIcon className="h-3.5 w-3.5" /> Add Treatment
-                    </button>
+                      <button type="button" onClick={() => rmGroup(gi)}
+                        className="flex items-center gap-1 pb-2 text-xs text-red-400 hover:text-red-600">
+                        <TrashIcon className="h-3.5 w-3.5" /> Remove group
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {(group.items || []).map((item, pi) => (
+                        <div key={pi} className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3">
+                          <Reorder index={pi} count={(group.items || []).length}
+                            what={item.title || `item ${pi + 1}`} onMove={by => movePrice(gi, pi, by)} />
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="grid grid-cols-3 gap-2">
+                              <input className={inp} value={item.title} onChange={e => updPrice(gi, pi, 'title', e.target.value)} placeholder="Swedish Massage" />
+                              <input className={inp} value={item.price} onChange={e => updPrice(gi, pi, 'price', e.target.value)} placeholder="70 JOD" />
+                              <input className={inp} value={item.duration} onChange={e => updPrice(gi, pi, 'duration', e.target.value)} placeholder="60 Minutes" />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input className={inp} value={item.description} onChange={e => updPrice(gi, pi, 'description', e.target.value)}
+                                placeholder="Short description." />
+                              <button type="button" onClick={() => rmPrice(gi, pi)} className="flex-shrink-0 text-red-400 hover:text-red-600">
+                                <TrashIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => addPrice(gi)}
+                        className="inline-flex items-center gap-1 pt-1 text-xs font-medium text-primary-600 hover:text-primary-700">
+                        <PlusIcon className="h-3.5 w-3.5" /> Add Treatment
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1111,13 +1161,8 @@ export default function PageEditorModal({ slug, pageName, onClose }: {
                   const imgSrc = thumb ? (thumb.startsWith('http') ? thumb : getApiAssetUrl(thumb)) : ''
                   return (
                     <div key={i} className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow group">
-                      <div className="flex flex-col items-center gap-0.5 flex-shrink-0 pt-1">
-                        <button onClick={() => move(i, -1)} disabled={i === 0}
-                          className="p-1 rounded hover:bg-gray-200 disabled:opacity-20"><ChevronUpIcon className="h-3.5 w-3.5 text-gray-400" /></button>
-                        <span className="text-xs text-gray-300 font-mono w-4 text-center">{i + 1}</span>
-                        <button onClick={() => move(i, 1)} disabled={i === sections.length - 1}
-                          className="p-1 rounded hover:bg-gray-200 disabled:opacity-20"><ChevronDownIcon className="h-3.5 w-3.5 text-gray-400" /></button>
-                      </div>
+                      <Reorder index={i} count={sections.length} what={sec.title || `section ${i + 1}`}
+                        onMove={by => move(i, by)} />
                       {imgSrc && (
                         <div className="w-20 h-14 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200">
                           <img src={imgSrc} alt="" className="w-full h-full object-cover" />
