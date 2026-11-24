@@ -22,7 +22,7 @@ import { formatMoney } from '../../../../lib/currency'
 import { RoomLines, RoomOption } from '../RoomPicker'
 import {
   ExtrasPicker, ExtrasRoom, PickedExtra, extrasPayload, pickedFromBooking, readHotelExtras,
-  extrasWithBooked,
+  extrasWithBooked, pickedAfterRemoval,
 } from '../ExtrasPicker'
 import {
   STATUS_COLORS, STATUS_LABELS, STATUS_DOTS, STATUS_BORDERS, STATUS_ORDER,
@@ -621,8 +621,11 @@ export default function BookingPage() {
               options={roomOptions}
               limits={roomLimits}
               adultMinAge={adultMinAge}
-              onChange={(roomIds, roomOccupancy) => {
+              onChange={(roomIds, roomOccupancy, removedAt) => {
                 setForm({ ...form, roomIds, roomOccupancy })
+                // An add-on belongs to a room by its position, so taking a
+                // room off has to move them with it.
+                if (removedAt !== undefined) setPicked(pickedAfterRemoval(picked, removedAt))
                 setQuote(null)
               }}
             />

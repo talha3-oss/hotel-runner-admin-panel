@@ -185,6 +185,25 @@ export function extrasPayload(
   return out
 }
 
+/** The add-ons after a room has been taken off the booking.
+ *
+ *  An add-on names its room by position, so removing a room shifts every
+ *  room below it up one and leaves the add-ons pointing at the wrong ones.
+ *  What that did, on a four-room booking where room 3 was removed: room 3's
+ *  own add-on stayed and was still charged, now described as room 4's, while
+ *  room 4's add-on pointed past the end of the list and was dropped without
+ *  a word. The booking's total went out 25 JOD short and the property was
+ *  told to lay on the wrong thing in the wrong room.
+ *
+ *  So the add-ons for the room that went are dropped, and everything below
+ *  it moves up with its room.
+ */
+export function pickedAfterRemoval(picked: PickedExtra[], removedAt: number): PickedExtra[] {
+  return picked
+    .filter((p) => p.roomIndex !== removedAt)
+    .map((p) => (p.roomIndex > removedAt ? { ...p, roomIndex: p.roomIndex - 1 } : p))
+}
+
 /** What a booking already has on it, as something this form can edit. Read
  *  back by name as well as id, because an add-on renamed since the booking
  *  was taken still has its id. A booking from before add-ons belonged to a

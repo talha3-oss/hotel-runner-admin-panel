@@ -31,7 +31,7 @@ import {
   parsePhoneNumberFromString,
   type CountryCode,
 } from 'libphonenumber-js'
-import { ExtrasPicker, ExtrasRoom, PickedExtra, extrasPayload, readHotelExtras } from '../ExtrasPicker'
+import { ExtrasPicker, ExtrasRoom, PickedExtra, extrasPayload, pickedAfterRemoval, readHotelExtras } from '../ExtrasPicker'
 
 const fmt = formatMoney
 
@@ -400,9 +400,12 @@ export default function NewBookingPage() {
               options={rooms}
               limits={limits}
               adultMinAge={adultMinAge}
-              onChange={(nextRooms, nextParty) => {
+              onChange={(nextRooms, nextParty, removedAt) => {
                 setRoomIds(nextRooms)
                 setOccupancy(nextParty)
+                // The add-ons name their room by position; a room taken off
+                // moves everything below it up one.
+                if (removedAt !== undefined) setPicked(pickedAfterRemoval(picked, removedAt))
                 setQuote(null)
               }}
             />

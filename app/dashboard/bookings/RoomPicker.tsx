@@ -141,7 +141,12 @@ export function RoomLines({ roomIds, occupancy, options, limits, adultMinAge, on
   options: RoomOption[]
   limits: RoomLimits
   adultMinAge: number
-  onChange: (roomIds: string[], occupancy: RoomParty[]) => void
+  /** The rooms as they now are, and -- when a room was taken off -- which
+   *  position it went from. Anything stored against a room by its position,
+   *  such as an add-on's roomIndex, has to be moved up with the rooms below
+   *  it; without that the add-on slides onto whichever room took the empty
+   *  slot and the one at the end falls off the list. */
+  onChange: (roomIds: string[], occupancy: RoomParty[], removedAt?: number) => void
 }) {
   const totals = {
     adults: occupancy.reduce((sum, r) => sum + r.adults, 0),
@@ -213,7 +218,7 @@ export function RoomLines({ roomIds, occupancy, options, limits, adultMinAge, on
                 )}
 
                 <button
-                  onClick={() => onChange(roomIds.filter((_, j) => j !== i), occupancy.filter((_, j) => j !== i))}
+                  onClick={() => onChange(roomIds.filter((_, j) => j !== i), occupancy.filter((_, j) => j !== i), i)}
                   disabled={roomIds.length <= 1}
                   className="rounded px-2 text-xs text-red-600 hover:bg-red-50 disabled:text-gray-300 disabled:hover:bg-transparent"
                 >
