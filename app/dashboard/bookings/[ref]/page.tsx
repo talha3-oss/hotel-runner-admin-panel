@@ -341,8 +341,18 @@ export default function BookingPage() {
     setStatusUpdating(true)
     try {
       const result = await updateBookingStatus(token, booking.id, next)
-      if (result.success) setBooking({ ...booking, status: next })
-      else alert(result.message || 'Failed to update status.')
+      if (result.success) {
+        setBooking({ ...booking, status: next })
+        // A cancelled stay cannot be changed, so the editor has to go with
+        // it. Left open it still showed the rooms, the add-ons and an Apply
+        // button for a booking that is off -- the next thing typed there
+        // would have been a change to a cancelled stay.
+        if (next === 'CANCELLED') closeEditor()
+        // And read the booking back rather than trusting the one field we
+        // changed: cancelling also moves rateTigerStatus and the rooms, and
+        // the page should show what is stored, not what we guessed.
+        load()
+      } else alert(result.message || 'Failed to update status.')
     } catch {
       alert('Unable to connect to server.')
     } finally {
@@ -810,7 +820,10 @@ export default function BookingPage() {
                 Keep the booking
               </button>
               <button
-                onClick={() => { setConfirmCancel(false); changeStatus('CANCELLED') }}
+                // Held open until it is actually done, so "Cancelling..."
+                // is read rather than the dialog vanishing on the press and
+                // the page looking unchanged for a moment.
+                onClick={async () => { await changeStatus('CANCELLED'); setConfirmCancel(false) }}
                 disabled={statusUpdating}
                 className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
