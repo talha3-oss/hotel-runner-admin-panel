@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import {
   UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, KeyIcon,
   PaperAirplaneIcon, GlobeAltIcon, PhotoIcon, TrashIcon, ArrowUpTrayIcon, VideoCameraIcon,
-  DocumentTextIcon, CalendarDaysIcon, ScaleIcon, IdentificationIcon,
+  DocumentTextIcon, CalendarDaysIcon, ScaleIcon, IdentificationIcon, CreditCardIcon,
 } from '@heroicons/react/24/outline'
 import {
   getAdminMe, updateAdminMe,
@@ -593,11 +593,54 @@ const RT_RES_DEFAULTS: RtResForm = {
   ratetiger_partner_id: '',
 }
 
+// The card gateway. Capital Bank's account, Areeba's gateway, CyberSource
+// underneath -- see src/api/v1/integrations/capitalbank/README.md in the
+// backend for which of those matters when.
+//
+// Kept here rather than in .env because the credentials arrive from the bank
+// after the server is running, and because moving from the test gateway to
+// the live one should not need a deploy.
+interface PaymentsForm {
+  capitalbank_enabled: boolean
+  capitalbank_environment: string
+  capitalbank_merchant_id: string
+  capitalbank_key_id: string
+  capitalbank_shared_secret: string
+  capitalbank_currency: string
+  capitalbank_amount_decimals: string
+  capitalbank_country: string
+  capitalbank_locale: string
+  capitalbank_target_origins: string
+  capitalbank_paynow_type: string
+  capitalbank_payathotel_type: string
+  capitalbank_three_ds: boolean
+  capitalbank_hold_basis: string
+  capitalbank_hold_fixed: string
+}
+
+const PAYMENTS_DEFAULTS: PaymentsForm = {
+  capitalbank_enabled: false,
+  capitalbank_environment: 'test',
+  capitalbank_merchant_id: '',
+  capitalbank_key_id: '',
+  capitalbank_shared_secret: '',
+  capitalbank_currency: 'JOD',
+  capitalbank_amount_decimals: '2',
+  capitalbank_country: 'JO',
+  capitalbank_locale: 'en_US',
+  capitalbank_target_origins: '',
+  capitalbank_paynow_type: 'CAPTURE',
+  capitalbank_payathotel_type: 'AUTH',
+  capitalbank_three_ds: false,
+  capitalbank_hold_basis: 'first_night',
+  capitalbank_hold_fixed: '0',
+}
+
 export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'booking-policy' | 'passports' | 'rate-compare' | 'auth-pages' | 'partner-api' | 'ratetiger' | 'ratetiger-logs'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'booking-policy' | 'passports' | 'rate-compare' | 'auth-pages' | 'partner-api' | 'payments' | 'ratetiger' | 'ratetiger-logs'>('profile')
 
   // The header's menu links here with ?tab=..., so Profile and Settings land
   // where they say they will instead of always opening on Profile.
@@ -646,6 +689,16 @@ export default function SettingsPage() {
   const [partnerApiLoading, setPartnerApiLoading] = useState(false)
   const [partnerApiSaving, setPartnerApiSaving] = useState(false)
   const [partnerApiMsg, setPartnerApiMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const [pay, setPay] = useState<PaymentsForm>(PAYMENTS_DEFAULTS)
+  const [payLoading, setPayLoading] = useState(false)
+  const [paySaving, setPaySaving] = useState(false)
+  const [payTesting, setPayTesting] = useState(false)
+  // Whether a shared secret is stored. A flag, not the value -- the secret
+  // never leaves the server, so the box is always empty and blank on save
+  // means "leave it alone".
+  const [paySecretStored, setPaySecretStored] = useState(false)
+  const [payMsg, setPayMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const [rtRes, setRtRes] = useState<RtResForm>(RT_RES_DEFAULTS)
   const [rtResLoading, setRtResLoading] = useState(false)
@@ -707,6 +760,42 @@ export default function SettingsPage() {
       })
       .catch(() => {})
       .finally(() => setPartnerApiLoading(false))
+  }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'payments') return
+    const token = localStorage.getItem('adminToken') || ''
+    setPayLoading(true)
+    fetch(`${API_BASE_URL}/api/v1/admin/settings/payments`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) return
+        const st = data.settings || {}
+        setPaySecretStored(Boolean(st.capitalbank_shared_secret_set))
+        setPay(prev => ({
+          ...prev,
+          capitalbank_enabled: Boolean(st.capitalbank_enabled),
+          capitalbank_environment: String(st.capitalbank_environment || 'test'),
+          capitalbank_merchant_id: String(st.capitalbank_merchant_id || ''),
+          capitalbank_key_id: String(st.capitalbank_key_id || ''),
+          // Never sent back, so it stays empty here too.
+          capitalbank_shared_secret: '',
+          capitalbank_currency: String(st.capitalbank_currency || 'JOD'),
+          capitalbank_amount_decimals: String(st.capitalbank_amount_decimals ?? '2'),
+          capitalbank_country: String(st.capitalbank_country || 'JO'),
+          capitalbank_locale: String(st.capitalbank_locale || 'en_US'),
+          capitalbank_target_origins: String(st.capitalbank_target_origins || ''),
+          capitalbank_paynow_type: String(st.capitalbank_paynow_type || 'CAPTURE'),
+          capitalbank_payathotel_type: String(st.capitalbank_payathotel_type || 'AUTH'),
+          capitalbank_three_ds: Boolean(st.capitalbank_three_ds),
+          capitalbank_hold_basis: String(st.capitalbank_hold_basis || 'first_night'),
+          capitalbank_hold_fixed: String(st.capitalbank_hold_fixed ?? '0'),
+        }))
+      })
+      .catch(() => {})
+      .finally(() => setPayLoading(false))
   }, [activeTab])
 
   useEffect(() => {
@@ -813,6 +902,43 @@ export default function SettingsPage() {
   }
 
   const pf = (field: keyof PartnerApiForm, value: string) => setPartnerApi(prev => ({ ...prev, [field]: value }))
+
+  const handlePaySave = async (e: FormEvent) => {
+    e.preventDefault(); setPayMsg(null); setPaySaving(true)
+    try {
+      const token = localStorage.getItem('adminToken') || ''
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/payments`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(pay),
+      }).then(r => r.json())
+      if (res.success) {
+        setPayMsg({ ok: true, text: 'Payment settings saved.' })
+        if (pay.capitalbank_shared_secret.trim()) setPaySecretStored(true)
+        setPay(prev => ({ ...prev, capitalbank_shared_secret: '' }))
+      } else setPayMsg({ ok: false, text: res.message || 'Failed to save.' })
+    } catch { setPayMsg({ ok: false, text: 'Server error.' }) }
+    finally { setPaySaving(false) }
+  }
+
+  // A real signed call that charges nothing: it asks the gateway for a
+  // payment session and throws it away. The only honest way to find out the
+  // credentials are right before a guest does.
+  const handlePayTest = async () => {
+    setPayMsg(null); setPayTesting(true)
+    try {
+      const token = localStorage.getItem('adminToken') || ''
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/payments/test`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).then(r => r.json())
+      setPayMsg({ ok: Boolean(res.success), text: res.message || (res.success ? 'Connected.' : 'Could not connect.') })
+    } catch { setPayMsg({ ok: false, text: 'Server error.' }) }
+    finally { setPayTesting(false) }
+  }
+
+  const yf = (field: keyof PaymentsForm, value: string | boolean) =>
+    setPay(prev => ({ ...prev, [field]: value }) as PaymentsForm)
 
   const handleRtResSave = async (e: FormEvent) => {
     e.preventDefault(); setRtResMsg(null); setRtResSaving(true)
@@ -1181,6 +1307,9 @@ export default function SettingsPage() {
     { id: 'rate-compare' as const, name: 'Price Comparison', icon: ScaleIcon },
     { id: 'auth-pages' as const, name: 'Login & Signup', icon: UserIcon },
     { id: 'partner-api' as const, name: 'Partner API', icon: KeyIcon },
+    // The card gateway. Above RateTiger because a payment that does not work
+    // is a booking that never happens, while RateTiger is what happens after.
+    { id: 'payments' as const, name: 'Payments', icon: CreditCardIcon },
     { id: 'ratetiger' as const, name: 'RateTiger', icon: PaperAirplaneIcon },
     // Its own tab rather than a section under RateTiger: the settings there
     // are filled in once and left, while this is read whenever a rate looks
@@ -2150,6 +2279,201 @@ export default function SettingsPage() {
                   <div className="flex justify-end pt-2">
                     <button type="submit" disabled={partnerApiSaving} className="px-5 py-2 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
                       {partnerApiSaving ? 'Saving…' : 'Save Partner API Settings'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'payments' && (
+            <div className="p-6 space-y-6">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Card Payments — Capital Bank</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  The account is with Capital Bank, through Areeba&rsquo;s gateway. None of these
+                  are public: the guest&rsquo;s browser never sees any of them, only a one-use
+                  token this server creates for each payment. While this is switched off, nothing
+                  on the site asks for a card.
+                </p>
+              </div>
+
+              {payLoading ? (
+                <div className="py-8 text-center text-sm text-gray-400">Loading…</div>
+              ) : (
+                <form onSubmit={handlePaySave} className="space-y-6">
+                  <div className="rounded-xl border border-gray-200 p-4">
+                    <label className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={pay.capitalbank_enabled}
+                        onChange={e => yf('capitalbank_enabled', e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-gray-700">Take card payments</span>
+                        <span className="mt-0.5 block text-xs text-gray-400">
+                          Leave this off until the test below passes. Guests are not asked for a
+                          card while it is off.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Gateway</label>
+                      <select className={inp} value={pay.capitalbank_environment}
+                              onChange={e => yf('capitalbank_environment', e.target.value)}>
+                        <option value="test">Test — apitest.cybersource.com</option>
+                        <option value="live">Live — api.cybersource.com (real money)</option>
+                      </select>
+                      <p className="mt-2 text-xs text-gray-400">
+                        Test and live have different credentials. Switching here switches both.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Merchant ID</label>
+                      <input type="text" className={inp} value={pay.capitalbank_merchant_id}
+                             onChange={e => yf('capitalbank_merchant_id', e.target.value)}
+                             placeholder="given by the bank" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Key ID</label>
+                      <input type="text" className={inp} value={pay.capitalbank_key_id}
+                             onChange={e => yf('capitalbank_key_id', e.target.value)}
+                             placeholder="the serial number beside the shared secret" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        Shared Secret {paySecretStored && <span className="text-xs font-normal text-emerald-600">— stored</span>}
+                      </label>
+                      <input type="password" className={inp} value={pay.capitalbank_shared_secret}
+                             onChange={e => yf('capitalbank_shared_secret', e.target.value)}
+                             placeholder={paySecretStored ? 'leave blank to keep the stored one' : 'paste it exactly, no spaces'} />
+                      <p className="mt-2 text-xs text-gray-400">
+                        Never shown again once saved. One missing character and every payment is
+                        refused with no reason given, so paste rather than type it.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Website address the payment form runs on</label>
+                    <textarea className={inp} rows={2} value={pay.capitalbank_target_origins}
+                              onChange={e => yf('capitalbank_target_origins', e.target.value)}
+                              placeholder={'https://frontend.luxotel.com'} />
+                    <p className="mt-2 text-xs text-gray-400">
+                      Must be https and must match exactly, including any subdomain. One per line.
+                      The gateway refuses to draw the form on any address not listed here — which
+                      is what stops somebody else putting our payment page on their site.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Currency</label>
+                      <input type="text" className={inp} value={pay.capitalbank_currency}
+                             onChange={e => yf('capitalbank_currency', e.target.value.toUpperCase())} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Decimal places</label>
+                      <select className={inp} value={pay.capitalbank_amount_decimals}
+                              onChange={e => yf('capitalbank_amount_decimals', e.target.value)}>
+                        <option value="2">2 — 206.00</option>
+                        <option value="3">3 — 206.000</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Country</label>
+                      <input type="text" className={inp} value={pay.capitalbank_country}
+                             onChange={e => yf('capitalbank_country', e.target.value.toUpperCase())} maxLength={2} />
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    <p className="font-medium">Confirm the decimal places with the bank before going live.</p>
+                    <p className="mt-1 text-xs">
+                      Jordanian dinar has three decimals where almost every other currency has two.
+                      Wrong by one place is wrong by a factor of ten, in real money.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Pay Now</label>
+                      <select className={inp} value={pay.capitalbank_paynow_type}
+                              onChange={e => yf('capitalbank_paynow_type', e.target.value)}>
+                        <option value="CAPTURE">Take the money now</option>
+                        <option value="AUTH">Hold only, take it later</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Pay at Hotel</label>
+                      <select className={inp} value={pay.capitalbank_payathotel_type}
+                              onChange={e => yf('capitalbank_payathotel_type', e.target.value)}>
+                        <option value="AUTH">Hold only — the hotel takes it at the desk</option>
+                        <option value="CAPTURE">Take the money now</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">How much to hold</label>
+                      <select className={inp} value={pay.capitalbank_hold_basis}
+                              onChange={e => yf('capitalbank_hold_basis', e.target.value)}>
+                        <option value="first_night">The first night of every room booked</option>
+                        <option value="full_stay">The whole stay</option>
+                        <option value="fixed">A set amount</option>
+                        <option value="verify_only">Nothing — only check the card is real</option>
+                      </select>
+                    </div>
+                    {pay.capitalbank_hold_basis === 'fixed' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Set amount</label>
+                        <input type="number" min={0} step="0.01" className={inp}
+                               value={pay.capitalbank_hold_fixed}
+                               onChange={e => yf('capitalbank_hold_fixed', e.target.value)} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 p-4">
+                    <label className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={pay.capitalbank_three_ds}
+                        onChange={e => yf('capitalbank_three_ds', e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-gray-700">Ask the bank to verify the cardholder (3-D Secure)</span>
+                        <span className="mt-0.5 block text-xs text-gray-400">
+                          The guest gets their bank&rsquo;s own code screen before the payment goes
+                          through. Usually required in Jordan — check with the bank, and only turn
+                          it on if the account is enabled for it.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+
+                  {payMsg && (
+                    <div className={`rounded-lg px-4 py-2.5 text-sm ${payMsg.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                      {payMsg.text}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-4 pt-2">
+                    <div>
+                      <button
+                        type="button"
+                        onClick={handlePayTest}
+                        disabled={payTesting}
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {payTesting ? 'Checking…' : 'Test connection'}
+                      </button>
+                      <p className="mt-1.5 text-xs text-gray-400">Charges nothing. Save first.</p>
+                    </div>
+                    <button type="submit" disabled={paySaving} className="px-5 py-2 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+                      {paySaving ? 'Saving…' : 'Save Payment Settings'}
                     </button>
                   </div>
                 </form>
