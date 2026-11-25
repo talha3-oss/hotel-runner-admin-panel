@@ -295,13 +295,24 @@ export default function PaymentsPage() {
 
       {/* Detail modal */}
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
-            <div className="flex items-center justify-between mb-5">
+        // A fixed box on a short laptop screen ran off both ends and took
+        // the last rows -- the bank's references, which are the reason
+        // this opens at all -- out of reach of any scroll. It is a column
+        // now: a header and a Close that stay put, and only the figures
+        // between them move.
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
               <h2 className="text-lg font-bold text-gray-900">Payment Detail</h2>
               <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
             </div>
-            <div className="space-y-4 text-sm">
+            <div className="space-y-4 text-sm overflow-y-auto px-6 py-5">
               {[
                 ['Booking Ref', selected.bookingRef],
                 ['Guest', `${selected.firstName} ${selected.lastName}`],
@@ -360,12 +371,14 @@ export default function PaymentsPage() {
                 )
               })}
             </div>
-            <button
-              onClick={() => setSelected(null)}
-              className="mt-6 w-full py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700"
-            >
-              Close
-            </button>
+            <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0">
+              <button
+                onClick={() => setSelected(null)}
+                className="w-full py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
