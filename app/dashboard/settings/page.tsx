@@ -625,7 +625,9 @@ const PAYMENTS_DEFAULTS: PaymentsForm = {
   capitalbank_key_id: '',
   capitalbank_shared_secret: '',
   capitalbank_currency: 'JOD',
-  capitalbank_amount_decimals: '2',
+  // Three. Jordanian dinar is a three-decimal currency and the gateway
+  // refuses two outright -- see the backend integration's README.
+  capitalbank_amount_decimals: '3',
   capitalbank_country: 'JO',
   capitalbank_locale: 'en_US',
   capitalbank_target_origins: '',
@@ -783,7 +785,7 @@ export default function SettingsPage() {
           // Never sent back, so it stays empty here too.
           capitalbank_shared_secret: '',
           capitalbank_currency: String(st.capitalbank_currency || 'JOD'),
-          capitalbank_amount_decimals: String(st.capitalbank_amount_decimals ?? '2'),
+          capitalbank_amount_decimals: String(st.capitalbank_amount_decimals ?? '3'),
           capitalbank_country: String(st.capitalbank_country || 'JO'),
           capitalbank_locale: String(st.capitalbank_locale || 'en_US'),
           capitalbank_target_origins: String(st.capitalbank_target_origins || ''),
@@ -2391,10 +2393,10 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    <p className="font-medium">Confirm the decimal places with the bank before going live.</p>
+                    <p className="font-medium">Jordanian dinar needs three decimal places.</p>
                     <p className="mt-1 text-xs">
-                      Jordanian dinar has three decimals where almost every other currency has two.
-                      Wrong by one place is wrong by a factor of ten, in real money.
+                      Not a preference — the gateway refuses two outright for JOD. Leave this at
+                      three unless a property is selling in another currency.
                     </p>
                   </div>
 
