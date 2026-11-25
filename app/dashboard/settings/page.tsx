@@ -1653,7 +1653,7 @@ export default function SettingsPage() {
                     <p className="mt-2 text-xs text-gray-400">
                       {policy[kind].on
                         ? policy[kind].days === 0
-                          ? 'No day limit \u2014 the guest can ask right up to the end of the day they arrive.'
+                          ? 'No day limit \u2014 the guest can ask up to the property\u2019s check-in time on the day they arrive. After that the option is shown closed, with a note to call the property.'
                           : `The guest can ask up to the end of the day ${policy[kind].days} day${policy[kind].days === 1 ? '' : 's'} before they arrive. After that the option is shown closed, with a note to call the property.`
                         : 'Not offered. The guest is told to contact the property directly.'}
                     </p>
@@ -1666,7 +1666,8 @@ export default function SettingsPage() {
                 <p className="mt-1 text-xs">
                   Three days before arrival means three days where the hotel is, not three here &mdash; the
                   same as the timed emails. A guest who has already checked in is offered none of the three,
-                  whatever is set above.
+                  whatever is set above. Zero is the one day that does not run to midnight: it closes when
+                  the room is ready, at the check-in time set on the hotel.
                 </p>
               </div>
 
