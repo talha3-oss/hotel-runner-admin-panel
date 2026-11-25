@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import {
   MagnifyingGlassIcon,
   EyeIcon,
@@ -13,6 +14,10 @@ import {
 } from '@heroicons/react/24/outline'
 import { fetchAdminBookings, BookingRecord } from '../../../lib/api'
 import { formatMoneyExact } from '../../../lib/currency'
+
+// Loaded only when the tab is opened. It talks to the bank on mount, and
+// most visits to this screen are to look at bookings.
+const UnmatchedPayments = dynamic(() => import('../../../components/UnmatchedPayments'), { ssr: false })
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
 
@@ -57,6 +62,7 @@ export default function PaymentsPage() {
   const [methodFilter, setMethodFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<BookingRecord | null>(null)
+  const [tab, setTab] = useState<'bookings' | 'unmatched'>('bookings')
   const limit = 20
 
   const load = useCallback(async (q: string, status: string, p: number) => {
@@ -107,9 +113,38 @@ export default function PaymentsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Payments</h1>
-        <p className="mt-1 text-sm text-gray-500">All payment records derived from bookings.</p>
+        <p className="mt-1 text-sm text-gray-500">
+          {tab === 'bookings'
+            ? 'All payment records derived from bookings.'
+            : 'What the bank has actually taken, whether a booking belongs to it or not.'}
+        </p>
       </div>
 
+      {/* Two different questions, so two tabs. The first is "what did this
+          guest pay"; the second is "is the bank holding anything we have
+          not accounted for", which used to be a button in Settings and
+          belongs here beside the money it is about. */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex gap-6">
+          {([['bookings', 'Payments'], ['unmatched', 'Unmatched & refunds']] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={`whitespace-nowrap border-b-2 py-3 text-sm font-medium ${
+                tab === key
+                  ? 'border-primary-600 text-primary-700'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {tab === 'unmatched' && <UnmatchedPayments />}
+
+      {tab === 'bookings' && (<>
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
@@ -256,6 +291,8 @@ export default function PaymentsPage() {
         )}
       </div>
 
+      </>)}
+
       {/* Detail modal */}
       {selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -287,12 +324,41 @@ export default function PaymentsPage() {
                 ['Payment Status', selected.paymentStatus],
                 ['Booking Status', selected.status],
                 ['Date', fmtDate(selected.createdAt)],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="flex justify-between border-b border-gray-100 pb-2 last:border-0">
-                  <span className="text-gray-500">{label}</span>
-                  <span className="font-medium text-gray-900 text-right">{String(value)}</span>
-                </div>
-              ))}
+
+                // What the bank holds, for anyone checking this booking
+                // against the bank's own dashboard. The two references are
+                // the only way to do that by hand: theirs finds the
+                // transaction, ours is what they print as the Merchant
+                // Reference Number. Shown only for a booking that went
+                // through the gateway -- one taken at the desk has none of
+                // this and a row of dashes helps nobody.
+                ...(selected.paymentRef
+                  ? ([
+                      ['Transaction ID', selected.paymentRef],
+                      ...(selected.paymentMerchantRef ? [['Merchant Reference', selected.paymentMerchantRef]] : []),
+                      ...(selected.paymentAmount != null
+                        ? [['Charged by bank', `${selected.paymentAmount} ${selected.paymentCurrency || ''}`.trim()]]
+                        : []),
+                      ...(selected.paymentCardLast4
+                        ? [['Card', `${selected.paymentCardBrand || 'Card'} •••• ${selected.paymentCardLast4}`]]
+                        : []),
+                      ...(selected.paymentApprovalCode ? [['Approval Code', selected.paymentApprovalCode]] : []),
+                    ] as [string, string][])
+                  : []),
+              ].map(([label, value]) => {
+                // The references are read off the screen and typed into
+                // the bank's search box, so they are set in a monospaced
+                // face where a 0 cannot be taken for an O.
+                const code = label === 'Transaction ID' || label === 'Merchant Reference' || label === 'Approval Code'
+                return (
+                  <div key={String(label)} className="flex justify-between gap-4 border-b border-gray-100 pb-2 last:border-0">
+                    <span className="text-gray-500 flex-shrink-0">{label}</span>
+                    <span className={`text-gray-900 text-right break-all ${code ? 'font-mono text-xs pt-0.5' : 'font-medium'}`}>
+                      {String(value)}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
             <button
               onClick={() => setSelected(null)}

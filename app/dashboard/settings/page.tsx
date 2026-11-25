@@ -697,7 +697,6 @@ export default function SettingsPage() {
   const [payLoading, setPayLoading] = useState(false)
   const [paySaving, setPaySaving] = useState(false)
   const [payTesting, setPayTesting] = useState(false)
-  const [paySweeping, setPaySweeping] = useState(false)
   // Whether a shared secret is stored. A flag, not the value -- the secret
   // never leaves the server, so the box is always empty and blank on save
   // means "leave it alone".
@@ -939,46 +938,6 @@ export default function SettingsPage() {
       setPayMsg({ ok: Boolean(res.success), text: res.message || (res.success ? 'Connected.' : 'Could not connect.') })
     } catch { setPayMsg({ ok: false, text: 'Server error.' }) }
     finally { setPayTesting(false) }
-  }
-
-  // Money the bank is holding that no booking belongs to -- a guest whose
-  // browser never came back, or a refund that could not be sent at the
-  // time. It runs on its own every ten minutes; this is the same thing on
-  // demand, for when somebody is standing over it.
-  const handlePaySweep = async () => {
-    setPayMsg(null); setPaySweeping(true)
-    try {
-      const token = localStorage.getItem('adminToken') || ''
-      const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/payments/sweep`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      }).then(r => r.json())
-
-      if (!res.success) setPayMsg({ ok: false, text: res.message || 'The check could not run.' })
-      else if (res.ran === false) setPayMsg({ ok: false, text: `Not checked — ${res.reason}.` })
-      else if (res.orphans === 0) setPayMsg({ ok: true, text: 'Checked. Every payment has a booking against it.' })
-      else {
-        // The bank's own words for a refusal, not ours. The first one seen
-        // in the wild was a credit ceiling on the merchant profile, which
-        // nobody here can fix and Capital Bank can -- so the reason has to
-        // reach the person reading this, not sit in a log file.
-        const why = Array.isArray(res.outstanding) && res.outstanding[0]?.reason
-          ? ` The bank said: "${res.outstanding[0].reason}"`
-          : ''
-        const held = Array.isArray(res.outstanding)
-          ? res.outstanding.reduce((sum: number, r: { amount?: number }) => sum + (Number(r.amount) || 0), 0)
-          : 0
-        setPayMsg({
-          ok: res.failed === 0,
-          text: `${res.orphans} payment${res.orphans === 1 ? '' : 's'} with no booking. `
-            + `${res.returned} returned to the guest`
-            + (res.failed
-              ? `, ${res.failed} could not be returned — ${held.toFixed(3)} is still held by the bank.${why} See Payment Logs.`
-              : '.'),
-        })
-      }
-    } catch { setPayMsg({ ok: false, text: 'Server error.' }) }
-    finally { setPaySweeping(false) }
   }
 
   const yf = (field: keyof PaymentsForm, value: string | boolean) =>
@@ -2520,20 +2479,11 @@ export default function SettingsPage() {
                         >
                           {payTesting ? 'Checking…' : 'Test connection'}
                         </button>
-                        <button
-                          type="button"
-                          onClick={handlePaySweep}
-                          disabled={paySweeping}
-                          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                        >
-                          {paySweeping ? 'Checking…' : 'Check for unmatched payments'}
-                        </button>
                       </div>
                       <p className="mt-1.5 max-w-lg text-xs text-gray-400">
-                        Test connection charges nothing — save first. The second button looks for
-                        money the bank is holding that no booking belongs to, which happens when a
-                        guest&rsquo;s browser never comes back after paying, and gives it to them.
-                        It runs on its own every ten minutes.
+                        Charges nothing — save first. Money the bank is holding that no booking
+                        belongs to now lives under <strong>Payments &rarr; Unmatched &amp;
+                        refunds</strong>, where it can be read row by row; it was never a setting.
                       </p>
                     </div>
                     <button type="submit" disabled={paySaving} className="px-5 py-2 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">

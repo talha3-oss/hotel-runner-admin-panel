@@ -1142,6 +1142,24 @@ export interface BookingRecord {
   total: number
   paymentMethod: string
   paymentStatus: string
+  /** What the bank did, for bookings taken by card. All null on a booking
+   *  written before the gateway existed, or taken at the desk.
+   *
+   *  `paymentRef` is the bank's transaction id and `paymentMerchantRef`
+   *  is the LUXP-… we sent with it, which their dashboard shows as the
+   *  Merchant Reference Number — the two numbers somebody needs to match
+   *  a line here against a line there by hand. */
+  paymentProvider?: string | null
+  paymentRef?: string | null
+  paymentMerchantRef?: string | null
+  paymentAmount?: number | null
+  paymentCurrency?: string | null
+  paymentCapturedAt?: string | null
+  paymentAuthorizedAt?: string | null
+  paymentAuthAmount?: number | null
+  paymentCardBrand?: string | null
+  paymentCardLast4?: string | null
+  paymentApprovalCode?: string | null
   invoice: { id: string; invoiceRef: string; status: string; sentAt: string | null } | null
   // Whether RateTiger was told about this booking. SENT / PENDING / FAILED /
   // SKIPPED; null on bookings made before delivery existed.
