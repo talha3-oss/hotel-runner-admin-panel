@@ -957,12 +957,26 @@ export default function SettingsPage() {
       if (!res.success) setPayMsg({ ok: false, text: res.message || 'The check could not run.' })
       else if (res.ran === false) setPayMsg({ ok: false, text: `Not checked — ${res.reason}.` })
       else if (res.orphans === 0) setPayMsg({ ok: true, text: 'Checked. Every payment has a booking against it.' })
-      else setPayMsg({
-        ok: res.failed === 0,
-        text: `${res.orphans} payment${res.orphans === 1 ? '' : 's'} with no booking. `
-          + `${res.returned} returned to the guest`
-          + (res.failed ? `, ${res.failed} could not be returned — see Payment Logs.` : '.'),
-      })
+      else {
+        // The bank's own words for a refusal, not ours. The first one seen
+        // in the wild was a credit ceiling on the merchant profile, which
+        // nobody here can fix and Capital Bank can -- so the reason has to
+        // reach the person reading this, not sit in a log file.
+        const why = Array.isArray(res.outstanding) && res.outstanding[0]?.reason
+          ? ` The bank said: "${res.outstanding[0].reason}"`
+          : ''
+        const held = Array.isArray(res.outstanding)
+          ? res.outstanding.reduce((sum: number, r: { amount?: number }) => sum + (Number(r.amount) || 0), 0)
+          : 0
+        setPayMsg({
+          ok: res.failed === 0,
+          text: `${res.orphans} payment${res.orphans === 1 ? '' : 's'} with no booking. `
+            + `${res.returned} returned to the guest`
+            + (res.failed
+              ? `, ${res.failed} could not be returned — ${held.toFixed(3)} is still held by the bank.${why} See Payment Logs.`
+              : '.'),
+        })
+      }
     } catch { setPayMsg({ ok: false, text: 'Server error.' }) }
     finally { setPaySweeping(false) }
   }
