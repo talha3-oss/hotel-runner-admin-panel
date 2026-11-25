@@ -158,9 +158,15 @@ export default function PaymentLogs() {
           ))}
         </select>
 
-        <input value={bookingRef} placeholder="Booking reference, e.g. LUX-4GEUSN"
+        {/* One box for both. A guest quotes a booking reference; a bank
+            statement quotes the transaction id; whoever is looking has
+            one of the two and should not have to know which box it goes
+            in. Every row for one payment -- taking it, checking it,
+            giving it back -- carries the same transaction id, so either
+            term finds the whole story. */}
+        <input value={bookingRef} placeholder="Booking reference or bank transaction id"
           onChange={e => setBookingRef(e.target.value)}
-          className="h-9 min-w-[18rem] flex-1 rounded-lg border border-gray-300 px-3 text-sm" />
+          className="h-9 min-w-[20rem] flex-1 rounded-lg border border-gray-300 px-3 text-sm" />
 
         <button type="button" onClick={load}
           className="h-9 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:bg-gray-50">
