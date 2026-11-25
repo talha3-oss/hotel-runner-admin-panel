@@ -20,6 +20,7 @@ import {
 } from '../../../lib/api'
 import { passwordProblem } from '../../../lib/passwordRule'
 import RateTigerLogs from '@/components/RateTigerLogs'
+import PaymentLogs from '@/components/PaymentLogs'
 import MediaPicker from '@/components/MediaPicker'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
@@ -642,7 +643,7 @@ export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'booking-policy' | 'passports' | 'rate-compare' | 'auth-pages' | 'partner-api' | 'payments' | 'ratetiger' | 'ratetiger-logs'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'booking-policy' | 'passports' | 'rate-compare' | 'auth-pages' | 'partner-api' | 'payments' | 'payment-logs' | 'ratetiger' | 'ratetiger-logs'>('profile')
 
   // The header's menu links here with ?tab=..., so Profile and Settings land
   // where they say they will instead of always opening on Profile.
@@ -1312,6 +1313,11 @@ export default function SettingsPage() {
     // The card gateway. Above RateTiger because a payment that does not work
     // is a booking that never happens, while RateTiger is what happens after.
     { id: 'payments' as const, name: 'Payments', icon: CreditCardIcon },
+    // Its own tab, beside the settings rather than inside them, for the
+    // same reason as the RateTiger log: the settings are filled in once and
+    // left, while this is opened in a hurry when somebody says they were
+    // charged and the booking says otherwise.
+    { id: 'payment-logs' as const, name: 'Payment Logs', icon: DocumentTextIcon },
     { id: 'ratetiger' as const, name: 'RateTiger', icon: PaperAirplaneIcon },
     // Its own tab rather than a section under RateTiger: the settings there
     // are filled in once and left, while this is read whenever a rate looks
@@ -2671,6 +2677,12 @@ export default function SettingsPage() {
                 </form>
               )}
 
+            </div>
+          )}
+
+          {activeTab === 'payment-logs' && (
+            <div className="p-6">
+              <PaymentLogs />
             </div>
           )}
 
