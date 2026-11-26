@@ -728,6 +728,70 @@ export async function saveBookingPolicy(token: string, policy: BookingPolicy): P
   return res.json()
 }
 
+// ── What a cancellation costs ─────────────────────────────────────────────
+//
+// A different thing from the booking policy above, which is only about how
+// late a guest may still *ask* for something. This is money: given that a
+// booking is off, how much of it is kept.
+//
+// The hotel's own written terms are the defaults (confirmed 2026-11-26) --
+// free until fourteen days out, half a night until seven, a whole night
+// after that, a whole night for a no-show, and prepaid is non-refundable.
+// Every figure is here because a hotel's terms move with the season.
+export interface CancellationPolicy {
+  on: boolean
+  /** Free while the property's clock is still before its check-in time on
+   *  the day this many days before arrival. */
+  freeDays: number
+  /** The reduced charge applies until the same hour this many days out. */
+  midDays: number
+  midPercent: number
+  latePercent: number
+  noShowOn: boolean
+  /** Night audit, on the property's clock. "23:00". */
+  noShowTime: string
+  noShowPercent: number
+  /** Off by default: "Prepaid reservations are non-refundable." */
+  prepaidRefundable: boolean
+}
+
+export interface CancellationPolicyResult {
+  success: boolean
+  message?: string
+  policy?: CancellationPolicy
+  defaults?: CancellationPolicy
+  maxDays?: number
+}
+
+export const DEFAULT_CANCELLATION_POLICY: CancellationPolicy = {
+  on: true,
+  freeDays: 14,
+  midDays: 7,
+  midPercent: 50,
+  latePercent: 100,
+  noShowOn: true,
+  noShowTime: '23:00',
+  noShowPercent: 100,
+  prepaidRefundable: false,
+}
+
+export async function fetchCancellationPolicy(token: string): Promise<CancellationPolicyResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/cancellation-policy`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  return res.json()
+}
+
+export async function saveCancellationPolicy(token: string, policy: CancellationPolicy): Promise<CancellationPolicyResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/cancellation-policy`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ policy }),
+  })
+  return res.json()
+}
+
 // ── How long a guest's passport is kept ───────────────────────────────────
 //
 // The files are encrypted where they sit, which protects a copy that has

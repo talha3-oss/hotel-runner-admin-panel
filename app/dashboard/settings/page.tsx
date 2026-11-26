@@ -7,12 +7,14 @@ import {
   UserIcon, ShieldCheckIcon, CheckCircleIcon, EnvelopeIcon, EyeIcon, EyeSlashIcon, KeyIcon,
   PaperAirplaneIcon, GlobeAltIcon, PhotoIcon, TrashIcon, ArrowUpTrayIcon, VideoCameraIcon,
   DocumentTextIcon, CalendarDaysIcon, ScaleIcon, IdentificationIcon, CreditCardIcon,
+  BanknotesIcon,
 } from '@heroicons/react/24/outline'
 import {
   getAdminMe, updateAdminMe,
   fetchSiteSettings, saveSiteSettings, uploadHomepageSectionImage, getApiAssetUrl,
   fetchUploadLimits, saveUploadLimits, clearUploadLimitsCache, DEFAULT_UPLOAD_LIMITS, UploadLimits,
   fetchBookingPolicy, saveBookingPolicy, DEFAULT_BOOKING_POLICY, BookingPolicy,
+  fetchCancellationPolicy, saveCancellationPolicy, DEFAULT_CANCELLATION_POLICY, CancellationPolicy,
   fetchPassportRetention, savePassportRetention, runPassportPurge,
   DEFAULT_PASSPORT_RETENTION, PassportRetention,
   fetchRateCompare, saveRateCompare, DEFAULT_RATE_COMPARE, RateCompare,
@@ -617,6 +619,7 @@ interface PaymentsForm {
   capitalbank_three_ds: boolean
   capitalbank_hold_basis: string
   capitalbank_hold_fixed: string
+  capitalbank_auto_return: boolean
 }
 
 const PAYMENTS_DEFAULTS: PaymentsForm = {
@@ -637,13 +640,19 @@ const PAYMENTS_DEFAULTS: PaymentsForm = {
   capitalbank_three_ds: false,
   capitalbank_hold_basis: 'first_night',
   capitalbank_hold_fixed: '0',
+  // Off, and off on purpose. A payment is judged orphaned by our own
+  // database failing to show a booking for it, and there are ordinary
+  // ways for that to be wrong about a guest who is perfectly well booked
+  // in. Finding it costs nothing; giving it back is the part a person
+  // should be behind.
+  capitalbank_auto_return: false,
 }
 
 export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'booking-policy' | 'passports' | 'rate-compare' | 'auth-pages' | 'partner-api' | 'payments' | 'payment-logs' | 'ratetiger' | 'ratetiger-logs'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'site' | 'uploads' | 'security' | 'email' | 'emails' | 'booking-policy' | 'cancellation' | 'passports' | 'rate-compare' | 'auth-pages' | 'partner-api' | 'payments' | 'payment-logs' | 'ratetiger' | 'ratetiger-logs'>('profile')
 
   // The header's menu links here with ?tab=..., so Profile and Settings land
   // where they say they will instead of always opening on Profile.
@@ -794,6 +803,7 @@ export default function SettingsPage() {
           capitalbank_payathotel_type: String(st.capitalbank_payathotel_type || 'AUTH'),
           capitalbank_three_ds: Boolean(st.capitalbank_three_ds),
           capitalbank_hold_basis: String(st.capitalbank_hold_basis || 'first_night'),
+          capitalbank_auto_return: Boolean(st.capitalbank_auto_return),
           capitalbank_hold_fixed: String(st.capitalbank_hold_fixed ?? '0'),
         }))
       })
@@ -1117,6 +1127,57 @@ export default function SettingsPage() {
       .catch(() => {})
   }, [activeTab, policyLoaded])
 
+  // What a cancellation costs, and what a no-show costs. The hotel's own
+  // written terms (confirmed 2026-11-26) are the defaults, so a panel
+  // nobody has opened still charges what the hotel says it charges.
+  const [charges, setCharges] = useState<CancellationPolicy>(DEFAULT_CANCELLATION_POLICY)
+  const [chargesDirty, setChargesDirty] = useState(false)
+  const [chargesSaving, setChargesSaving] = useState(false)
+  const [chargesLoaded, setChargesLoaded] = useState(false)
+  const [chargesMsg, setChargesMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    if (activeTab !== 'cancellation' || chargesLoaded) return
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    fetchCancellationPolicy(token)
+      .then(r => {
+        if (r.success && r.policy) setCharges(r.policy)
+        setChargesLoaded(true)
+        setChargesDirty(false)
+      })
+      .catch(() => {})
+  }, [activeTab, chargesLoaded])
+
+  const editCharges = (patch: Partial<CancellationPolicy>) => {
+    setCharges(prev => ({ ...prev, ...patch }))
+    setChargesDirty(true)
+  }
+
+  const handleChargesSave = async (e: FormEvent) => {
+    e.preventDefault()
+    const token = localStorage.getItem('adminToken')
+    if (!token) return
+    setChargesSaving(true)
+    try {
+      const r = await saveCancellationPolicy(token, charges)
+      if (r.success) {
+        // What came back, not what was typed. A figure outside what the
+        // code can act on is brought into range on the way in, and the
+        // screen should show what was actually kept.
+        if (r.policy) setCharges(r.policy)
+        setChargesDirty(false)
+        setChargesMsg({ ok: true, text: 'Saved. This applies to cancellations and no-shows from now on.' })
+      } else {
+        setChargesMsg({ ok: false, text: r.message || 'Could not save the charges.' })
+      }
+    } catch {
+      setChargesMsg({ ok: false, text: 'Could not reach the server.' })
+    } finally {
+      setChargesSaving(false)
+    }
+  }
+
   const editPolicy = (kind: keyof BookingPolicy, patch: Partial<BookingPolicy[keyof BookingPolicy]>) => {
     setPolicy(prev => ({ ...prev, [kind]: { ...prev[kind], ...patch } }))
     setPolicyDirty(true)
@@ -1300,6 +1361,12 @@ export default function SettingsPage() {
     // than a corner of Site Settings: it is the one place three different
     // rules are set, and it changes what the guest's page offers.
     { id: 'booking-policy' as const, name: 'Booking Policy', icon: CalendarDaysIcon },
+    // What a cancellation costs, and what a no-show costs. Beside Booking
+    // Policy because they read as one subject, and apart from it because
+    // they are not: that one decides what a guest may ask for, this one
+    // decides what it costs them. The hotel's written terms are the
+    // defaults; the figures are editable because terms move by season.
+    { id: 'cancellation' as const, name: 'Cancellation Charges', icon: BanknotesIcon },
     // The travel sites the booking page compares prices against. Beside
     // Booking Policy because both change what the guest is shown, not what
     // anything costs.
@@ -1814,6 +1881,227 @@ export default function SettingsPage() {
                 className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-40"
               >
                 {policySaving ? 'Saving…' : 'Save Policy'}
+              </button>
+            </form>
+          )}
+
+          {activeTab === 'cancellation' && (
+            <form onSubmit={handleChargesSave} className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-gray-800">Cancellation Charges</h2>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  What a cancellation costs, and what a guest who never arrives costs. This is about money
+                  &mdash; Booking Policy, above, is only about how late a guest may still <em>ask</em>.
+                  Charges apply to the flexible &ldquo;Pay at the hotel&rdquo; rate, which is the one that
+                  leaves a hold on the card.
+                </p>
+              </div>
+
+              {chargesMsg && (
+                <div className={`rounded-lg border px-4 py-3 text-sm ${chargesMsg.ok
+                  ? 'border-green-200 bg-green-50 text-green-700'
+                  : 'border-red-200 bg-red-50 text-red-700'}`}>
+                  {chargesMsg.text}
+                </div>
+              )}
+
+              <div className="rounded-xl border border-gray-200 p-4">
+                <label className="flex items-start justify-between gap-4">
+                  <span>
+                    <span className="block text-sm font-medium text-gray-700">Charge for late cancellations</span>
+                    <span className="mt-0.5 block text-xs text-gray-400">
+                      Switched off, every cancellation is free and the whole hold goes back to the guest.
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={charges.on}
+                    onChange={(e) => editCharges({ on: e.target.checked })}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                </label>
+              </div>
+
+              <div className={`space-y-4 ${charges.on ? '' : 'opacity-40 pointer-events-none'}`}>
+                <div className="rounded-xl border border-gray-200 p-4">
+                  <p className="text-sm font-medium text-gray-700">Free cancellation</p>
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    Nothing is charged while the property&rsquo;s clock is still before its check-in time
+                    on this day.
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-gray-500">Free until</span>
+                    <input
+                      type="number" min={0} max={365}
+                      value={charges.freeDays}
+                      onChange={(e) => {
+                        const n = Number(e.target.value)
+                        editCharges({ freeDays: Number.isFinite(n) ? n : charges.freeDays })
+                      }}
+                      className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <span className="text-sm text-gray-500">days before arrival</span>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-4">
+                  <p className="text-sm font-medium text-gray-700">Closer than that</p>
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    A share of the first night, taken off the hold. Whatever is not taken is released in
+                    the same breath.
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <input
+                      type="number" min={0} max={100}
+                      value={charges.midPercent}
+                      onChange={(e) => {
+                        const n = Number(e.target.value)
+                        editCharges({ midPercent: Number.isFinite(n) ? n : charges.midPercent })
+                      }}
+                      className="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <span className="text-sm text-gray-500">% of the first night, until</span>
+                    <input
+                      type="number" min={0} max={365}
+                      value={charges.midDays}
+                      onChange={(e) => {
+                        const n = Number(e.target.value)
+                        editCharges({ midDays: Number.isFinite(n) ? n : charges.midDays })
+                      }}
+                      className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <span className="text-sm text-gray-500">days before arrival</span>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+                    <span className="text-sm text-gray-500">After that</span>
+                    <input
+                      type="number" min={0} max={100}
+                      value={charges.latePercent}
+                      onChange={(e) => {
+                        const n = Number(e.target.value)
+                        editCharges({ latePercent: Number.isFinite(n) ? n : charges.latePercent })
+                      }}
+                      className="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <span className="text-sm text-gray-500">% of the first night</span>
+                  </div>
+
+                  {charges.midDays > charges.freeDays && (
+                    <p className="mt-2 text-xs text-amber-600">
+                      The reduced charge has to begin after the free window ends. Saving will pull this
+                      back to {charges.freeDays} days.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-gray-200 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Guest never arrives</p>
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        The night audit. A Pay at Hotel booking whose guest has not checked in by this
+                        hour on the arrival day is cancelled and charged. Prepaid bookings are never
+                        touched by it.
+                      </p>
+                    </div>
+                    <label className="flex shrink-0 items-center gap-2 text-sm text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={charges.noShowOn}
+                        onChange={(e) => editCharges({ noShowOn: e.target.checked })}
+                        className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      Do this
+                    </label>
+                  </div>
+
+                  <div className={`mt-3 flex flex-wrap items-center gap-2 ${charges.noShowOn ? '' : 'opacity-40'}`}>
+                    <span className="text-sm text-gray-500">Not checked in by</span>
+                    <input
+                      type="time"
+                      disabled={!charges.noShowOn}
+                      value={charges.noShowTime}
+                      onChange={(e) => editCharges({ noShowTime: e.target.value })}
+                      className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50"
+                    />
+                    <span className="text-sm text-gray-500">&rarr; charge</span>
+                    <input
+                      type="number" min={0} max={100}
+                      disabled={!charges.noShowOn}
+                      value={charges.noShowPercent}
+                      onChange={(e) => {
+                        const n = Number(e.target.value)
+                        editCharges({ noShowPercent: Number.isFinite(n) ? n : charges.noShowPercent })
+                      }}
+                      className="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50"
+                    />
+                    <span className="text-sm text-gray-500">% of the first night</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 p-4">
+                <label className="flex items-start justify-between gap-4">
+                  <span>
+                    <span className="block text-sm font-medium text-gray-700">Prepaid bookings are refundable</span>
+                    <span className="mt-0.5 block text-xs text-gray-400">
+                      Off, which is what the hotel&rsquo;s terms say: a booking paid in advance is
+                      non-refundable. Switching it on offers the whole amount back when one is cancelled.
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={charges.prepaidRefundable}
+                    onChange={(e) => editCharges({ prepaidRefundable: e.target.checked })}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                </label>
+              </div>
+
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                <p className="font-medium">What the guest is charged, as it stands</p>
+                <ul className="mt-1.5 space-y-0.5 text-xs">
+                  {charges.on ? (
+                    <>
+                      <li>
+                        More than {charges.freeDays} days out, up to the property&rsquo;s check-in time
+                        on that day &mdash; <strong>nothing</strong>, the whole hold is released.
+                      </li>
+                      <li>
+                        From then until {Math.min(charges.midDays, charges.freeDays)} days out &mdash;{' '}
+                        <strong>{charges.midPercent}% of the first night</strong>.
+                      </li>
+                      <li>Closer than that &mdash; <strong>{charges.latePercent}% of the first night</strong>.</li>
+                      {charges.noShowOn && (
+                        <li>
+                          Not checked in by {charges.noShowTime} on the arrival day &mdash; cancelled, and{' '}
+                          <strong>{charges.noShowPercent}% of the first night</strong> taken.
+                        </li>
+                      )}
+                    </>
+                  ) : (
+                    <li>Nothing. Every cancellation is free and the hold goes back whole.</li>
+                  )}
+                  <li>
+                    Prepaid &mdash;{' '}
+                    <strong>{charges.prepaidRefundable ? 'fully refundable' : 'non-refundable'}</strong>.
+                  </li>
+                </ul>
+                <p className="mt-2 text-xs">
+                  Every hour above is the <strong>property&rsquo;s own clock</strong>, and &ldquo;check-in
+                  time&rdquo; is the one set on that hotel &mdash; so a hotel that opens its rooms at two
+                  has its deadlines move with it. The charge comes off the hold, which is the first night
+                  of every room booked, so it can never be more than that.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={chargesSaving || !chargesDirty}
+                className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-40"
+              >
+                {chargesSaving ? 'Saving…' : 'Save Charges'}
               </button>
             </form>
           )}
@@ -2457,6 +2745,31 @@ export default function SettingsPage() {
                           The guest gets their bank&rsquo;s own code screen before the payment goes
                           through. Usually required in Jordan — check with the bank, and only turn
                           it on if the account is enabled for it.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 p-4">
+                    <label className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={pay.capitalbank_auto_return}
+                        onChange={e => yf('capitalbank_auto_return', e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-gray-700">
+                          Give unmatched payments back on their own
+                        </span>
+                        <span className="mt-0.5 block text-xs text-gray-400">
+                          Leave this off. The server already looks every half hour for money the bank is
+                          holding that no booking belongs to, and lists it under{' '}
+                          <strong>Payments &rarr; Unmatched &amp; refunds</strong> with a Return button on
+                          each row. Switched on, it sends the money back without asking &mdash; and it
+                          decides a payment is unmatched by failing to find a booking for it <em>in our own
+                          database</em>, which is also what a booking still being written, or one missing
+                          its reference, looks like.
                         </span>
                       </span>
                     </label>

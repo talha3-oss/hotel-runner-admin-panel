@@ -1,20 +1,27 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowPathIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { ArrowPathIcon, ExclamationTriangleIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
 
 // Money the bank has taken, and what became of it.
 //
-// This exists because the sweep is silent. It runs every ten minutes,
-// gives back anything the bank is holding that no booking belongs to, and
-// writes a line to a log file nobody reads. That is the wrong shape for
-// money: when a guest rings up asking where their payment went, somebody
-// needs a page, not a server log.
+// This exists because the sweep is silent. It looks every half hour for
+// money the bank is holding that no booking belongs to, and writes a line
+// to a log file nobody reads. That is the wrong shape for money: when a
+// guest rings up asking where their payment went, somebody needs a page,
+// not a server log.
 //
-// Every row here is a real payment at the bank. Most of them have a
-// booking and want no attention. The ones that do not are put at the top.
+// The sweep no longer gives anything back by itself (2026-11-26). It
+// finds the payment; a person presses Return. So this page is not a
+// report any more, it is the place the work is done.
+//
+// Every row is a real payment at the bank, and most of them have a
+// booking and want no attention at all -- which is why the page opens on
+// the ones that do. The filter is the first thing, before the table: four
+// payments where three are fine and one is not is a list somebody has to
+// read; four hundred is a list nobody does.
 
 interface Row {
   transactionId: string
@@ -34,6 +41,12 @@ interface Row {
    *  in. Nothing is given back under somebody who is still buying. */
   waiting: boolean
 }
+
+/** Which rows the table is showing. 'attention' is the one that matters:
+ *  money the bank has and nobody is owed. It is also the default, because
+ *  opening a screen called "Unmatched & refunds" on a list of perfectly
+ *  ordinary payments is how the one that is not gets missed. */
+type View = 'attention' | 'returned' | 'booked' | 'all'
 
 interface Report {
   ok: boolean
@@ -57,6 +70,8 @@ export default function UnmatchedPayments() {
   const [hours, setHours] = useState(48)
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [view, setView] = useState<View>('attention')
+  const [query, setQuery] = useState('')
 
   const load = useCallback(async (window: number) => {
     setLoading(true)
@@ -125,8 +140,32 @@ export default function UnmatchedPayments() {
     }
   }
 
-  const rows = report?.rows || []
-  const stuck = rows.filter(r => !r.booking && !r.returned && !r.waiting)
+  const all = report?.rows || []
+  const stuck = all.filter(r => !r.booking && !r.returned && !r.waiting)
+
+  // Which bucket each row is in. One row is in exactly one of them, so
+  // the counts on the chips add up to the whole list and a payment can
+  // never hide between two filters.
+  const bucketOf = (r: Row): Exclude<View, 'all'> =>
+    r.booking ? 'booked' : r.returned ? 'returned' : 'attention'
+
+  const counts = {
+    attention: all.filter(r => bucketOf(r) === 'attention').length,
+    returned: all.filter(r => bucketOf(r) === 'returned').length,
+    booked: all.filter(r => bucketOf(r) === 'booked').length,
+    all: all.length,
+  }
+
+  // Everything a person might have in their hand when they come looking:
+  // the reference off our own screen, the transaction id off the bank's,
+  // the booking reference off the guest's email, or the guest themselves.
+  const needle = query.trim().toLowerCase()
+  const matches = (r: Row) =>
+    !needle
+    || [r.reference, r.transactionId, r.booking?.ref, r.booking?.guest, r.booking?.email]
+      .some(v => String(v || '').toLowerCase().includes(needle))
+
+  const rows = all.filter(r => (view === 'all' || bucketOf(r) === view) && matches(r))
 
   return (
     <div className="space-y-4">
@@ -135,8 +174,8 @@ export default function UnmatchedPayments() {
           <p className="text-sm font-semibold text-gray-900">Money the bank has taken</p>
           <p className="text-xs text-gray-500 mt-0.5">
             Read straight from the bank, not from our own records — so a payment nobody here knows
-            about still shows. Anything with no booking against it is given back on its own within
-            ten minutes.
+            about still shows. Anything with no booking against it is found on its own, but nothing
+            is given back until somebody presses Return.
           </p>
         </div>
         <select
@@ -187,6 +226,43 @@ export default function UnmatchedPayments() {
         </div>
       )}
 
+      {/* Filter first, then search, then the table. Most of what the bank
+          took is ordinary and the one payment that is not has to be one
+          click away, not eight rows down. */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 flex flex-wrap items-center gap-2">
+        {([
+          ['attention', 'Needs attention'],
+          ['returned', 'Returned'],
+          ['booked', 'Has a booking'],
+          ['all', 'All'],
+        ] as [View, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setView(key)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
+              view === key
+                ? 'bg-primary-600 text-white border-primary-600'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {label}
+            <span className={`ml-1.5 ${view === key ? 'text-white/70' : 'text-gray-400'}`}>
+              {counts[key]}
+            </span>
+          </button>
+        ))}
+
+        <div className="relative flex-1 min-w-[14rem] ml-auto">
+          <MagnifyingGlassIcon className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Reference, transaction, booking, guest…"
+            className="w-full text-sm pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+        </div>
+      </div>
+
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -207,7 +283,13 @@ export default function UnmatchedPayments() {
               )}
               {!loading && rows.length === 0 && (
                 <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">
-                  No payments in this window.
+                  {all.length === 0
+                    ? 'No payments in this window.'
+                    : needle
+                      ? `Nothing matching “${query.trim()}” in this view.`
+                      : view === 'attention'
+                        ? 'Nothing needs attention — every payment has a booking or has been returned.'
+                        : 'Nothing in this view.'}
                 </td></tr>
               )}
               {!loading && rows.map(row => {

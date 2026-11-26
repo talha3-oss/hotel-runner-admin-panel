@@ -18,6 +18,7 @@ import { formatMoneyExact } from '../../../lib/currency'
 // Loaded only when the tab is opened. It talks to the bank on mount, and
 // most visits to this screen are to look at bookings.
 const UnmatchedPayments = dynamic(() => import('../../../components/UnmatchedPayments'), { ssr: false })
+const CardHolds = dynamic(() => import('../../../components/CardHolds'), { ssr: false })
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
 
@@ -62,7 +63,7 @@ export default function PaymentsPage() {
   const [methodFilter, setMethodFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<BookingRecord | null>(null)
-  const [tab, setTab] = useState<'bookings' | 'unmatched'>('bookings')
+  const [tab, setTab] = useState<'bookings' | 'holds' | 'unmatched'>('bookings')
   const limit = 20
 
   const load = useCallback(async (q: string, status: string, p: number) => {
@@ -116,7 +117,9 @@ export default function PaymentsPage() {
         <p className="mt-1 text-sm text-gray-500">
           {tab === 'bookings'
             ? 'All payment records derived from bookings.'
-            : 'What the bank has actually taken, whether a booking belongs to it or not.'}
+            : tab === 'holds'
+              ? 'Money held on guests\u2019 cards for Pay at Hotel bookings \u2014 nothing charged yet.'
+              : 'What the bank has actually taken, whether a booking belongs to it or not.'}
         </p>
       </div>
 
@@ -126,7 +129,7 @@ export default function PaymentsPage() {
           belongs here beside the money it is about. */}
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex gap-6">
-          {([['bookings', 'Payments'], ['unmatched', 'Unmatched & refunds']] as const).map(([key, label]) => (
+          {([['bookings', 'Payments'], ['holds', 'Card holds'], ['unmatched', 'Unmatched & refunds']] as const).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setTab(key)}
@@ -141,6 +144,8 @@ export default function PaymentsPage() {
           ))}
         </nav>
       </div>
+
+      {tab === 'holds' && <CardHolds />}
 
       {tab === 'unmatched' && <UnmatchedPayments />}
 
