@@ -748,8 +748,11 @@ export interface CancellationPolicy {
   midPercent: number
   latePercent: number
   noShowOn: boolean
-  /** Night audit, on the property's clock. "23:00". */
+  /** Night audit, on the property's clock. "06:00". */
   noShowTime: string
+  /** Whether that hour falls on the morning after arrival (the default)
+   *  or on the arrival day itself. Six in the morning means tomorrow. */
+  noShowNextDay: boolean
   noShowPercent: number
   /** Off by default: "Prepaid reservations are non-refundable." */
   prepaidRefundable: boolean
@@ -770,7 +773,8 @@ export const DEFAULT_CANCELLATION_POLICY: CancellationPolicy = {
   midPercent: 50,
   latePercent: 100,
   noShowOn: true,
-  noShowTime: '23:00',
+  noShowTime: '06:00',
+  noShowNextDay: true,
   noShowPercent: 100,
   prepaidRefundable: false,
 }

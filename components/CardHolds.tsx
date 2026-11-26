@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { ArrowPathIcon, MagnifyingGlassIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3402'
 
@@ -52,6 +52,14 @@ interface Hold {
   paymentAuthorizedAt: string | null
   checkedInAt: string | null
   quote: Quote
+  /** How many days Capital Bank honours one of our authorizations. 27. */
+  holdDays: number
+  holdExpiresAt: string | null
+  holdExpired: boolean
+  /** The hold lapses before the night audit could ever charge it. True of
+   *  any Pay at Hotel booking made more than `holdDays` before arrival,
+   *  which on this site is most of them in high season. */
+  holdDiesFirst: boolean
 }
 
 function when(value: string | null) {
@@ -185,6 +193,7 @@ export default function CardHolds() {
       .some(v => String(v || '').toLowerCase().includes(needle))
   )
 
+  const dying = rows.filter(r => r.holdExpired || r.holdDiesFirst)
   const held = rows.reduce((s, r) => s + (Number(r.paymentAuthAmount) || 0), 0)
   const currency = rows[0]?.paymentCurrency || ''
 
@@ -194,8 +203,11 @@ export default function CardHolds() {
         <div className="flex-1 min-w-[16rem]">
           <p className="text-sm font-semibold text-gray-900">Holds on guests&rsquo; cards</p>
           <p className="text-xs text-gray-500 mt-0.5">
-            Pay at Hotel bookings. Nothing has been charged — the first night is held on the card and
-            waits here until the guest pays at the desk, cancels, or does not arrive.
+            Every Pay at Hotel booking that has not arrived yet. <strong>Nothing has been charged.</strong>{' '}
+            The first night is reserved on the guest&rsquo;s card — it comes off what they can spend, but
+            no money has moved — and it sits there until one of three things happens: they pay at the
+            desk (press <em>Release</em>), they cancel (press <em>Charge</em> for what the terms say, and
+            the rest is released with it), or they never arrive.
             {rows.length > 0 && <> <strong>{held.toFixed(3)} {currency}</strong> held across {rows.length} booking{rows.length === 1 ? '' : 's'}.</>}
           </p>
         </div>
@@ -214,6 +226,12 @@ export default function CardHolds() {
         >
           {auditing ? 'Running…' : 'Run night audit'}
         </button>
+        <p className="w-full text-xs text-gray-400">
+          The night audit runs on its own every fifteen minutes and closes the guests who never came:
+          each one past its hour in the <strong>No-show at</strong> column is cancelled and charged for
+          the first night. The button only makes it happen a moment sooner — it never touches a booking
+          whose hour has not passed, and never touches a prepaid one.
+        </p>
       </div>
 
       {msg && (
@@ -224,6 +242,19 @@ export default function CardHolds() {
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+
+      {dying.length > 0 && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 flex gap-2">
+          <ExclamationTriangleIcon className="h-5 w-5 flex-shrink-0" />
+          <span>
+            <strong>{dying.length} hold{dying.length === 1 ? '' : 's'} will lapse before the guest arrives.</strong>{' '}
+            Capital Bank honours an authorization for {rows[0]?.holdDays ?? 27} days, and these bookings were
+            made further ahead than that. Nothing can be charged against them after they lapse — not a
+            cancellation fee and not a no-show. Take payment another way, or ask the guest for a card again
+            closer to the date.
+          </span>
+        </div>
       )}
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
@@ -248,15 +279,16 @@ export default function CardHolds() {
                 <th className="px-4 py-3 text-right">Held</th>
                 <th className="px-4 py-3">If cancelled now</th>
                 <th className="px-4 py-3">No-show at</th>
+                <th className="px-4 py-3">Hold lasts until</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading && (
-                <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">Reading the holds…</td></tr>
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">Reading the holds…</td></tr>
               )}
               {!loading && shown.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">
                   {rows.length === 0
                     ? 'No cards are being held just now.'
                     : `Nothing matching “${query.trim()}”.`}
@@ -294,6 +326,15 @@ export default function CardHolds() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">
                       {when(row.quote.deadlines.noShow)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-xs">
+                      <span className={row.holdExpired || row.holdDiesFirst ? 'text-amber-700 font-medium' : 'text-gray-500'}>
+                        {when(row.holdExpiresAt)}
+                      </span>
+                      {row.holdExpired && <div className="text-[11px] text-amber-700">Already lapsed</div>}
+                      {!row.holdExpired && row.holdDiesFirst && (
+                        <div className="text-[11px] text-amber-700">Lapses before arrival</div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <div className="inline-flex gap-2">

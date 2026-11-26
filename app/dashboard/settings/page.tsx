@@ -648,6 +648,35 @@ const PAYMENTS_DEFAULTS: PaymentsForm = {
   capitalbank_auto_return: false,
 }
 
+/** A switch, not a tick-box.
+ *
+ *  A tick-box says "include this when I save"; a switch says "this is on".
+ *  Everywhere it is used here the setting is already live the moment it is
+ *  saved, and three of them decide whether a guest is charged money, so the
+ *  control should read as a state rather than as a form field.
+ */
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
+        checked ? 'bg-primary-600' : 'bg-gray-200'
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
+          checked ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </button>
+  )
+}
+
 export default function SettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1906,20 +1935,19 @@ export default function SettingsPage() {
               )}
 
               <div className="rounded-xl border border-gray-200 p-4">
-                <label className="flex items-start justify-between gap-4">
+                <div className="flex items-start justify-between gap-4">
                   <span>
                     <span className="block text-sm font-medium text-gray-700">Charge for late cancellations</span>
                     <span className="mt-0.5 block text-xs text-gray-400">
                       Switched off, every cancellation is free and the whole hold goes back to the guest.
                     </span>
                   </span>
-                  <input
-                    type="checkbox"
+                  <Toggle
                     checked={charges.on}
-                    onChange={(e) => editCharges({ on: e.target.checked })}
-                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    onChange={(v) => editCharges({ on: v })}
+                    label="Charge for late cancellations"
                   />
-                </label>
+                </div>
               </div>
 
               <div className={`space-y-4 ${charges.on ? '' : 'opacity-40 pointer-events-none'}`}>
@@ -2005,19 +2033,27 @@ export default function SettingsPage() {
                         touched by it.
                       </p>
                     </div>
-                    <label className="flex shrink-0 items-center gap-2 text-sm text-gray-600">
-                      <input
-                        type="checkbox"
+                    <span className="flex shrink-0 items-center gap-2 text-sm text-gray-600">
+                      <Toggle
                         checked={charges.noShowOn}
-                        onChange={(e) => editCharges({ noShowOn: e.target.checked })}
-                        className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        onChange={(v) => editCharges({ noShowOn: v })}
+                        label="Cancel and charge a guest who never arrives"
                       />
                       Do this
-                    </label>
+                    </span>
                   </div>
 
                   <div className={`mt-3 flex flex-wrap items-center gap-2 ${charges.noShowOn ? '' : 'opacity-40'}`}>
                     <span className="text-sm text-gray-500">Not checked in by</span>
+                    <select
+                      disabled={!charges.noShowOn}
+                      value={charges.noShowNextDay ? 'next' : 'same'}
+                      onChange={(e) => editCharges({ noShowNextDay: e.target.value === 'next' })}
+                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50"
+                    >
+                      <option value="next">the next morning at</option>
+                      <option value="same">the arrival night at</option>
+                    </select>
                     <input
                       type="time"
                       disabled={!charges.noShowOn}
@@ -2038,25 +2074,32 @@ export default function SettingsPage() {
                     />
                     <span className="text-sm text-gray-500">% of the first night</span>
                   </div>
+
+                  <p className="mt-2 text-xs text-gray-400">
+                    {charges.noShowNextDay
+                      ? `A guest due on the 16th has until ${charges.noShowTime} on the 17th — a late flight, a long drive or a delayed ferry all land after midnight, and the room is empty either way by then.`
+                      : `A guest due on the 16th has until ${charges.noShowTime} on the 16th. Anyone arriving after that is treated as a no-show, however good the reason.`}
+                  </p>
                 </div>
               </div>
 
               <div className="rounded-xl border border-gray-200 p-4">
-                <label className="flex items-start justify-between gap-4">
+                <div className="flex items-start justify-between gap-4">
                   <span>
                     <span className="block text-sm font-medium text-gray-700">Prepaid bookings are refundable</span>
                     <span className="mt-0.5 block text-xs text-gray-400">
                       Off, which is what the hotel&rsquo;s terms say: a booking paid in advance is
-                      non-refundable. Switching it on offers the whole amount back when one is cancelled.
+                      non-refundable. Switched on, a prepaid cancellation is charged by exactly the
+                      windows above &mdash; the fee is kept and the rest of what the guest paid is
+                      refunded, rather than all or nothing.
                     </span>
                   </span>
-                  <input
-                    type="checkbox"
+                  <Toggle
                     checked={charges.prepaidRefundable}
-                    onChange={(e) => editCharges({ prepaidRefundable: e.target.checked })}
-                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    onChange={(v) => editCharges({ prepaidRefundable: v })}
+                    label="Prepaid bookings are refundable"
                   />
-                </label>
+                </div>
               </div>
 
               <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
@@ -2075,8 +2118,9 @@ export default function SettingsPage() {
                       <li>Closer than that &mdash; <strong>{charges.latePercent}% of the first night</strong>.</li>
                       {charges.noShowOn && (
                         <li>
-                          Not checked in by {charges.noShowTime} on the arrival day &mdash; cancelled, and{' '}
-                          <strong>{charges.noShowPercent}% of the first night</strong> taken.
+                          Not checked in by {charges.noShowTime}{' '}
+                          {charges.noShowNextDay ? 'the morning after arrival' : 'on the arrival day'} &mdash;
+                          cancelled, and <strong>{charges.noShowPercent}% of the first night</strong> taken.
                         </li>
                       )}
                     </>
@@ -2085,7 +2129,9 @@ export default function SettingsPage() {
                   )}
                   <li>
                     Prepaid &mdash;{' '}
-                    <strong>{charges.prepaidRefundable ? 'fully refundable' : 'non-refundable'}</strong>.
+                    {charges.prepaidRefundable
+                      ? <><strong>the same windows above</strong>, taken out of the refund: the charge is kept and the rest of what they paid goes back.</>
+                      : <><strong>non-refundable</strong>, whenever they cancel.</>}
                   </li>
                 </ul>
                 <p className="mt-2 text-xs">
@@ -2751,12 +2797,11 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="rounded-xl border border-gray-200 p-4">
-                    <label className="flex items-start gap-3">
-                      <input
-                        type="checkbox"
+                    <div className="flex items-start gap-3">
+                      <Toggle
                         checked={pay.capitalbank_auto_return}
-                        onChange={e => yf('capitalbank_auto_return', e.target.checked)}
-                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        onChange={v => yf('capitalbank_auto_return', v)}
+                        label="Give unmatched payments back on their own"
                       />
                       <span>
                         <span className="block text-sm font-medium text-gray-700">
@@ -2772,7 +2817,7 @@ export default function SettingsPage() {
                           its reference, looks like.
                         </span>
                       </span>
-                    </label>
+                    </div>
                   </div>
 
                   {payMsg && (
